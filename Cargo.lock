@@ -4,11 +4,11 @@ version = 4
 
 [[package]]
 name = "levilamina"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "levilamina-sys",
 ]
 
 [[package]]
 name = "levilamina-sys"
-version = "0.1.0"
+version = "0.1.1"

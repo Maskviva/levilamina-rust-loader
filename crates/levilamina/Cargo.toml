@@ -1,6 +1,6 @@
 [package]
 name = "levilamina"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "Apache-2.0"
 description = "Write LeviLamina (Minecraft Bedrock Dedicated Server) mods in safe Rust."
@@ -10,4 +10,4 @@ keywords = ["levilamina", "minecraft", "bedrock", "mod", "bds"]
 categories = ["game-development", "api-bindings"]
 
 [dependencies]
-levilamina-sys = { version = "0.1.0", path = "../levilamina-sys" }
+levilamina-sys = { version = "0.1.1", path = "../levilamina-sys" }
