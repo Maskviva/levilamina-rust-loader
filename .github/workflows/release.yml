@@ -1,3 +1,5 @@
+name: Release
+
 on:
   release:
     types:
@@ -6,92 +8,100 @@ on:
 jobs:
   build-cpp:
     runs-on: windows-latest
+
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - uses: xmake-io/github-action-setup-xmake@v1
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@v4
         with:
-          path: |
-            ~/AppData/Local/.xmake
+          path: ~/AppData/Local/.xmake
           key: xmake-${{ hashFiles('xmake.lua') }}
           restore-keys: |
             xmake-
 
-      - run: |
-          xmake repo -u
+      - name: Update xmake repo
+        run: xmake repo -u
 
-      - run: |
-          xmake f -a x64 -m release -p windows -y
+      - name: Configure
+        run: xmake f -a x64 -m release -p windows -y
 
-      - run: |
-          xmake -w -y
+      - name: Build
+        run: xmake -w -y
 
-      - uses: actions/upload-artifact@v7
+      - name: Show output
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse bin
+
+      - uses: actions/upload-artifact@v4
         with:
           name: levilamina-rust-loader-${{ github.sha }}-windows-x64
-          path: |
-            bin/
+          path: bin/
 
   update-release-notes:
+    runs-on: ubuntu-latest
+
     permissions:
       contents: write
-    runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - id: extract-release-notes
         uses: ffurrer2/extract-release-notes@v3
 
-      - uses: softprops/action-gh-release@v3
+      - uses: softprops/action-gh-release@v2
         with:
-          body: |
-            ${{ steps.extract-release-notes.outputs.release_notes }}
+          body: ${{ steps.extract-release-notes.outputs.release_notes }}
 
   upload-to-release:
     needs:
       - build-cpp
       - update-release-notes
+
+    runs-on: ubuntu-latest
+
     permissions:
       contents: write
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
         with:
           name: levilamina-rust-loader-${{ github.sha }}-windows-x64
           path: artifact
 
-      - run: |
+      - name: Flatten package
+        shell: bash
+        run: |
           cp LICENSE README.md artifact/
 
-      - run: |
-          zip -r ../levilamina-rust-loader-windows-x64.zip *
+          echo "===== Before ====="
+          find artifact
+
+          # modpacker 输出为 bin/levilamina-rust-loader/*
+          if [ -d "artifact/levilamina-rust-loader" ]; then
+            mv artifact/levilamina-rust-loader/* artifact/
+            rm -rf artifact/levilamina-rust-loader
+          fi
+
+          # 如果还有 bin 目录，也展开
+          if [ -d "artifact/bin" ]; then
+            mv artifact/bin/* artifact/
+            rm -rf artifact/bin
+          fi
+
+          echo "===== After ====="
+          find artifact
+
+      - name: Create zip
         working-directory: artifact
+        run: |
+          zip -r ../levilamina-rust-loader-windows-x64.zip .
 
-      - uses: softprops/action-gh-release@v3
+      - uses: softprops/action-gh-release@v2
         with:
-          files: |
-            levilamina-rust-loader-windows-x64.zip
-
-  # Requires a CARGO_REGISTRY_TOKEN repository secret (crates.io API token).
-  # Remove this job if you don't want tags to auto-publish to crates.io.
-  publish-crates:
-    needs:
-      - build-cpp
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      # Publish order matters: levilamina-sys has no internal deps and must
-      # land first; levilamina depends on it.
-      - run: cargo publish -p levilamina-sys --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        continue-on-error: true # an "already uploaded" error just means no bump this release
-
-      - run: sleep 30 # give crates.io a moment to index levilamina-sys
-
-      - run: cargo publish -p levilamina --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          files: levilamina-rust-loader-windows-x64.zip

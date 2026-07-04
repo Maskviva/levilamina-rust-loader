@@ -10,6 +10,8 @@ cd F:\project\levilamina-rs\levilamina-rust-loader\
 
 set VCPKG_ROOT=
 set CONAN_HOME=
+set HTTPS_PROXY=http://127.0.0.1:7890
+set HTTP_PROXY=http://127.0.0.1:7890
 
 echo D:\Compiler\xmake\xmake.exe repo -u
 D:\Compiler\xmake\xmake.exe repo -u
