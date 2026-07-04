@@ -132,7 +132,10 @@ pub enum GamingStatus {
 // ───────────────────────── ffi helpers ─────────────────────────
 
 fn s(text: &str) -> sys::LeviRsStr {
-    sys::LeviRsStr { ptr: text.as_ptr(), len: text.len() }
+    sys::LeviRsStr {
+        ptr: text.as_ptr(),
+        len: text.len(),
+    }
 }
 
 /// # Safety: `raw` must point at valid UTF-8 for `len` bytes (bridge contract),
@@ -155,7 +158,9 @@ unsafe impl Sync for Runtime {}
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 
 fn rt() -> &'static Runtime {
-    RUNTIME.get().expect("levilamina runtime not initialized (register_mod! missing?)")
+    RUNTIME
+        .get()
+        .expect("levilamina runtime not initialized (register_mod! missing?)")
 }
 
 // ───────────────────────── public API objects ─────────────────────────
@@ -303,13 +308,18 @@ impl Server {
     /// Run a closure on the server thread after `delay`. Thread-safe.
     pub fn schedule_after(&self, delay: Duration, f: impl FnOnce() + Send + 'static) {
         let boxed: *mut TaskOnce = Box::into_raw(Box::new(Some(Box::new(f))));
-        unsafe { (rt().api.schedule_after)(task_trampoline, boxed.cast(), delay.as_millis() as u64) }
+        unsafe {
+            (rt().api.schedule_after)(task_trampoline, boxed.cast(), delay.as_millis() as u64)
+        }
     }
 
     /// Execute a command as the server console and collect its output.
     /// Server thread only.
     pub fn execute_command(&self, cmd: &str) -> Result<CommandResult> {
-        let mut result = CommandResult { success: false, output: String::new() };
+        let mut result = CommandResult {
+            success: false,
+            output: String::new(),
+        };
         unsafe extern "C" fn sink(ctx: *mut c_void, success: bool, output: sys::LeviRsStr) {
             let res = &mut *ctx.cast::<CommandResult>();
             res.success = success;
@@ -336,11 +346,19 @@ impl Server {
     ) -> Result<Listener> {
         let cb: *mut EventCallback = Box::into_raw(Box::new(Box::new(callback)));
         let raw = unsafe {
-            (rt().api.subscribe_event)(rt().handle, s(event_id), priority as i32, event_trampoline, cb.cast())
+            (rt().api.subscribe_event)(
+                rt().handle,
+                s(event_id),
+                priority as i32,
+                event_trampoline,
+                cb.cast(),
+            )
         };
         if raw.is_null() {
             unsafe { drop(Box::from_raw(cb)) };
-            return Err(Error(format!("failed to subscribe '{event_id}' (unknown or ambiguous id?)")));
+            return Err(Error(format!(
+                "failed to subscribe '{event_id}' (unknown or ambiguous id?)"
+            )));
         }
         Ok(Listener { raw, cb })
     }
@@ -376,7 +394,13 @@ impl Server {
             out_error: sys::LeviRsStrSink,
         ) {
             let cb = &mut *user.cast::<CommandCallback>();
-            let inv = CommandInvocation { args: r(args), origin: r(origin), out_ctx, out_success, out_error };
+            let inv = CommandInvocation {
+                args: r(args),
+                origin: r(origin),
+                out_ctx,
+                out_success,
+                out_error,
+            };
             if catch_unwind(AssertUnwindSafe(|| cb(&inv))).is_err() {
                 Logger(()).error("panic in command handler");
             }
@@ -420,7 +444,11 @@ unsafe extern "C" fn event_trampoline(
     write_back: sys::LeviRsStrSink,
 ) {
     let cb = &mut *user.cast::<EventCallback>();
-    let mut ev = EventRef { id: r(event_id), snbt: r(snbt), replacement: None };
+    let mut ev = EventRef {
+        id: r(event_id),
+        snbt: r(snbt),
+        replacement: None,
+    };
     if catch_unwind(AssertUnwindSafe(|| cb(&mut ev))).is_err() {
         Logger(()).error("panic in event handler");
         return;
@@ -473,12 +501,12 @@ pub struct ModSlot<T: LeviMod>(pub Mutex<Option<T>>);
 unsafe impl<T: LeviMod> Sync for ModSlot<T> {}
 
 #[doc(hidden)]
-pub fn __init_runtime(api: *const sys::LeviRsApi, handle: sys::LeviRsModHandle) -> bool {
+pub unsafe fn __init_runtime(api: *const sys::LeviRsApi, handle: sys::LeviRsModHandle) -> bool {
     if api.is_null() {
         return false;
     }
     // SAFETY: the bridge guarantees the api table outlives the mod.
-    let api: &'static sys::LeviRsApi = unsafe { &*api };
+    let api: &'static sys::LeviRsApi = &*api;
     if api.abi_version != sys::LEVI_RS_ABI_VERSION {
         return false;
     }
@@ -502,7 +530,10 @@ pub fn __lifecycle<T: LeviMod>(
 ) -> bool {
     let ctx = ModContext(());
     let run = || -> Result<()> {
-        let mut guard = slot.0.lock().map_err(|_| Error("mod state poisoned".into()))?;
+        let mut guard = slot
+            .0
+            .lock()
+            .map_err(|_| Error("mod state poisoned".into()))?;
         let Some(instance) = guard.as_mut() else {
             return Err(Error("mod instance missing".into()));
         };
@@ -554,7 +585,8 @@ pub fn __load<T: LeviMod>(slot: &'static ModSlot<T>) -> bool {
 macro_rules! register_mod {
     ($ty:ty) => {
         #[doc(hidden)]
-        static __LEVI_RS_SLOT: $crate::ModSlot<$ty> = $crate::ModSlot(::std::sync::Mutex::new(None));
+        static __LEVI_RS_SLOT: $crate::ModSlot<$ty> =
+            $crate::ModSlot(::std::sync::Mutex::new(None));
 
         #[no_mangle]
         pub unsafe extern "C" fn levi_rs_main(

@@ -11,22 +11,18 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: xmake-io/github-action-setup-xmake@v1
-        # with:
-        #   xmake-version: branch@master
-
-      - uses: actions/cache@v6
-        with:
-          path: |
-            ~/AppData/Local/.xmake
-          key: xmake-${{ hashFiles('xmake.lua') }}
-          restore-keys: |
-            xmake-
 
       - run: |
           xmake repo -u
 
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/AppData/Local/.xmake/packages
+          key: xmake-v2-${{ runner.os }}-${{ hashFiles('xmake.lua') }}
+
       - run: |
-          xmake f -a x64 -m release -p windows -v -y
+          xmake f -a x64 -m release -p windows -v -y --policies=package.precompiled:n
 
       - run: |
           xmake -v -y

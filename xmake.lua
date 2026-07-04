@@ -14,6 +14,7 @@ add_requires("levilamina 26.10.14", {configs = {target_type = "server"}})
 add_requires("bedrockdata v26.10.4-server.17")
 add_requires("prelink v0.7.1")
 add_requires("levibuildscript")
+add_requires("zlib 1.3.1")
 
 if not has_config("vs_runtime") then
     set_runtimes("MD")
