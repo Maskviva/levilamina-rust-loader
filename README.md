@@ -35,7 +35,7 @@ and come back here only if you're curious how it works or want to contribute.
 
 Design highlights:
 
-- **First-class mods.** Rust mods live in `mods/<name>/` with a normal
+- **First-class mods.** Rust mods live in `plugins/<name>/` with a normal
   `manifest.json`, participate in dependency sorting, and show up in
   LeviLamina's mod listing like any other mod — because they *are* managed by
   a real `ModManager`, not injected through a side door.
@@ -77,9 +77,9 @@ rules. The C header and the `-sys` crate change in the same commit, always.
 ## Installation (server admins)
 
 1. Install [LeviLamina](https://lamina.levimc.org/) on your BDS.
-2. Drop a `levilamina-rust-loader` release into `mods/levilamina-rust-loader/`
+2. Drop a `levilamina-rust-loader` release into `plugins/levilamina-rust-loader/`
    (or build it yourself, see below).
-3. Install Rust mods into `mods/<mod-name>/` — each one is a `.dll` +
+3. Install Rust mods into `plugins/<mod-name>/` — each one is a `.dll` +
    `manifest.json`, same as any other LeviLamina mod.
 
 ## Building the loader
