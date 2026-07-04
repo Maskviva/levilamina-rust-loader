@@ -2,9 +2,10 @@
 name = "levilamina"
 version = "0.1.0"
 edition = "2021"
-license = "MIT OR Apache-2.0"
+license = "Apache-2.0"
 description = "Write LeviLamina (Minecraft Bedrock Dedicated Server) mods in safe Rust."
-repository = "https://github.com/YOUR_NAME/levilamina-rs"
+repository = "https://github.com/Maskviva/levilamina-rust-loader"
+readme = "../../README.md"
 keywords = ["levilamina", "minecraft", "bedrock", "mod", "bds"]
 categories = ["game-development", "api-bindings"]
 

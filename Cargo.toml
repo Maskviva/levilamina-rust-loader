@@ -5,11 +5,5 @@ members = [
     "crates/levilamina",
 ]
 
-[package]
-name = "levilamina"
-version = "0.1.0"
-edition = "2021"
-publish = false
-
 [profile.release]
 lto = "thin"

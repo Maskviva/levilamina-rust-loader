@@ -6,7 +6,7 @@ call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliar
 
 F:
 
-cd F:\project\levilamina-rs\bridge
+cd F:\project\levilamina-rs\levilamina-rust-loader\
 
 set VCPKG_ROOT=
 set CONAN_HOME=
