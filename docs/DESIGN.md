@@ -1,7 +1,7 @@
 # levilamina-rs — Design Notes
 
 This document records the load-bearing design decisions and the rules for
-evolving the ABI. Source of truth for the ABI itself: `bridge/src/LeviRsAbi.h`,
+evolving the ABI. Source of truth for the ABI itself: `src/LeviRsAbi.h`,
 mirrored field-for-field by `crates/levilamina-sys`.
 
 ## 1. Why a loader mod + custom mod type

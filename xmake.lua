@@ -7,10 +7,12 @@ add_rules("mode.debug", "mode.release")
 
 add_repositories("levimc-repo https://github.com/LiteLDev/xmake-repo.git")
 
--- !! Pin this to the LeviLamina version running on your server.
-add_requires("levilamina", {configs = {target_type = "server"}})
-add_requires("bedrockdata")
-add_requires("prelink")
+-- !! Pin these to the LeviLamina version running on your server (bedrockdata
+-- and prelink are levilamina's own transitive deps; pinned here too so
+-- `xmake repo -u` can't silently drift them to an incompatible pairing).
+add_requires("levilamina 26.10.14", {configs = {target_type = "server"}})
+add_requires("bedrockdata v26.10.4-server.17")
+add_requires("prelink v0.7.1")
 add_requires("levibuildscript")
 
 if not has_config("vs_runtime") then

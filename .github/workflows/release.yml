@@ -1,0 +1,97 @@
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  build-cpp:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: xmake-io/github-action-setup-xmake@v1
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/AppData/Local/.xmake
+          key: xmake-${{ hashFiles('xmake.lua') }}
+          restore-keys: |
+            xmake-
+
+      - run: |
+          xmake repo -u
+
+      - run: |
+          xmake f -a x64 -m release -p windows -y
+
+      - run: |
+          xmake -w -y
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: levilamina-rust-loader-${{ github.sha }}-windows-x64
+          path: |
+            bin/
+
+  update-release-notes:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: extract-release-notes
+        uses: ffurrer2/extract-release-notes@v3
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          body: |
+            ${{ steps.extract-release-notes.outputs.release_notes }}
+
+  upload-to-release:
+    needs:
+      - build-cpp
+      - update-release-notes
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: levilamina-rust-loader-${{ github.sha }}-windows-x64
+          path: artifact
+
+      - run: |
+          cp LICENSE README.md artifact/
+
+      - run: |
+          zip -r ../levilamina-rust-loader-windows-x64.zip *
+        working-directory: artifact
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            levilamina-rust-loader-windows-x64.zip
+
+  # Requires a CARGO_REGISTRY_TOKEN repository secret (crates.io API token).
+  # Remove this job if you don't want tags to auto-publish to crates.io.
+  publish-crates:
+    needs:
+      - build-cpp
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Publish order matters: levilamina-sys has no internal deps and must
+      # land first; levilamina depends on it.
+      - run: cargo publish -p levilamina-sys --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        continue-on-error: true # an "already uploaded" error just means no bump this release
+
+      - run: sleep 30 # give crates.io a moment to index levilamina-sys
+
+      - run: cargo publish -p levilamina --token ${{ secrets.CARGO_REGISTRY_TOKEN }}

@@ -1,4 +1,4 @@
-//! Raw FFI declarations mirroring `bridge/src/LeviRsAbi.h` (ABI v1).
+//! Raw FFI declarations mirroring `src/LeviRsAbi.h` (ABI v1).
 //!
 //! This crate contains no logic — only `#[repr(C)]` types. Keep it in
 //! lockstep with the C header: fields are append-only, never reordered.
@@ -100,3 +100,13 @@ pub struct LeviRsModVTable {
     pub on_disable: Option<unsafe extern "C" fn(instance: *mut c_void) -> bool>,
     pub on_unload: Option<unsafe extern "C" fn(instance: *mut c_void) -> bool>,
 }
+
+/// The single symbol every Rust mod must export (see `LEVI_RS_MAIN_SYMBOL`).
+/// Mirrors `LeviRsMainFn` in the C header. Provided mainly so the loader's own
+/// `GetProcAddress` cast and any mod-side signature checks share one
+/// definition instead of two hand-written copies drifting apart.
+pub type LeviRsMainFn = unsafe extern "C" fn(
+    api: *const LeviRsApi,
+    self_: LeviRsModHandle,
+    out_vtable: *mut LeviRsModVTable,
+) -> bool;

@@ -482,6 +482,16 @@ pub fn __init_runtime(api: *const sys::LeviRsApi, handle: sys::LeviRsModHandle) 
     if api.abi_version != sys::LEVI_RS_ABI_VERSION {
         return false;
     }
+    // DESIGN.md §8: additive ABI changes bump `struct_size`, not `abi_version`,
+    // so a mod built against a newer `levilamina-sys` (expecting a larger
+    // `LeviRsApi`) must refuse a loader whose table is smaller than what this
+    // crate was compiled against — otherwise a trailing field access would
+    // read past what the loader actually allocated. This is a no-op today
+    // (ABI v1 has no optional trailing fields) but must stay in place so the
+    // first v1.x addition is safe by construction rather than by luck.
+    if (api.struct_size as usize) < core::mem::size_of::<sys::LeviRsApi>() {
+        return false;
+    }
     RUNTIME.set(Runtime { api, handle }).is_ok()
 }
 

@@ -222,6 +222,10 @@ bool api_execute_command(LeviRsStr cmd, void* ctx, LeviRsCmdOutputSink sink) {
         for (auto const& msg : output.mMessages) {
             if (!text.empty()) text += '\n';
             text += msg.mMessageId;
+            for (auto const& param : msg.mParams) {
+                text += ' ';
+                text += param;
+            }
         }
         sink(ctx, output.mSuccessCount > 0, toStr(text));
     }

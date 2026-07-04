@@ -1,0 +1,58 @@
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+jobs:
+  cpp:
+    name: Build C++ loader
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: xmake-io/github-action-setup-xmake@v1
+        # with:
+        #   xmake-version: branch@master
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/AppData/Local/.xmake
+          key: xmake-${{ hashFiles('xmake.lua') }}
+          restore-keys: |
+            xmake-
+
+      - run: |
+          xmake repo -u
+
+      - run: |
+          xmake f -a x64 -m release -p windows -v -y
+
+      - run: |
+          xmake -v -y
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: levilamina-rust-loader-${{ github.sha }}-windows-x64
+          path: |
+            bin/
+
+  crates:
+    name: Build & test Rust crates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo fmt --all -- --check
+
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - run: cargo build --workspace --verbose
+
+      - run: cargo test --workspace --verbose

@@ -1,0 +1,71 @@
+name: Bug Report
+description: Create a report to help us improve
+title: "[Bug] "
+type: bug
+body:
+  - type: dropdown
+    attributes:
+      label: Where does this bug live?
+      options:
+        - src/ (C++ loader mod)
+        - crates/levilamina-sys
+        - crates/levilamina
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: To Reproduce
+      description: Steps to reproduce the behavior. A minimal Rust mod that triggers it is ideal.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Expected behavior
+      description: A clear and concise description of what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Logs / screenshots
+      description: Server console output around the failure, panic backtraces, etc.
+
+  - type: input
+    attributes:
+      label: Platform
+      description: The platform you are using. (e.g. Windows Server 2022)
+
+  - type: input
+    attributes:
+      label: BDS Version
+      description: The version of BDS you are using. (e.g. 1.21.x)
+
+  - type: input
+    attributes:
+      label: LeviLamina Version
+      description: The version of LeviLamina you are using. (e.g. 26.10.14)
+
+  - type: input
+    attributes:
+      label: levilamina-rust-loader Version
+      description: The loader mod / crate version you are using. (e.g. 0.1.0)
+
+  - type: input
+    attributes:
+      label: Rust toolchain
+      description: Output of `rustc --version --verbose` if the bug is crate-side.
+
+  - type: textarea
+    attributes:
+      label: Additional context
+      description: Add any other context about the problem here.
