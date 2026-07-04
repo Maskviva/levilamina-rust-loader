@@ -1,5 +1,10 @@
 # levilamina-rust-loader
 
+![LeviLamina](https://socialify.git.ci/Maskviva/levilamina-rust-loader/image?description=1&font=Raleway&forks=1&issues=1&logo=https://raw.githubusercontent.com/Maskviva/levilamina-rust-loader/main/assets/logo-levilamina-rust.svg&name=1&owner=1&pattern=Circuit+Board&pulls=1&stargazers=1&theme=Auto)
+
+![English](https://img.shields.io/badge/English-inactive?style=for-the-badge)
+[![中文](https://img.shields.io/badge/简体中文-informational?style=for-the-badge)](README.zh.md)
+
 **Teach [LeviLamina](https://github.com/LiteLDev/LeviLamina) to load Minecraft Bedrock Dedicated Server mods written in Rust.**
 
 This repository is the *engine*: a C++ loader mod plus the two Rust crates
@@ -10,8 +15,6 @@ author's side.
 Looking to **write** a mod instead of build the loader? Start from
 [**levilamina-mod-template-rs**](https://github.com/Maskviva/levilamina-mod-template-rs)
 and come back here only if you're curious how it works or want to contribute.
-
-[中文说明](README.zh.md)
 
 ## How it works
 

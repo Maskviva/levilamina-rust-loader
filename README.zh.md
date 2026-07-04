@@ -1,5 +1,10 @@
 # levilamina-rust-loader
 
+![LeviLamina](https://socialify.git.ci/Maskviva/levilamina-rust-loader/image?description=1&font=Raleway&forks=1&issues=1&logo=https://raw.githubusercontent.com/Maskviva/levilamina-rust-loader/main/assets/logo-levilamina-rust.svg&name=1&owner=1&pattern=Circuit+Board&pulls=1&stargazers=1&theme=Auto)
+
+![English](https://img.shields.io/badge/English-inactive?style=for-the-badge)
+[![中文](https://img.shields.io/badge/简体中文-informational?style=for-the-badge)](README.zh.md)
+
 **让 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 能够加载用 Rust 编写的 Minecraft 基岩版专用服务器 mod。**
 
 这个仓库是"引擎"本体：一个 C++ loader mod，加上跟它讲同一套 ABI 的两个 Rust crate。在服务器上装一次，之后写 Rust mod 就只需要 `cargo build`——不需要 C++ 工具链，不需要 xmake，mod 作者这边没有任何胶水代码。
@@ -7,8 +12,6 @@
 想**写 mod** 而不是编译 loader？直接去
 [**levilamina-mod-template-rs**](https://github.com/Maskviva/levilamina-mod-template-rs)，
 只有在你想搞清楚原理或者想贡献代码时才需要回到这里。
-
-[English](README.md)
 
 ## 工作原理
 

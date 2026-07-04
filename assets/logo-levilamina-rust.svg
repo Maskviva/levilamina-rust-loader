@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 100" width="340" height="100">
+  <!--
+    Composite "LeviLamina + Rust" mark for use as Socialify's `logo=` param.
+
+    Both logos are referenced by URL (not inlined), so:
+      - this file stays tiny and always mirrors the upstream logos
+      - you don't need permission concerns about redrawing either brand mark
+      - it only renders fully wherever the viewer has internet access to
+        fetch both <image> sources (fine for GitHub/Socialify; won't render
+        in viewers that block remote SVG images)
+
+    Tweak points:
+      - Rust logo color: swap /rust for /rust/COLOR (e.g. /rust/ffffff for a
+        white mark on a dark Socialify theme). See https://simpleicons.org.
+      - Plus sign color: the two <rect> fills below (#57606a).
+      - Sizing/spacing: the x/width numbers on the two <image> tags and the
+        viewBox width (340).
+  -->
+
+  <!-- LeviLamina logo (official, from LiteLDev/LeviLamina) -->
+  <image href="https://github.com/LiteLDev/LeviLamina/raw/refs/heads/main/docs/main/contents/logo.svg"
+         x="0" y="0" width="100" height="100" />
+
+  <!-- Plus sign, vector-drawn so it matches both logos at any export size -->
+  <g fill="#57606a">
+    <rect x="164" y="30" width="12" height="40" rx="4" />
+    <rect x="150" y="44" width="40" height="12" rx="4" />
+  </g>
+
+  <!-- Rust logo (official mark, served by simple-icons — CC0-1.0, made for
+       exactly this "show which tech a project uses" use case) -->
+  <image href="https://cdn.simpleicons.org/rust"
+         x="240" y="0" width="100" height="100" />
+</svg>
