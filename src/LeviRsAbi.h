@@ -1,5 +1,5 @@
 /**
- * levilamina-rs C ABI — v1
+ * levilamina-rs C ABI — v2
  *
  * This header is the single source of truth for the FFI contract between the
  * C++ loader mod (`levilamina-rust-loader`) and Rust mods (`levilamina-sys`).
@@ -30,7 +30,7 @@
 extern "C" {
 #endif
 
-#define LEVI_RS_ABI_VERSION 1u
+#define LEVI_RS_ABI_VERSION 2u
 
 /** UTF-8 string view. */
 typedef struct LeviRsStr {
@@ -161,7 +161,32 @@ typedef struct LeviRsApi {
         void*           user
     );
 
-    /* ABI v2+: append new fields here only. */
+    /**
+     * Current server tick (the tickID from Level::getCurrentTick()).
+     * Returns 0 when the level is not ready. Server thread only.
+     */
+    uint64_t (*get_current_tick)(void);
+
+    /**
+     * Milliseconds between the last two ticks (Level::getTickDeltaTime()).
+     * TPS = 1000.0 / tick_delta_time when > 0. Returns -1.0 if unavailable.
+     * Server thread only.
+     */
+    double (*get_tick_delta_time)(void);
+
+    /**
+     * Number of currently connected players
+     * (Level::getActivePlayerCount()). Server thread only.
+     */
+    int32_t (*get_player_count)(void);
+
+    /**
+     * Whether the simulation is currently paused
+     * (Level::getSimPaused()). Server thread only.
+     */
+    bool (*get_sim_paused)(void);
+
+    /* ABI v3+: append new fields here only. */
 } LeviRsApi;
 
 /**

@@ -1,4 +1,4 @@
-//! Raw FFI declarations mirroring `src/LeviRsAbi.h` (ABI v1).
+//! Raw FFI declarations mirroring `src/LeviRsAbi.h` (ABI v2).
 //!
 //! This crate contains no logic — only `#[repr(C)]` types. Keep it in
 //! lockstep with the C header: fields are append-only, never reordered.
@@ -10,7 +10,7 @@
 
 use core::ffi::c_void;
 
-pub const LEVI_RS_ABI_VERSION: u32 = 1;
+pub const LEVI_RS_ABI_VERSION: u32 = 2;
 pub const LEVI_RS_MAIN_SYMBOL: &str = "levi_rs_main";
 
 /// UTF-8 string view. Not guaranteed NUL-terminated.
@@ -88,7 +88,16 @@ pub struct LeviRsApi {
         cb: LeviRsCommandCb,
         user: *mut c_void,
     ) -> bool,
-    // ABI v2+: append new fields here only.
+
+    /// Current server tick (tickID). Returns 0 when level is not ready. Server thread only.
+    pub get_current_tick: unsafe extern "C" fn() -> u64,
+    /// Milliseconds between last two ticks. TPS = 1000.0 / delta_time. -1.0 if unavailable. Server thread only.
+    pub get_tick_delta_time: unsafe extern "C" fn() -> f64,
+    /// Number of currently connected players. Server thread only.
+    pub get_player_count: unsafe extern "C" fn() -> i32,
+    /// Whether the simulation is currently paused. Server thread only.
+    pub get_sim_paused: unsafe extern "C" fn() -> bool,
+    // ABI v3+: append new fields here only.
 }
 
 /// Filled in by the Rust mod inside `levi_rs_main`. Mirrors `LeviRsModVTable`.

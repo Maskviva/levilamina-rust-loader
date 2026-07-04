@@ -316,6 +316,32 @@ bool api_register_command(
     }
 }
 
+// ───────────────────────── server stats ─────────────────────────
+
+uint64_t api_get_current_tick() {
+    auto level = ll::service::getLevel();
+    if (!level) return 0;
+    return level->getCurrentTick().tickID;
+}
+
+double api_get_tick_delta_time() {
+    auto level = ll::service::getLevel();
+    if (!level) return -1.0;
+    return level->getTickDeltaTime();
+}
+
+int32_t api_get_player_count() {
+    auto level = ll::service::getLevel();
+    if (!level) return 0;
+    return static_cast<int32_t>(level->getActivePlayerCount());
+}
+
+bool api_get_sim_paused() {
+    auto level = ll::service::getLevel();
+    if (!level) return true; // safe default: treat as paused if unknown
+    return level->getSimPaused();
+}
+
 // ───────────────────────── table ─────────────────────────
 
 const LeviRsApi gApi{
@@ -330,6 +356,10 @@ const LeviRsApi gApi{
     /* list_events       */ api_list_events,
     /* execute_command   */ api_execute_command,
     /* register_command  */ api_register_command,
+    /* get_current_tick  */ api_get_current_tick,
+    /* get_tick_delta_time*/api_get_tick_delta_time,
+    /* get_player_count  */ api_get_player_count,
+    /* get_sim_paused    */ api_get_sim_paused,
 };
 
 } // namespace
