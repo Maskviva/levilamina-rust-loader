@@ -1,0 +1,9 @@
+{
+    "name": "levilamina-rust-loader",
+    "entry": "levilamina-rust-loader.dll",
+    "type": "native",
+    "platform": "server",
+    "version": "0.1.0",
+    "author": "levilamina-rs contributors",
+    "description": "Loads LeviLamina mods written in Rust (manifest type: rust)."
+}

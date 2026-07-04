@@ -1,0 +1,11 @@
+[package]
+name = "levilamina-sys"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Raw FFI declarations for the levilamina-rs ABI (bridge/src/LeviRsAbi.h)."
+repository = "https://github.com/YOUR_NAME/levilamina-rs"
+keywords = ["levilamina", "minecraft", "bedrock", "ffi"]
+categories = ["external-ffi-bindings", "game-development"]
+
+[dependencies]
