@@ -441,7 +441,7 @@ impl Server {
         Ok(tick)
     }
 
-    /// Milliseconds between the last two ticks.
+    /// Seconds taken by the last tick (0.05 s at a healthy 20 TPS).
     /// Use [`Server::get_tps`] for a human-friendly TPS value.
     /// Returns `Err` when unavailable. Server thread only.
     pub fn get_tick_delta_time(&self) -> Result<f64> {
@@ -452,15 +452,19 @@ impl Server {
         Ok(dt)
     }
 
-    /// Calculated TPS = 1000.0 / tick_delta_time.
-    /// A healthy server runs at 20.0 TPS (50 ms per tick).
+    /// Calculated TPS, capped at the vanilla 20.0.
+    ///
+    /// The underlying `mTickDeltaTime` is the time of the last tick **in
+    /// seconds** (0.05 s at a healthy 20 TPS), so TPS = 1.0 / dt — not
+    /// 1000.0 / dt. A tick can momentarily be faster than 50 ms, which would
+    /// give >20; the game never runs faster than 20 TPS, so we clamp.
     /// Returns `Err` when the level is not ready. Server thread only.
     pub fn get_tps(&self) -> Result<f64> {
         let dt = self.get_tick_delta_time()?;
         if dt <= 0.0 {
             return Err(Error("invalid tick delta time".into()));
         }
-        Ok(1000.0 / dt)
+        Ok(1.0 / dt)
     }
 
     /// Number of currently connected players.

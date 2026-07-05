@@ -168,8 +168,8 @@ typedef struct LeviRsApi {
     uint64_t (*get_current_tick)(void);
 
     /**
-     * Milliseconds between the last two ticks (Level::getTickDeltaTime()).
-     * TPS = 1000.0 / tick_delta_time when > 0. Returns -1.0 if unavailable.
+     * Seconds taken by the last tick (mTickDeltaTime; 0.05 at 20 TPS).
+     * TPS = 1.0 / tick_delta_time when > 0. Returns -1.0 if unavailable.
      * Server thread only.
      */
     double (*get_tick_delta_time)(void);

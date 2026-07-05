@@ -2,11 +2,13 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "ll/api/command/CommandHandle.h"
@@ -14,6 +16,7 @@
 #include "ll/api/command/runtime/ParamKind.h"
 #include "ll/api/command/runtime/RuntimeCommand.h"
 #include "ll/api/command/runtime/RuntimeOverload.h"
+#include "ll/api/event/command/ExecuteCommandEvent.h"
 #include "ll/api/event/DynamicListener.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/io/LogLevel.h"
@@ -24,6 +27,7 @@
 #include "ll/api/utils/ErrorUtils.h"
 
 #include "mc/deps/nbt/CompoundTag.h"
+#include "mc/platform/UUID.h"
 #include "mc/server/ServerLevel.h"
 #include "mc/server/commands/CommandOrigin.h"
 #include "mc/server/commands/CommandOutput.h"
@@ -31,7 +35,9 @@
 #include "mc/server/commands/CommandPermissionLevel.h"
 #include "mc/server/commands/CommandRawText.h"
 #include "mc/server/commands/ServerCommandOrigin.h"
+#include "mc/world/actor/player/Player.h"
 #include "mc/world/level/Level.h"
+#include "mc/world/level/TickDeltaTimeManager.h"
 
 #include "RustMod.h"
 
@@ -43,6 +49,86 @@ inline LeviRsStr toStr(std::string_view sv) { return LeviRsStr{sv.data(), sv.siz
 inline std::string_view fromStr(LeviRsStr s) { return {s.ptr, s.len}; }
 
 RustMod* asMod(LeviRsModHandle h) { return static_cast<RustMod*>(h); }
+
+// 给玩家事件补上真实身份。
+//
+// 很多 LeviLamina 事件把 Player& 序列化成一个反射存根 self:{_type_:Player,_pointer_:...}，
+// 里面没有名字、xuid、uuid。Rust 侧要用这些，所以序列化后先找这个存根，把指针跟当前
+// 在线玩家列表比对（绝不解引用没验证过的指针），确认是真玩家再解引用取身份，拼一个
+// _player 塞回 SNBT。这样进服、聊天、死亡、命令等带玩家的事件在 Rust 侧都能直接拿到身份。
+
+// 收集当前所有在线玩家的地址，只解引用确认在列表里的指针
+std::unordered_set<uintptr_t> livePlayerAddrs() {
+    std::unordered_set<uintptr_t> addrs;
+    auto level = ll::service::getLevel();
+    if (!level) return addrs;
+    level->forEachPlayer([&](Player& p) {
+        addrs.insert(reinterpret_cast<uintptr_t>(&p));
+        return true;
+    });
+    return addrs;
+}
+
+// 在 minimize SNBT 里找 _type_:Player 存根对应的 _pointer_，没有就返回 0。
+// minimize 格式没空格，_pointer_ 和 _type_:Player 在同一个 {} 块里，位置稳定。
+uintptr_t findPlayerPointer(std::string_view snbt) {
+    size_t searchFrom = 0;
+    while (true) {
+        size_t typePos = snbt.find("_type_:Player", searchFrom);
+        if (typePos == std::string_view::npos) return 0;
+
+        // Locate the enclosing object's start, then find _pointer_ within it.
+        size_t braceStart = snbt.rfind('{', typePos);
+        size_t ptrPos     = snbt.find("_pointer_:", braceStart == std::string_view::npos ? 0 : braceStart);
+        if (ptrPos != std::string_view::npos && ptrPos < typePos + 64) {
+            size_t numStart = ptrPos + std::string_view("_pointer_:").size();
+            uintptr_t value = 0;
+            size_t    i     = numStart;
+            for (; i < snbt.size() && snbt[i] >= '0' && snbt[i] <= '9'; ++i) {
+                value = value * 10 + static_cast<uintptr_t>(snbt[i] - '0');
+            }
+            if (i > numStart) return value;
+        }
+        searchFrom = typePos + 1;
+    }
+}
+
+// 事件 SNBT 里如果嵌了在线玩家的指针，就拼一个带真实 name/xuid/uuid 的 _player 进去。
+std::string enrichWithPlayer(std::string snbt) {
+    uintptr_t addr = findPlayerPointer(snbt);
+    if (addr == 0) return snbt;
+
+    // 安全闸：只解引用当前在线玩家的指针
+    auto addrs = livePlayerAddrs();
+    if (addrs.find(addr) == addrs.end()) return snbt;
+
+    auto* player = reinterpret_cast<Player*>(addr);
+    if (!player) return snbt;
+
+    // 指针上面已经跟在线列表比对过，这里直接调是安全的（项目关了异常，靠这个校验兜底）
+    std::string name = player->getRealName();
+    std::string xuid = player->getXuid();
+    std::string uuid = player->getUuid().asString();
+
+    // SNBT 字符串字面量里的引号要转义
+    auto esc = [](std::string const& s) {
+        std::string out;
+        out.reserve(s.size() + 2);
+        for (char c : s) {
+            if (c == '"' || c == '\\') out.push_back('\\');
+            out.push_back(c);
+        }
+        return out;
+    };
+
+    // 在最后一个 } 前插入 ,_player:{name:"..",xuid:"..",uuid:".."}
+    size_t lastBrace = snbt.rfind('}');
+    if (lastBrace == std::string::npos) return snbt;
+    std::string inject = ",_player:{name:\"" + esc(name) + "\",xuid:\"" + esc(xuid)
+                       + "\",uuid:\"" + esc(uuid) + "\"}";
+    snbt.insert(lastBrace, inject);
+    return snbt;
+}
 
 // ───────────────────────── logging ─────────────────────────
 
@@ -126,6 +212,7 @@ api_subscribe_event(LeviRsModHandle modHandle, LeviRsStr eventId, int32_t priori
         mod->getLogger().error("subscribe_event: unknown or ambiguous event id '{}'", fromStr(eventId));
         return nullptr;
     }
+
     // ABI speaks 0..4 (Highest..Lowest); LeviLamina uses 0/100/200/300/400.
     ll::event::EventPriority prio;
     switch (priority) {
@@ -150,7 +237,7 @@ api_subscribe_event(LeviRsModHandle modHandle, LeviRsStr eventId, int32_t priori
     std::string idName = resolved->name;
     auto        listener = ll::event::DynamicListener::create(
         [cb, user, idName](CompoundTag& data) {
-            std::string snbt = data.toSnbt(SnbtFormat::Minimize);
+            std::string snbt = enrichWithPlayer(data.toSnbt(SnbtFormat::Minimize));
 
             struct WriteCtx {
                 CompoundTag* data;
@@ -179,6 +266,92 @@ api_subscribe_event(LeviRsModHandle modHandle, LeviRsStr eventId, int32_t priori
         return nullptr;
     }
     mod->listeners.push_back(listener);
+
+    // command 命名空间的事件（ExecutingCommandEvent 执行前 / ExecutedCommandEvent
+    // 执行后）不走上面这条 DynamicListener 通路——LeviLamina 内部只对 typed
+    // listener 派发，通用监听订阅了也收不到回调。这里按解析出来的具体类型另外
+    // 挂一个 typed listener，触发时手动拼一份等价的 SNBT，直接调用上面同一个
+    // cb——Rust 侧完全无感，还是走通用回调那条路。
+    //
+    // 两个都是 final 类，可以直接作为模板参数（它们共同的基类 ExecuteCommandEvent
+    // 不是 final，不能拿来监听，会编译报错 "Only final classes can be listen"）。
+    auto dispatchCommand = [cb, user, idName](
+        std::string const& playerName,
+        std::string const& xuid,
+        std::string const& uuid,
+        std::string const& command
+    ) {
+        if (playerName.empty()) return; // 控制台/其他来源，跳过
+
+        auto esc = [](std::string const& s) {
+            std::string out;
+            out.reserve(s.size() + 2);
+            for (char c : s) {
+                if (c == '"' || c == '\\') out.push_back('\\');
+                out.push_back(c);
+            }
+            return out;
+        };
+        std::string snbt = "{eventId:\"" + idName
+                         + "\",name:\"" + esc(playerName)
+                         + "\",command:\"" + esc(command)
+                         + "\",_player:{name:\"" + esc(playerName)
+                         + "\",xuid:\"" + esc(xuid)
+                         + "\",uuid:\"" + esc(uuid) + "\"}}";
+
+        CompoundTag dummy;
+        struct WriteCtx { CompoundTag* data; bool written = false; } wctx{&dummy};
+        cb(user, toStr(idName), toStr(snbt), &wctx,
+           [](void*, LeviRsStr) { /* write-back 忽略 */ });
+    };
+
+    if (resolved->name.find("ExecutingCommandEvent") != std::string::npos) {
+        auto typedListener = ll::event::EventBus::getInstance().emplaceListener<
+            ll::event::command::ExecutingCommandEvent>(
+            [dispatchCommand](ll::event::command::ExecutingCommandEvent& ev) {
+                std::string playerName, xuid, uuid;
+                auto& ctx = ev.commandContext();
+                if (ctx.mOrigin && ctx.mOrigin->getEntity()) {
+                    auto* entity = ctx.mOrigin->getEntity();
+                    if (entity->isPlayer()) {
+                        auto* p    = static_cast<Player*>(entity);
+                        playerName = p->getRealName();
+                        xuid       = p->getXuid();
+                        uuid       = p->getUuid().asString();
+                    }
+                }
+                dispatchCommand(playerName, xuid, uuid, ctx.mCommand);
+            },
+            prio,
+            mod->shared_from_this()
+        );
+        mod->listeners.push_back(typedListener);
+    } else if (resolved->name.find("ExecutedCommandEvent") != std::string::npos) {
+        auto typedListener = ll::event::EventBus::getInstance().emplaceListener<
+            ll::event::command::ExecutedCommandEvent>(
+            [dispatchCommand](ll::event::command::ExecutedCommandEvent& ev) {
+                std::string playerName, xuid, uuid;
+                // 基类 ExecuteCommandEvent::commandContext() 返回 const 引用；
+                // mOrigin 是指针成员，指针本身 const 但指向的对象不是，
+                // 照样能调用非 const 的 getEntity()。
+                auto const& ctx = ev.commandContext();
+                if (ctx.mOrigin && ctx.mOrigin->getEntity()) {
+                    auto* entity = ctx.mOrigin->getEntity();
+                    if (entity->isPlayer()) {
+                        auto* p    = static_cast<Player*>(entity);
+                        playerName = p->getRealName();
+                        xuid       = p->getXuid();
+                        uuid       = p->getUuid().asString();
+                    }
+                }
+                dispatchCommand(playerName, xuid, uuid, ctx.mCommand);
+            },
+            prio,
+            mod->shared_from_this()
+        );
+        mod->listeners.push_back(typedListener);
+    }
+
     return static_cast<LeviRsListenerHandle>(listener.get());
 }
 
@@ -327,7 +500,7 @@ uint64_t api_get_current_tick() {
 double api_get_tick_delta_time() {
     auto level = ll::service::getLevel();
     if (!level) return -1.0;
-    return level->getTickDeltaTime();
+    return level->getTickDeltaTimeManager()->mTickDeltaTime;
 }
 
 int32_t api_get_player_count() {
