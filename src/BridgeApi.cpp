@@ -45,19 +45,17 @@ namespace levi_rs {
 
 namespace {
 
-inline LeviRsStr toStr(std::string_view sv) { return LeviRsStr{sv.data(), sv.size()}; }
-inline std::string_view fromStr(LeviRsStr s) { return {s.ptr, s.len}; }
-
 RustMod* asMod(LeviRsModHandle h) { return static_cast<RustMod*>(h); }
 
-// 给玩家事件补上真实身份。
+// Give player-carrying events a real identity.
 //
-// 很多 LeviLamina 事件把 Player& 序列化成一个反射存根 self:{_type_:Player,_pointer_:...}，
-// 里面没有名字、xuid、uuid。Rust 侧要用这些，所以序列化后先找这个存根，把指针跟当前
-// 在线玩家列表比对（绝不解引用没验证过的指针），确认是真玩家再解引用取身份，拼一个
-// _player 塞回 SNBT。这样进服、聊天、死亡、命令等带玩家的事件在 Rust 侧都能直接拿到身份。
+// Many LeviLamina events serialize Player& as a reflection stub —
+// self:{_type_:Player,_pointer_:...} — with no name/xuid/uuid. We find that
+// stub, validate the pointer against the live player list (never deref an
+// unverified pointer), then splice a `_player` field with the real identity
+// into the tag. Join/chat/death/command events all get identity this way.
 
-// 收集当前所有在线玩家的地址，只解引用确认在列表里的指针
+// Live player addresses. Only pointers found here get dereferenced.
 std::unordered_set<uintptr_t> livePlayerAddrs() {
     std::unordered_set<uintptr_t> addrs;
     auto level = ll::service::getLevel();
@@ -69,9 +67,9 @@ std::unordered_set<uintptr_t> livePlayerAddrs() {
     return addrs;
 }
 
-// 在事件的 CompoundTag 里找嵌入的 Player 指针存根：某个字段的值是个 compound，
-// 里面有 _type_（字符串 "Player"）和 _pointer_（整数地址）。只扫顶层字段——
-// 目前观察到的几个事件（进服/聊天/死亡/断连）这个存根都在顶层，还没见过嵌套更深的。
+// Find an embedded Player pointer stub in the event's tag: a field holding a
+// compound with `_type_` ("Player") and `_pointer_`. Top-level only — every
+// event seen so far (join/chat/death/disconnect) has it there.
 uintptr_t findPlayerPointer(CompoundTag const& data) {
     for (auto const& entry : data.mTags) {
         auto const& value = entry.second;
@@ -89,13 +87,13 @@ uintptr_t findPlayerPointer(CompoundTag const& data) {
     return 0;
 }
 
-// 事件 CompoundTag 里如果嵌了在线玩家的指针，就在一份拷贝上补一个真实
-// name/xuid/uuid 的 _player 字段再序列化——绝不改动传进来的原始 data
-// （它后面还要喂给 event.deserialize()，没必要让多余字段掺进去冒险）。
+// If the event embeds a live player pointer, add a `_player` field (real
+// name/xuid/uuid) on a copy and serialize that. Never mutate the original
+// `data` — it's fed to event.deserialize() afterward.
 std::string enrichWithPlayer(CompoundTag const& data) {
     uintptr_t addr = findPlayerPointer(data);
     if (addr != 0) {
-        // 安全闸：只解引用当前在线玩家的指针
+        // Safety gate: only dereference pointers of currently online players.
         auto addrs = livePlayerAddrs();
         if (addrs.find(addr) != addrs.end()) {
             if (auto* player = reinterpret_cast<Player*>(addr)) {
@@ -117,28 +115,27 @@ std::string enrichWithPlayer(CompoundTag const& data) {
 void api_log(LeviRsModHandle mod, int32_t level, LeviRsStr msg) {
     if (!mod) return;
     auto& logger = asMod(mod)->getLogger();
-    auto  sv     = fromStr(msg);
     switch (static_cast<ll::io::LogLevel>(level)) {
     case ll::io::LogLevel::Fatal:
-        logger.fatal("{}", sv);
+        logger.fatal("{}", msg);
         break;
     case ll::io::LogLevel::Error:
-        logger.error("{}", sv);
+        logger.error("{}", msg);
         break;
     case ll::io::LogLevel::Warn:
-        logger.warn("{}", sv);
+        logger.warn("{}", msg);
         break;
     case ll::io::LogLevel::Debug:
-        logger.debug("{}", sv);
+        logger.debug("{}", msg);
         break;
     case ll::io::LogLevel::Trace:
-        logger.trace("{}", sv);
+        logger.trace("{}", msg);
         break;
     case ll::io::LogLevel::Off:
         break;
     case ll::io::LogLevel::Info:
     default:
-        logger.info("{}", sv);
+        logger.info("{}", msg);
         break;
     }
 }
@@ -189,9 +186,9 @@ api_subscribe_event(LeviRsModHandle modHandle, LeviRsStr eventId, int32_t priori
     auto* mod = asMod(modHandle);
     if (!mod || !cb) return nullptr;
 
-    auto resolved = resolveEventId(fromStr(eventId));
+    auto resolved = resolveEventId(eventId);
     if (!resolved) {
-        mod->getLogger().error("subscribe_event: unknown or ambiguous event id '{}'", fromStr(eventId));
+        mod->getLogger().error("subscribe_event: unknown or ambiguous event id '{}'", eventId);
         return nullptr;
     }
 
@@ -228,12 +225,12 @@ api_subscribe_event(LeviRsModHandle modHandle, LeviRsStr eventId, int32_t priori
 
             cb(
                 user,
-                toStr(idName),
-                toStr(snbt),
+                idName,
+                snbt,
                 &wctx,
                 [](void* c, LeviRsStr newSnbt) {
                     auto* w = static_cast<WriteCtx*>(c);
-                    if (auto tag = CompoundTag::fromSnbt(std::string_view{newSnbt.ptr, newSnbt.len}); tag) {
+                    if (auto tag = CompoundTag::fromSnbt(newSnbt); tag) {
                         *w->data   = std::move(*tag);
                         w->written = true;
                     }
@@ -249,21 +246,22 @@ api_subscribe_event(LeviRsModHandle modHandle, LeviRsStr eventId, int32_t priori
     }
     mod->listeners.push_back(listener);
 
-    // command 命名空间的事件（ExecutingCommandEvent 执行前 / ExecutedCommandEvent
-    // 执行后）不走上面这条 DynamicListener 通路——LeviLamina 内部只对 typed
-    // listener 派发，通用监听订阅了也收不到回调。这里按解析出来的具体类型另外
-    // 挂一个 typed listener，触发时手动拼一份等价的 SNBT，直接调用上面同一个
-    // cb——Rust 侧完全无感，还是走通用回调那条路。
+    // Command events (ExecutingCommandEvent / ExecutedCommandEvent) never
+    // reach the DynamicListener above — LeviLamina only dispatches these to
+    // typed listeners. We hook a typed listener per resolved type instead,
+    // splice an equivalent SNBT by hand, and call the same `cb` — Rust sees
+    // no difference.
     //
-    // 两个都是 final 类，可以直接作为模板参数（它们共同的基类 ExecuteCommandEvent
-    // 不是 final，不能拿来监听，会编译报错 "Only final classes can be listen"）。
+    // Both are final, required for the template param (their base
+    // ExecuteCommandEvent isn't final and fails to compile with "Only final
+    // classes can be listen").
     auto dispatchCommand = [cb, user, idName](
         std::string const& playerName,
         std::string const& xuid,
         std::string const& uuid,
         std::string const& command
     ) {
-        if (playerName.empty()) return; // 控制台/其他来源，跳过
+        if (playerName.empty()) return; // console or other non-player origin
 
         auto esc = [](std::string const& s) {
             std::string out;
@@ -274,17 +272,17 @@ api_subscribe_event(LeviRsModHandle modHandle, LeviRsStr eventId, int32_t priori
             }
             return out;
         };
-        std::string snbt = "{eventId:\"" + idName
-                         + "\",name:\"" + esc(playerName)
-                         + "\",command:\"" + esc(command)
-                         + "\",_player:{name:\"" + esc(playerName)
-                         + "\",xuid:\"" + esc(xuid)
-                         + "\",uuid:\"" + esc(uuid) + "\"}}";
+        std::string snbt = "{\"eventId\":\"" + idName
+                         + "\",\"name\":\"" + esc(playerName)
+                         + "\",\"command\":\"" + esc(command)
+                         + "\",\"_player\":{\"name\":\"" + esc(playerName)
+                         + "\",\"xuid\":\"" + esc(xuid)
+                         + "\",\"uuid\":\"" + esc(uuid) + "\"}}";
 
         CompoundTag dummy;
         struct WriteCtx { CompoundTag* data; bool written = false; } wctx{&dummy};
-        cb(user, toStr(idName), toStr(snbt), &wctx,
-           [](void*, LeviRsStr) { /* write-back 忽略 */ });
+        cb(user, idName, snbt, &wctx,
+           [](void*, LeviRsStr) { /* write-back ignored */ });
     };
 
     if (resolved->name.find("ExecutingCommandEvent") != std::string::npos) {
@@ -313,9 +311,9 @@ api_subscribe_event(LeviRsModHandle modHandle, LeviRsStr eventId, int32_t priori
             ll::event::command::ExecutedCommandEvent>(
             [dispatchCommand](ll::event::command::ExecutedCommandEvent& ev) {
                 std::string playerName, xuid, uuid;
-                // 基类 ExecuteCommandEvent::commandContext() 返回 const 引用；
-                // mOrigin 是指针成员，指针本身 const 但指向的对象不是，
-                // 照样能调用非 const 的 getEntity()。
+                // Base ExecuteCommandEvent::commandContext() returns a const
+                // ref; mOrigin is a pointer member, so the pointer is const
+                // but the pointee isn't — non-const getEntity() still works.
                 auto const& ctx = ev.commandContext();
                 if (ctx.mOrigin && ctx.mOrigin->getEntity()) {
                     auto* entity = ctx.mOrigin->getEntity();
@@ -353,7 +351,7 @@ bool api_unsubscribe_event(LeviRsModHandle modHandle, LeviRsListenerHandle handl
 void api_list_events(void* ctx, LeviRsStrSink sink) {
     if (!sink) return;
     for (auto&& [modName, id] : ll::event::EventBus::getInstance().events()) {
-        sink(ctx, toStr(id.name));
+        sink(ctx, id.name);
     }
 }
 
@@ -369,7 +367,7 @@ bool api_execute_command(LeviRsStr cmd, void* ctx, LeviRsCmdOutputSink sink) {
         CommandPermissionLevel::Owner,
         0 // overworld; command selectors/positions can address other dimensions
     };
-    auto output = ll::command::CommandRegistrar::getServerInstance().executeCommand(fromStr(cmd), origin);
+    auto output = ll::command::CommandRegistrar::getServerInstance().executeCommand(cmd, origin);
     if (sink) {
         // NOTE: verify against your LL version — CommandOutput exposes
         // mSuccessCount; combined text is easiest via the localized dump.
@@ -382,7 +380,7 @@ bool api_execute_command(LeviRsStr cmd, void* ctx, LeviRsCmdOutputSink sink) {
                 text += param;
             }
         }
-        sink(ctx, output.mSuccessCount > 0, toStr(text));
+        sink(ctx, output.mSuccessCount > 0, text);
     }
     return true;
 }
@@ -410,7 +408,7 @@ bool api_register_command(
 ) {
     auto* mod = asMod(modHandle);
     if (!mod || !cb) return false;
-    std::string cmdName{fromStr(name)};
+    std::string cmdName{name};
 
     std::shared_ptr<CommandBinding> binding;
     {
@@ -433,7 +431,7 @@ bool api_register_command(
         // via the binding table keeps behaviour predictable across unloads.
         auto& handle = CommandRegistrar::getServerInstance().getOrCreateCommand(
             cmdName,
-            std::string{fromStr(description)},
+            std::string{description},
             static_cast<CommandPermissionLevel>(std::clamp<int32_t>(permission, 0, 4))
         );
         handle.runtimeOverload().optional("args", ParamKind::RawText).execute(
@@ -454,11 +452,11 @@ bool api_register_command(
                 std::string originName = origin.getName();
                 local.cb(
                     local.user,
-                    toStr(args),
-                    toStr(originName),
+                    args,
+                    originName,
                     &output,
-                    [](void* c, LeviRsStr s) { static_cast<CommandOutput*>(c)->success(std::string{s.ptr, s.len}); },
-                    [](void* c, LeviRsStr s) { static_cast<CommandOutput*>(c)->error(std::string{s.ptr, s.len}); }
+                    [](void* c, LeviRsStr s) { static_cast<CommandOutput*>(c)->success(std::string{s}); },
+                    [](void* c, LeviRsStr s) { static_cast<CommandOutput*>(c)->error(std::string{s}); }
                 );
             }
         );
@@ -535,3 +533,20 @@ void onRustModGone(RustMod* mod) {
 } // namespace detail
 
 } // namespace levi_rs
+
+bool leviRsVerifyStrLayout() {
+    // Read the view's raw bytes as {ptr, len} and compare to data()/size().
+    // This layout is an MSVC STL detail, not standard-guaranteed — fail
+    // loudly here instead of Rust silently misreading pointer/length.
+    static constexpr char kProbe[] = "levi-rs-layout-probe";
+    std::string_view      sv(kProbe, sizeof(kProbe) - 1);
+
+    struct RawView {
+        const char* ptr;
+        size_t      len;
+    };
+    static_assert(sizeof(RawView) == sizeof(std::string_view));
+
+    auto const& raw = reinterpret_cast<RawView const&>(sv);
+    return raw.ptr == sv.data() && raw.len == sv.size();
+}

@@ -30,6 +30,14 @@ public:
 
     bool load() {
         auto& logger = getSelf().getLogger();
+        if (!leviRsVerifyStrLayout()) {
+            logger.error(
+                "std::string_view 的内存布局跟预期的 {{pointer,size_t}} 不一致——"
+                "Rust 那边独立声明的 repr(C) 镜像结构会跟这里的真实布局对不上，"
+                "继续跑下去会导致跨语言传字符串时读到错位的指针/长度。拒绝加载。"
+            );
+            return false;
+        }
         if (!ll::mod::ModManagerRegistry::getInstance().addManager(std::make_shared<RustModManager>())) {
             logger.error("failed to register the 'rust' mod manager");
             return false;

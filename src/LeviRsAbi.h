@@ -1,5 +1,5 @@
 /**
- * levilamina-rs C ABI — v2
+ * levilamina-rs C++ ABI — v2
  *
  * This header is the single source of truth for the FFI contract between the
  * C++ loader mod (`levilamina-rust-loader`) and Rust mods (`levilamina-sys`).
@@ -9,8 +9,12 @@
  *   2. appending fields ONLY at the end of structs (never reorder/remove),
  *   3. updating the Rust mirror.
  *
+ * C++-only: `LeviRsStr` is `std::string_view`, so this header no longer
+ * parses as C (nothing in-tree used it as C, but it could have). Deliberate
+ * — see the layout note below.
+ *
  * Conventions:
- *   - All strings are UTF-8 (ptr, len) pairs. NOT guaranteed NUL-terminated.
+ *   - All strings are UTF-8 (ptr, len) views. NOT guaranteed NUL-terminated.
  *   - Strings passed INTO callbacks are owned by the caller and only valid
  *     for the duration of the call. Copy if you need to keep them.
  *   - Strings passed OUT of Rust use "sink" callbacks invoked within the
@@ -22,21 +26,33 @@
  */
 #pragma once
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
+#include <string_view>
 
-#ifdef __cplusplus
 extern "C" {
-#endif
 
 #define LEVI_RS_ABI_VERSION 2u
 
-/** UTF-8 string view. */
-typedef struct LeviRsStr {
-    const char* ptr;
-    size_t      len;
-} LeviRsStr;
+/**
+ * UTF-8 string view — an alias for std::string_view, not a custom struct.
+ * Rust (`levilamina_sys::LeviRsStr`) still declares its own independent
+ * #[repr(C)] { ptr, len } — it can't depend on a C++ type, so it mirrors
+ * whatever layout string_view actually has here.
+ *
+ * That {pointer, size_t} layout isn't standard-guaranteed; it's an MSVC STL
+ * detail that could even vary by build config (checked iterators). See
+ * leviRsVerifyStrLayout() (BridgeApi.cpp, run once from Entry.cpp) for the
+ * runtime check, and the static_assert below for the compile-time one.
+ */
+using LeviRsStr = std::string_view;
+
+static_assert(
+    sizeof(LeviRsStr) == sizeof(const char*) + sizeof(size_t),
+    "std::string_view is no longer {pointer, size_t} on this toolchain — "
+    "the Rust-side repr(C) mirror in levilamina-sys will not match. Do not "
+    "proceed without updating both sides and re-verifying the layout."
+);
 
 /** Opaque handle to the RustMod instance managed by the loader. */
 typedef void* LeviRsModHandle;
@@ -215,6 +231,12 @@ typedef bool (*LeviRsMainFn)(const LeviRsApi* api, LeviRsModHandle self, LeviRsM
 
 #define LEVI_RS_MAIN_SYMBOL "levi_rs_main"
 
-#ifdef __cplusplus
+/**
+ * Runtime check for the LeviRsStr layout assumption (see comment above).
+ * Called once from Entry.cpp before any Rust mod loads. Returns false if
+ * the assumption fails — refuse to continue rather than risk corrupted
+ * strings crossing the boundary.
+ */
+bool leviRsVerifyStrLayout();
+
 } // extern "C"
-#endif
