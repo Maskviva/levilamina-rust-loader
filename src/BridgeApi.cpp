@@ -69,65 +69,47 @@ std::unordered_set<uintptr_t> livePlayerAddrs() {
     return addrs;
 }
 
-// 在 minimize SNBT 里找 _type_:Player 存根对应的 _pointer_，没有就返回 0。
-// minimize 格式没空格，_pointer_ 和 _type_:Player 在同一个 {} 块里，位置稳定。
-uintptr_t findPlayerPointer(std::string_view snbt) {
-    size_t searchFrom = 0;
-    while (true) {
-        size_t typePos = snbt.find("_type_:Player", searchFrom);
-        if (typePos == std::string_view::npos) return 0;
+// 在事件的 CompoundTag 里找嵌入的 Player 指针存根：某个字段的值是个 compound，
+// 里面有 _type_（字符串 "Player"）和 _pointer_（整数地址）。只扫顶层字段——
+// 目前观察到的几个事件（进服/聊天/死亡/断连）这个存根都在顶层，还没见过嵌套更深的。
+uintptr_t findPlayerPointer(CompoundTag const& data) {
+    for (auto const& entry : data.mTags) {
+        auto const& value = entry.second;
+        if (!value.is_object()) continue;
+        auto const& obj = value.get<CompoundTag>();
+        if (!obj.contains("_type_") || !obj.contains("_pointer_")) continue;
 
-        // Locate the enclosing object's start, then find _pointer_ within it.
-        size_t braceStart = snbt.rfind('{', typePos);
-        size_t ptrPos     = snbt.find("_pointer_:", braceStart == std::string_view::npos ? 0 : braceStart);
-        if (ptrPos != std::string_view::npos && ptrPos < typePos + 64) {
-            size_t numStart = ptrPos + std::string_view("_pointer_:").size();
-            uintptr_t value = 0;
-            size_t    i     = numStart;
-            for (; i < snbt.size() && snbt[i] >= '0' && snbt[i] <= '9'; ++i) {
-                value = value * 10 + static_cast<uintptr_t>(snbt[i] - '0');
-            }
-            if (i > numStart) return value;
-        }
-        searchFrom = typePos + 1;
+        auto const& typeVar = obj.at("_type_");
+        if (!typeVar.is_string() || std::string_view(typeVar) != "Player") continue;
+
+        auto const& ptrVar = obj.at("_pointer_");
+        if (!ptrVar.is_number()) continue;
+        return static_cast<uintptr_t>(static_cast<int64_t>(ptrVar));
     }
+    return 0;
 }
 
-// 事件 SNBT 里如果嵌了在线玩家的指针，就拼一个带真实 name/xuid/uuid 的 _player 进去。
-std::string enrichWithPlayer(std::string snbt) {
-    uintptr_t addr = findPlayerPointer(snbt);
-    if (addr == 0) return snbt;
-
-    // 安全闸：只解引用当前在线玩家的指针
-    auto addrs = livePlayerAddrs();
-    if (addrs.find(addr) == addrs.end()) return snbt;
-
-    auto* player = reinterpret_cast<Player*>(addr);
-    if (!player) return snbt;
-
-    // 指针上面已经跟在线列表比对过，这里直接调是安全的（项目关了异常，靠这个校验兜底）
-    std::string name = player->getRealName();
-    std::string xuid = player->getXuid();
-    std::string uuid = player->getUuid().asString();
-
-    // SNBT 字符串字面量里的引号要转义
-    auto esc = [](std::string const& s) {
-        std::string out;
-        out.reserve(s.size() + 2);
-        for (char c : s) {
-            if (c == '"' || c == '\\') out.push_back('\\');
-            out.push_back(c);
+// 事件 CompoundTag 里如果嵌了在线玩家的指针，就在一份拷贝上补一个真实
+// name/xuid/uuid 的 _player 字段再序列化——绝不改动传进来的原始 data
+// （它后面还要喂给 event.deserialize()，没必要让多余字段掺进去冒险）。
+std::string enrichWithPlayer(CompoundTag const& data) {
+    uintptr_t addr = findPlayerPointer(data);
+    if (addr != 0) {
+        // 安全闸：只解引用当前在线玩家的指针
+        auto addrs = livePlayerAddrs();
+        if (addrs.find(addr) != addrs.end()) {
+            if (auto* player = reinterpret_cast<Player*>(addr)) {
+                CompoundTag copy = data;
+                copy["_player"] = CompoundTagVariant::object({
+                    {"name", CompoundTagVariant(player->getRealName())},
+                    {"xuid", CompoundTagVariant(player->getXuid())},
+                    {"uuid", CompoundTagVariant(player->getUuid().asString())}
+                });
+                return copy.toSnbt(SnbtFormat::Minimize);
+            }
         }
-        return out;
-    };
-
-    // 在最后一个 } 前插入 ,_player:{name:"..",xuid:"..",uuid:".."}
-    size_t lastBrace = snbt.rfind('}');
-    if (lastBrace == std::string::npos) return snbt;
-    std::string inject = ",_player:{name:\"" + esc(name) + "\",xuid:\"" + esc(xuid)
-                       + "\",uuid:\"" + esc(uuid) + "\"}";
-    snbt.insert(lastBrace, inject);
-    return snbt;
+    }
+    return data.toSnbt(SnbtFormat::Minimize);
 }
 
 // ───────────────────────── logging ─────────────────────────
@@ -237,7 +219,7 @@ api_subscribe_event(LeviRsModHandle modHandle, LeviRsStr eventId, int32_t priori
     std::string idName = resolved->name;
     auto        listener = ll::event::DynamicListener::create(
         [cb, user, idName](CompoundTag& data) {
-            std::string snbt = enrichWithPlayer(data.toSnbt(SnbtFormat::Minimize));
+            std::string snbt = enrichWithPlayer(data);
 
             struct WriteCtx {
                 CompoundTag* data;
