@@ -112,7 +112,12 @@ impl LeviMod for RegionScan {
 
 fn handle_command(logger: Logger, inv: &CommandInvocation) {
     let server = Server::get();
-    let sub = inv.args.split_whitespace().next().unwrap_or("").to_lowercase();
+    let sub = inv
+        .args
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
     let player = inv.origin.to_owned();
 
     match sub.as_str() {
@@ -138,7 +143,12 @@ fn handle_command(logger: Logger, inv: &CommandInvocation) {
         }
 
         "show" => {
-            let has = selections().lock().unwrap().get(&player).and_then(|s| s.bounds()).is_some();
+            let has = selections()
+                .lock()
+                .unwrap()
+                .get(&player)
+                .and_then(|s| s.bounds())
+                .is_some();
             if !has {
                 inv.error("set both corners first: /rscan pos1 then /rscan pos2");
                 return;
@@ -159,8 +169,17 @@ fn handle_command(logger: Logger, inv: &CommandInvocation) {
         }
 
         "collect" => {
-            let bounds = selections().lock().unwrap().get(&player).and_then(|s| s.bounds());
-            let dim = selections().lock().unwrap().get(&player).map(|s| s.dim).unwrap_or(0);
+            let bounds = selections()
+                .lock()
+                .unwrap()
+                .get(&player)
+                .and_then(|s| s.bounds());
+            let dim = selections()
+                .lock()
+                .unwrap()
+                .get(&player)
+                .map(|s| s.dim)
+                .unwrap_or(0);
             let Some((min, max)) = bounds else {
                 inv.error("set both corners first");
                 return;
@@ -178,7 +197,10 @@ fn handle_command(logger: Logger, inv: &CommandInvocation) {
             let map = selections().lock().unwrap();
             match map.get(&player) {
                 Some(sel) => {
-                    inv.success(&format!("dim {}  pos1 {:?}  pos2 {:?}", sel.dim, sel.pos1, sel.pos2));
+                    inv.success(&format!(
+                        "dim {}  pos1 {:?}  pos2 {:?}",
+                        sel.dim, sel.pos1, sel.pos2
+                    ));
                     if let Some((min, max)) = sel.bounds() {
                         let (sx, sy, sz) = size_of_box(min, max);
                         inv.success(&format!("box {:?}..{:?}  ({}×{}×{})", min, max, sx, sy, sz));
@@ -210,20 +232,31 @@ fn run_outline(logger: Logger, gen: u64) {
 
     let sels: Vec<Selection> = selections().lock().unwrap().values().cloned().collect();
     for sel in &sels {
-        let Some((min, max)) = sel.bounds() else { continue };
+        let Some((min, max)) = sel.bounds() else {
+            continue;
+        };
         draw_outline(&server, sel.dim, min, max);
 
         // Live collection into the layered data model.
         let (sx, sy, sz) = size_of_box(min, max);
         if sx * sy * sz > MAX_AUTO_SCAN_CELLS {
-            log_once(logger, (usize::MAX, usize::MAX), &format!(
-                "region {}×{}×{} too large for live scan — use /rscan collect", sx, sy, sz
-            ));
+            log_once(
+                logger,
+                (usize::MAX, usize::MAX),
+                &format!(
+                    "region {}×{}×{} too large for live scan — use /rscan collect",
+                    sx, sy, sz
+                ),
+            );
             continue;
         }
         if let Ok(scan) = server.scan_region(sel.dim, min, max) {
             let sig = (scan.non_empty_count(), scan.entity_count());
-            log_once(logger, sig, &format!("live scan: {} blocks, {} entities", sig.0, sig.1));
+            log_once(
+                logger,
+                sig,
+                &format!("live scan: {} blocks, {} entities", sig.0, sig.1),
+            );
             *latest_scan().lock().unwrap() = Some(scan);
         }
     }
@@ -283,7 +316,13 @@ fn draw_edge(server: &Server, dim: i32, a: (f64, f64, f64), b: (f64, f64, f64)) 
     let steps = (len / EDGE_STEP).ceil().max(1.0) as i32;
     for i in 0..=steps {
         let t = i as f64 / steps as f64;
-        let _ = server.spawn_particle(dim, OUTLINE_PARTICLE, a.0 + dx * t, a.1 + dy * t, a.2 + dz * t);
+        let _ = server.spawn_particle(
+            dim,
+            OUTLINE_PARTICLE,
+            a.0 + dx * t,
+            a.1 + dy * t,
+            a.2 + dz * t,
+        );
     }
 }
 
@@ -300,10 +339,18 @@ fn report_scan(inv: &CommandInvocation, scan: &Scan) {
         scan.entity_count()
     ));
     for layer in &scan.layers {
-        let blocks = layer.cells.iter().flatten().filter(|c| !c.block.is_air()).count();
+        let blocks = layer
+            .cells
+            .iter()
+            .flatten()
+            .filter(|c| !c.block.is_air())
+            .count();
         let ents: usize = layer.cells.iter().flatten().map(|c| c.entities.len()).sum();
         if blocks > 0 || ents > 0 {
-            inv.success(&format!("  y={}: {} blocks, {} entities", layer.y, blocks, ents));
+            inv.success(&format!(
+                "  y={}: {} blocks, {} entities",
+                layer.y, blocks, ents
+            ));
         }
     }
 }
