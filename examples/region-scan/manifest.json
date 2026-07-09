@@ -1,0 +1,11 @@
+{
+    "name": "region-scan",
+    "entry": "region_scan.dll",
+    "type": "rust",
+    "platform": "server",
+    "version": "0.1.0",
+    "description": "3D region selection with particle outline and live block/entity scan",
+    "dependencies": [
+        { "name": "levilamina-rust-loader" }
+    ]
+}

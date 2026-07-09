@@ -13,11 +13,8 @@ set CONAN_HOME=
 set HTTPS_PROXY=http://127.0.0.1:7890
 set HTTP_PROXY=http://127.0.0.1:7890
 
-echo D:\Compiler\xmake\xmake.exe repo -u
-D:\Compiler\xmake\xmake.exe repo -u
-
-echo D:\Compiler\xmake\xmake.exe require --force levilamina bedrockdata prelink levibuildscript
-D:\Compiler\xmake\xmake.exe require --force levilamina bedrockdata prelink levibuildscript
+@REM echo D:\Compiler\xmake\xmake.exe repo -u
+@REM D:\Compiler\xmake\xmake.exe repo -u
 
 echo D:\Compiler\xmake\xmake.exe f -c -m release -y -v
 D:\Compiler\xmake\xmake.exe f -c -m release -y -v

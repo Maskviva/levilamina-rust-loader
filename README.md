@@ -119,7 +119,7 @@ existing crate:
 crate-type = ["cdylib"]
 
 [dependencies]
-levilamina = { version = "0.1.0", git = "https://github.com/Maskviva/levilamina-rust-loader" }
+levilamina = { version = "1.0.0", git = "https://github.com/Maskviva/levilamina-rust-loader" }
 # once published to crates.io: levilamina = "0.1"
 ```
 

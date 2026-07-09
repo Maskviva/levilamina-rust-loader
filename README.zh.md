@@ -110,7 +110,7 @@ cargo test --workspace
 crate-type = ["cdylib"]
 
 [dependencies]
-levilamina = { version = "0.1.0", git = "https://github.com/Maskviva/levilamina-rust-loader" }
+levilamina = { version = "1.0.0", git = "https://github.com/Maskviva/levilamina-rust-loader" }
 # 发布到 crates.io 之后可以换成：levilamina = "0.1"
 ```
 

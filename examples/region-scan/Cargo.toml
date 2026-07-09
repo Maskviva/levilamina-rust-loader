@@ -1,0 +1,11 @@
+[package]
+name = "region-scan"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+levilamina = { path = "../../crates/levilamina" }

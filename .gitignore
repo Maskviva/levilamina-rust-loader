@@ -2,3 +2,5 @@
 build/
 bin/
 target/
+docs/node_modules
+.idea/

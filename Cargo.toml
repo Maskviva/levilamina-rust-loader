@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/levilamina-sys",
     "crates/levilamina",
+    "examples/region-scan",
 ]
 
 [profile.release]

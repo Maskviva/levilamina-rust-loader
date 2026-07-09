@@ -4,11 +4,18 @@ version = 4
 
 [[package]]
 name = "levilamina"
-version = "0.1.3"
+version = "1.0.0"
 dependencies = [
  "levilamina-sys",
 ]
 
 [[package]]
 name = "levilamina-sys"
-version = "0.1.3"
+version = "1.0.0"
+
+[[package]]
+name = "region-scan"
+version = "0.1.0"
+dependencies = [
+ "levilamina",
+]

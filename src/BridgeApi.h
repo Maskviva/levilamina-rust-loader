@@ -2,16 +2,18 @@
 
 #include "LeviRsAbi.h"
 
-namespace levi_rs {
+namespace levi_rs
+{
+    class RustMod;
 
-class RustMod;
+    /** The singleton function table handed to every Rust mod. */
+    const LeviRsApi* getBridgeApi();
 
-/** The singleton function table handed to every Rust mod. */
-const LeviRsApi* getBridgeApi();
-
-namespace detail {
-/** Invalidate command bindings that point at a mod being unloaded. */
-void onRustModGone(RustMod* mod);
-} // namespace detail
-
+    namespace detail
+    {
+        /** Release everything owned on behalf of a mod being unloaded:
+         * command bindings (nulled), pending form tickets (cleared), and any
+         * KvDb handles left open (force-closed with a warning). */
+        void onRustModGone(RustMod* mod);
+    } // namespace detail
 } // namespace levi_rs
