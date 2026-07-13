@@ -1,8 +1,8 @@
 //! Read-only world-data types from `Server::villages` / `structures_near`:
 //! [`VillageInfo`] and [`StructureInfo`], with SNBT parsing helpers.
 
-use crate::types::PositionF64;
 use super::*;
+use crate::types::PositionF64;
 
 /// One village, from [`Server::villages`](crate::server::Server::villages).
 #[derive(Debug, Clone, PartialEq)]

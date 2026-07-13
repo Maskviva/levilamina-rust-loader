@@ -4,8 +4,8 @@ use super::*;
 use crate::error::Result;
 use crate::ffi::call_out_str;
 use crate::nbt::NbtValue;
-use crate::{rt, sys};
 use crate::types::PositionF64;
+use crate::{rt, sys};
 
 impl Entity {
     /// Wrap a raw ActorUniqueID (from a snapshot, a command selector arg, …).

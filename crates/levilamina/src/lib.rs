@@ -74,8 +74,8 @@ pub mod scoreboard;
 pub mod server;
 pub mod sim;
 pub mod system;
-pub mod world;
 pub mod types;
+pub mod world;
 
 pub use block::Block;
 pub use command::{

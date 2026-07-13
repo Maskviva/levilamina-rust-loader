@@ -9,8 +9,8 @@ use crate::sys;
 
 pub mod builder;
 
-pub use builder::{CommandBuilder, OverloadBuilder};
 use crate::types::PositionF64;
+pub use builder::{CommandBuilder, OverloadBuilder};
 
 /// Mirrors `CommandPermissionLevel`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
