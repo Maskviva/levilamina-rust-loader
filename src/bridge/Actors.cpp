@@ -1,6 +1,6 @@
 /**
  * bridge/Actors.cpp — actor enumeration, snapshots, properties, actions and
- * spawning (ABI v4 §C). Actor handles are ActorUniqueIDs, re-resolved via
+ * spawning (ABI v5 §C). Actor handles are ActorUniqueIDs, re-resolved via
  * Level::fetchEntity on every call.
  */
 #include "bridge/Api.h"
@@ -233,7 +233,7 @@ namespace levi_rs::bridge
                         "damage \"" + p->getRealName() + "\" " + std::to_string(static_cast<int>(a))
                     );
                 }
-                return false; // non-player hurt: unsupported in v4.0 (needs ActorDamageSource plumbing)
+                return false; // non-player hurt: unsupported in v5.0 (needs ActorDamageSource plumbing)
             }
         case LEVI_RS_AACT_ATTRIBUTE_GET:
             return false; // reserved: generic attribute-by-name (post-v1.0.0)

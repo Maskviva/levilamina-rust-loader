@@ -8,12 +8,13 @@
 | --- | --- | :---: |
 | `World::get_block(dim, x, y, z)` | 读取单个方块（方块名 + 状态 SNBT） | ✅ |
 | `World::set_block(dim, x, y, z, block)` | 放置方块（方块 id 或带状态字符串） | ✅ |
-| `World::spawn_particle(dim, effect, x, y, z)` | 在世界坐标生成粒子效果 | ✅ |
+| `World::spawn_particle(dim, effect, x, y, z)` | 在世界坐标生成粒子效果（**全维度广播**，同维度所有玩家可见） | ✅ |
+| `World::spawn_particle_for(player, dim, effect, x, y, z)` | 同上，但**只发给指定玩家**（按名）——单发 `SpawnParticleEffectPacket` 到该玩家连接，其他人不可见；适合个人开关类可视化（区块轮廓、选区预览） | ✅ |
 | `World::scan_region(dim, a, b)` | 扫描立方体区域，逐层逐格返回方块与实体 | ✅ |
 
 ## 爆炸
 
-> 状态：🧩 规划。
+> 状态：✅ 已支持。
 
 | API | 作用 | 原生对应 |
 | --- | --- | --- |

@@ -1,51 +1,57 @@
 # Gui — 表单界面
 
-> 状态：🧩 规划。
+> 状态：✅ 已支持。
 >
-> **接口来源**：本页对应 LeviLamina 自带（不是裸 Bedrock 协议）的表单封装：`ll::form::SimpleForm`、`ll::form::CustomForm`、`ll::form::ModalForm`（均在 `ll/api/form/`）。这三个类本来就是构建器风格（每个 `append_*`/`set_*` 返回自身，可以链式调用），命名直接沿用，只转成 snake_case。
+> **接口来源**：本页对应 LeviLamina 自带（不是裸 Bedrock 协议）的表单封装：`ll::form::SimpleForm`、`ll::form::CustomForm`、`ll::form::ModalForm`（均在 `ll/api/form/`）。这三个类本来就是构建器风格（每个方法返回自身，可以链式调用）。Rust 侧封装为 `SimpleFormBuilder` / `CustomFormBuilder` / `ModalFormBuilder`，方法名取 LSE 风格的简短形式（`button` / `content` / `send` 等，不带 `append_`/`set_` 前缀）。
 
 ## SimpleForm — 按钮表单
 
+`SimpleFormBuilder`：一列可点击的按钮，玩家点其中一个。链式构建，最后 `send`。
+
 | API | 作用 | 原生对应 |
 | --- | --- | --- |
-| `SimpleForm::new(title, content?)` | 新建 | `SimpleForm::SimpleForm` |
-| `form.set_title(title)` / `set_content(text)` | 设置标题 / 正文 | `SimpleForm::setTitle` / `setContent` |
-| `form.append_header(text)` / `append_label(text)` / `append_divider()` | 追加标题行 / 文本行 / 分隔线 | `SimpleForm::appendHeader` / `appendLabel` / `appendDivider` |
-| `form.append_button(text, on_click?)` | 追加按钮，可选每按钮独立回调 | `SimpleForm::appendButton` |
-| `form.append_button_with_image(text, image, image_type, on_click?)` | 追加带图标的按钮 | `SimpleForm::appendButton`（带图片参数的重载） |
-| `form.send_to(player, on_result?)` | 发送给玩家；若传入 `on_result`，会覆盖各按钮各自的回调 | `SimpleForm::sendTo` |
-| `form.send_update(player, on_result?)` | 以"更新"方式重新发送（替换玩家当前显示的同一表单） | `SimpleForm::sendUpdate` |
+| `SimpleFormBuilder::new(title)` | 新建并设置标题 | `SimpleForm::SimpleForm` |
+| `.content(text)` | 设置正文 | `SimpleForm::setContent` |
+| `.header(text)` / `.label(text)` / `.divider()` | 追加标题行 / 文本行 / 分隔线 | `SimpleForm::appendHeader` / `appendLabel` / `appendDivider` |
+| `.button(text)` | 追加一个按钮 | `SimpleForm::appendButton` |
+| `.button_with_image(text, image, image_type)` | 追加带图标的按钮 | `SimpleForm::appendButton`（带图片参数的重载） |
+| `.send(player, cb)` | 发送给玩家；`cb: FnOnce(FormResponse)` | `SimpleForm::sendTo` |
+
+结果 `FormResponse`：点了按钮为 `Button(index)`（按声明顺序的下标），玩家关闭为 `Cancelled { reason }`。
 
 ## CustomForm — 自定义表单
 
+`CustomFormBuilder`：输入框、开关、下拉、滑块等控件的组合。
+
 | API | 作用 | 原生对应 |
 | --- | --- | --- |
-| `CustomForm::new(title)` | 新建 | `CustomForm::CustomForm` |
-| `form.set_title(title)` / `set_submit_button(text)` | 设置标题 / 提交按钮文字 | `CustomForm::setTitle` / `setSubmitButton` |
-| `form.append_header(text)` / `append_label(text)` / `append_divider()` | 同 SimpleForm | `CustomForm::appendHeader` 等 |
-| `form.append_input(name, label, placeholder?, default?, tooltip?)` | 文本输入框 | `CustomForm::appendInput` |
-| `form.append_toggle(name, label, default?, tooltip?)` | 开关 | `CustomForm::appendToggle` |
-| `form.append_dropdown(name, label, options, default_index?, tooltip?)` | 下拉框 | `CustomForm::appendDropdown` |
-| `form.append_slider(name, label, min, max, step?, default?, tooltip?)` | 滑块 | `CustomForm::appendSlider` |
-| `form.append_step_slider(name, label, steps, default_index?, tooltip?)` | 步进滑块（在给定的字符串档位间切换） | `CustomForm::appendStepSlider` |
-| `form.send_to(player, on_result?)` / `send_update(player, on_result?)` | 发送 / 以更新方式发送 | `CustomForm::sendTo` / `sendUpdate` |
+| `CustomFormBuilder::new(title)` | 新建并设置标题 | `CustomForm::CustomForm` |
+| `.submit(text)` | 设置提交按钮文字 | `CustomForm::setSubmitButton` |
+| `.header(text)` / `.label(text)` / `.divider()` | 同 SimpleForm | `CustomForm::appendHeader` 等 |
+| `.input(name, label, placeholder, default)` | 文本输入框 | `CustomForm::appendInput` |
+| `.toggle(name, label, default)` | 开关 | `CustomForm::appendToggle` |
+| `.dropdown(name, label, options, default_index)` | 下拉框 | `CustomForm::appendDropdown` |
+| `.slider(name, label, min, max, step, default)` | 滑块 | `CustomForm::appendSlider` |
+| `.step_slider(name, label, steps, default_index)` | 步进滑块（在给定的字符串档位间切换） | `CustomForm::appendStepSlider` |
+| `.send(player, cb)` | 发送；`cb: FnOnce(FormResponse)` | `CustomForm::sendTo` |
 
-`on_result` 收到的结果是一个按控件 `name` 取值的映射，每个值可能是数字、小数、字符串或"未提交"，对应原生的 `CustomFormResult`（`name → 数值/浮点/字符串` 的可选映射）。
+结果 `FormResponse::Custom(map)`：按控件 `name` 取值的 `HashMap<String, FormValue>`；`FormValue` 为 `Int`（开关 0/1、下拉索引、步进档位索引）/ `Float`（滑块）/ `Text`（输入框）。玩家关闭为 `Cancelled { reason }`。
 
 ## ModalForm — 二选一表单
 
+`ModalFormBuilder`：正文 + 上下两个按钮。
+
 | API | 作用 | 原生对应 |
 | --- | --- | --- |
-| `ModalForm::new(title, content, upper_button, lower_button)` | 新建 | `ModalForm::ModalForm` |
-| `form.set_title(title)` / `set_content(text)` / `set_upper_button(text)` / `set_lower_button(text)` | 逐项设置 | 对应的 `setXxx` |
-| `form.send_to(player, on_result?)` / `send_update(player, on_result?)` | 发送 / 以更新方式发送 | `ModalForm::sendTo` / `sendUpdate` |
+| `ModalFormBuilder::new(title, content)` | 新建 | `ModalForm::ModalForm` |
+| `.upper(text)` / `.lower(text)` | 设置上 / 下按钮文字 | 对应的 `setXxx` |
+| `.send(player, cb)` | 发送；`cb: FnOnce(FormResponse)` | `ModalForm::sendTo` |
 
-结果是"选了上按钮"/"选了下按钮"/"取消"三选一（对应原生 `ModalFormSelectedButton::Upper`/`Lower` 或空），不是简单的布尔值。
+结果 `FormResponse::Modal { upper }`：`upper == true` 表示选了上（主）按钮，`false` 表示下按钮。玩家关闭为 `Cancelled { reason }`。
 
 ## 相关类型
 
 | 类型 | 说明 |
 | --- | --- |
-| `FormCancelReason` | 表单被取消的原因（如玩家直接关闭、正忙等），随结果一起传给回调 |
-| `CustomFormResult` | `CustomForm` 提交结果：按控件名取值的映射，未提交时整体为空 |
-| `ModalFormResult` | `ModalForm` 提交结果：`Upper` / `Lower` / 空（取消） |
+| `FormResponse` | 表单结果枚举：`Button(index)`（SimpleForm）/ `Custom(map)`（CustomForm）/ `Modal { upper }`（ModalForm）/ `Cancelled { reason }`（玩家关闭，`reason` 为原始取消码，-1 表示客户端未说明） |
+| `FormValue` | `CustomForm` 单个控件的值：`Int(i64)` / `Float(f64)` / `Text(String)` |

@@ -1,5 +1,5 @@
 /**
- * bridge/NbtApi.cpp — binary NBT conversions (ABI v4 §I).
+ * bridge/NbtApi.cpp — binary NBT conversions (ABI v5 §I).
  *
  * The SNBT object model itself lives entirely in Rust (levilamina::nbt);
  * only binary formats need the engine's codec, so only these two calls

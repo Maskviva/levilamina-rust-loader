@@ -1,6 +1,6 @@
 # Player — 玩家对象
 
-> 状态：🧩 规划（列表/消息/广播/踢出/生命值/游戏模式/传送等少数能力已在当前桥接支持，见下方各表的"现状"提示）；完整句柄属规划。
+> 状态：✅ 已支持。玩家句柄经由 `Player::get(info)` / `Player::list()` 或事件回调获取；列表 / 消息 / 广播 / 生命值/等级/饥饿等属性、游戏模式、传送、能力位、物品栏 / 末影箱、给物品、标题栏等均已封装。方法表按目标设计列出，个别原生方法尚未纳入简化层。
 >
 > **接口来源**：本页方法对应原生 C++ 类 `Player`（`mc/world/actor/player/Player.h`），排除引擎内部虚函数插桩（`$` 前缀）与 Mojang 自己标记为内部的方法（前导下划线，如 `_addLevels`）。命名沿用 LSE 风格（snake_case）。
 >
@@ -17,7 +17,7 @@
 | API | 作用 | 原生对应 | 状态 |
 | --- | --- | --- | :---: |
 | `Player::list()` | 枚举全部在线玩家（名字/xuid/uuid/维度/坐标） | `Level::forEachPlayer` | ✅ |
-| `Player::get(info)` | 按名字 / XUID / UUID 查找一个在线玩家 | 桥接内部复用 `Player::list()` 按条件过滤 | 🧩 |
+| `Player::get(info)` | 按名字 / XUID / UUID 查找一个在线玩家 | 桥接内部复用 `Player::list()` 按条件过滤 | ✅ |
 
 ## 身份与网络
 
@@ -38,6 +38,7 @@
 | API | 作用 | 原生对应 | 现状 |
 | --- | --- | --- | :---: |
 | `player.send_message(msg)` | 发送一条消息给该玩家 | `Player::sendMessage` | ✅ |
+| `player.send_packet(packet_id, body)` | **原始发包**：把当前版本线格式的包体按 id 反序列化后只发给该玩家（逃生舱口，详见 [Objects → Packet](/api/objects)） | `MinecraftPackets::createPacket` + `Packet::read` + `Player::sendNetworkPacket` | ✅ |
 | `player.disconnect(reason)` | 以给定理由断开连接 | `Player::disconnect` | ✅ |
 | `Player::broadcast(msg)` | 向所有在线玩家广播 | （逐个调用 `sendMessage`） | ✅ |
 
@@ -52,7 +53,7 @@
 
 | API | 作用 | 原生对应 | 现状 |
 | --- | --- | --- | :---: |
-| `player.game_type()` | 读取当前游戏模式 | `Player::getPlayerGameType` | 🧩（读取未桥接，写入已支持） |
+| `player.game_type()` | 读取当前游戏模式 | `Player::getPlayerGameType` | ✅ |
 | `player.set_gamemode(mode)` | 设置游戏模式 | 原生的直接设置器是内部方法（`_setPlayerGameType`），桥接改走 `/gamemode` 命令 | ✅ |
 
 ## 属性：经验 / 饥饿 / 等级
@@ -143,8 +144,10 @@
 | `player.is_in_raid()` | 是否正处于袭击事件中 | `Player::isInRaid` |
 | `player.is_forced_respawn()` | 是否处于强制重生流程 | `Player::isForcedRespawn` |
 | `player.is_hurt()` | 是否处于受伤状态 | `Player::isHurt` |
-| `player.is_scoping()` | 是否正在用望远镜瞄准 | `Player::isScoping` |
+| `player.is_scoping()` ⚠️ | 是否正在用望远镜瞄准 | `Player::isScoping` |
 | `player.has_resource(item)` | 背包中是否有指定资源 | `Player::hasResource` |
+
+> ⚠️ `player.is_scoping()` 在 BDS **26.20.0** 生成的头文件里被 `#ifdef LL_PLAT_C` 守卫、正常编译不可用，桥接对该项返回「不支持」错误。同表其余带原生对应的方法中，未在 crate 中封装的按目标设计列出（见页尾附录）。
 
 ## 附录：其余原生方法
 

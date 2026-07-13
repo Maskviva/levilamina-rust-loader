@@ -1,5 +1,5 @@
 /**
- * bridge/Containers.cpp — container access (ABI v4 §E).
+ * bridge/Containers.cpp — container access (ABI v5 §E).
  *
  * Container handles are "owner + which" references resolved on every call
  * (decision #10: everything goes through the Container virtual interface, so
@@ -13,20 +13,11 @@
 #include "mc/deps/nbt/CompoundTag.h"
 #include "mc/world/Container.h"
 #include "mc/world/item/ItemStack.h"
-#include "mc/world/item/SaveContext.h"
-#include "mc/world/item/SaveContextFactory.h"
 
 namespace levi_rs::bridge
 {
     namespace
     {
-        std::string serializeItem(ItemStack const& item)
-        {
-            auto ctx = SaveContextFactory::createCloneSaveContext();
-            auto tag = item.save(*ctx);
-            if (!tag) return "{}";
-            return tag->toSnbt(SnbtFormat::Minimize);
-        }
     } // namespace
 
     bool api_container_size(LeviRsContainerRef ref, int32_t* out)
@@ -42,7 +33,7 @@ namespace levi_rs::bridge
         Container* c = resolveContainer(ref);
         if (!c || !sink) return false;
         if (slot < 0 || slot >= c->getContainerSize()) return false;
-        sink(ctx, serializeItem(c->getItem(slot)));
+        sink(ctx, itemToSnbt(c->getItem(slot)));
         return true;
     }
 
@@ -51,9 +42,9 @@ namespace levi_rs::bridge
         Container* c = resolveContainer(ref);
         if (!c) return false;
         if (slot < 0 || slot >= c->getContainerSize()) return false;
-        auto tag = CompoundTag::fromSnbt(std::string_view{itemSnbt});
-        if (!tag) return false;
-        ItemStack item = ItemStack::fromTag(*tag);
+        auto opt = itemFromSnbt(std::string_view{itemSnbt});
+        if (!opt) return false;
+        ItemStack item = std::move(*opt);
         c->setItem(slot, item);
         return true;
     }
@@ -62,9 +53,9 @@ namespace levi_rs::bridge
     {
         Container* c = resolveContainer(ref);
         if (!c) return false;
-        auto tag = CompoundTag::fromSnbt(std::string_view{itemSnbt});
-        if (!tag) return false;
-        ItemStack item = ItemStack::fromTag(*tag);
+        auto opt = itemFromSnbt(std::string_view{itemSnbt});
+        if (!opt) return false;
+        ItemStack item = std::move(*opt);
         if (item.isNull()) return false;
         return c->addItem(item);
     }

@@ -1,6 +1,6 @@
 /**
  * bridge/Server.cpp — clock, weather, difficulty, seed, game rules, server
- * info (ABI v4 §A clock + §I settings).
+ * info (ABI v5 §A clock + §I settings).
  *
  * Reads are direct native calls; version-sensitive writes go through vanilla
  * commands (design decision #3), so they survive BDS bumps untouched.

@@ -1,5 +1,5 @@
 /**
- * bridge/Commands.cpp — command execution & registration (ABI v1 + v4 §H).
+ * bridge/Commands.cpp — command execution & registration (ABI v1 + v5 §H).
  *
  * Bedrock cannot unregister commands, so every executor closure is owned by
  * the loader and consults a mutable binding table; a binding whose mod
@@ -195,7 +195,7 @@ namespace levi_rs::bridge
         }
     }
 
-    // ───────────────────── parameterized commands (ABI v4 §H) ─────────────────────
+    // ───────────────────── parameterized commands (ABI v5 §H) ─────────────────────
 
     namespace
     {
@@ -329,7 +329,7 @@ namespace levi_rs::bridge
                 break;
             default:
                 // Exotic holders (json/message/item/block_name/effect/actor_type/…)
-                // are declared and parsed by Bedrock but not serialized in v4;
+                // are declared and parsed by Bedrock but not serialized in v5;
                 // extend here (append-only semantics: adding fields is safe).
                 break;
             }

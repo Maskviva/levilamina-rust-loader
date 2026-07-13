@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def header_fields() -> list[str]:
     text = (ROOT / "src/LeviRsAbi.h").read_text(encoding="utf-8")
-    m = re.search(r"typedef struct LeviRsApi \{(.*?)\} LeviRsApi;", text, re.S)
+    m = re.search(r"typedef struct LeviRsApi\s*\{(.*?)\} LeviRsApi;", text, re.S)
     if not m:
         sys.exit("LeviRsAbi.h: cannot find `typedef struct LeviRsApi { … }`")
     body = m.group(1)
@@ -40,7 +40,7 @@ def header_fields() -> list[str]:
 
 def table_fields() -> list[str]:
     text = (ROOT / "src/bridge/ApiTable.cpp").read_text(encoding="utf-8")
-    m = re.search(r"const LeviRsApi gApi\{(.*?)\};", text, re.S)
+    m = re.search(r"const LeviRsApi gApi\s*\{(.*?)\};", text, re.S)
     if not m:
         sys.exit("ApiTable.cpp: cannot find `const LeviRsApi gApi{ … };`")
     fields = []

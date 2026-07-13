@@ -1,5 +1,5 @@
 /**
- * bridge/Players.cpp — player management, properties, actions (ABI v4 §B).
+ * bridge/Players.cpp — player management, properties, actions (ABI v5 §B).
  *
  * Player handles are selectors (name / xuid / uuid), re-resolved against the
  * live player list on every call — never cached pointers. Version-sensitive
@@ -18,6 +18,9 @@
 #include "mc/platform/UUID.h"
 #include "mc/world/actor/Actor.h"
 #include "mc/world/actor/player/AbilitiesIndex.h"
+#include "mc/network/packet/TextPacket.h"
+#include "mc/network/packet/TextPacketPayload.h"
+#include "mc/network/packet/TextPacketType.h"
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/attribute/Attribute.h"
 #include "mc/world/attribute/AttributeInstance.h"
@@ -53,6 +56,32 @@ namespace levi_rs::bridge
         Player* p = resolvePlayer(sel);
         if (!p) return false;
         p->sendMessage(std::string_view{msg});
+        return true;
+    }
+
+    bool api_player_send_message_typed(LeviRsPlayerSel sel, LeviRsStr msg, int32_t type)
+    {
+        Player* p = resolvePlayer(sel);
+        if (!p) return false;
+
+        // Map the ABI int to TextPacketType; anything out of range falls back
+        // to Raw (a plain client-side line) rather than being rejected.
+        auto ptype = TextPacketType::Raw;
+        if (type >= 0 && type <= 11) ptype = static_cast<TextPacketType>(static_cast<uchar>(type));
+
+        // Build a TextPacket carrying a MessageOnly body — the shape
+        // createRawMessage uses, but with the caller's type. This covers every
+        // single-string kind (Tip, Popup, JukeboxPopup, SystemMessage,
+        // Announcement, …). Author/param-bearing kinds (Chat/Whisper/Translate)
+        // still arrive as a plain message here; that's the same simplification
+        // LSE's tell(msg, type) makes.
+        TextPacket pkt{};
+        TextPacketPayload::MessageOnly body;
+        body.mType = ptype;
+        body.mMessage->assign(std::string_view{msg});
+        pkt.mBody = body;
+
+        p->sendNetworkPacket(pkt);
         return true;
     }
 
@@ -105,9 +134,8 @@ namespace levi_rs::bridge
     {
         Player* p = resolvePlayer(sel);
         if (!p) return false;
-        static char const* kDimNames[] = {"overworld", "nether", "the_end"};
         if (dim < 0 || dim > 2) return false;
-        std::string cmd = "execute in " + std::string{kDimNames[dim]} + " run tp \"" + p->getRealName() + "\" "
+        std::string cmd = std::string("execute in ") + dimensionName(dim) + " run tp \"" + p->getRealName() + "\" "
             + std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(z);
         return runConsoleCommand(cmd);
     }
@@ -301,16 +329,15 @@ namespace levi_rs::bridge
             }
         case LEVI_RS_PACT_GIVE_ITEM:
             {
-                auto tag = CompoundTag::fromSnbt(std::string_view{sarg});
-                if (!tag) return false;
-                ItemStack item = ItemStack::fromTag(*tag);
+                auto opt = itemFromSnbt(std::string_view{sarg});
+                if (!opt) return false;
+                ItemStack item = std::move(*opt);
                 if (item.isNull()) return false;
                 return p->addAndRefresh(item);
             }
         case LEVI_RS_PACT_SET_SPAWN_POINT:
             {
-                static char const* kDimNames[] = {"overworld", "nether", "the_end"};
-                std::string dimStr{sarg};
+                        std::string dimStr{sarg};
                 int dim = 0;
                 if (!dimStr.empty())
                 {
@@ -324,7 +351,7 @@ namespace levi_rs::bridge
                     }
                 }
                 return runConsoleCommand(
-                    "execute in " + std::string{kDimNames[dim]} + " run spawnpoint \"" + p->getRealName() + "\" "
+                    std::string("execute in ") + dimensionName(dim) + " run spawnpoint \"" + p->getRealName() + "\" "
                     + std::to_string(static_cast<int>(a)) + " " + std::to_string(static_cast<int>(b)) + " "
                     + std::to_string(static_cast<int>(c))
                 );

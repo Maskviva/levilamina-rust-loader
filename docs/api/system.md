@@ -1,6 +1,6 @@
 # System — 文件 / 网络 / 进程 / 系统信息
 
-> 状态：🧩 规划。
+> 状态：✅ 已支持（系统信息与环境变量）。文件 / 网络 / 进程刻意不桥接，直接用 Rust 标准库与生态。
 >
 > **接口来源说明**：这四块里只有"系统信息"对应 LeviLamina 真实提供的工具函数；文件、网络、进程都**没有**对应的原生/LeviLamina 封装——这些本来就是操作系统层面的通用需求，Rust 标准库和生态已经解决得很好，不需要、也不应该再造一层桥接。
 
@@ -12,11 +12,13 @@
 | --- | --- | --- |
 | `SystemInfo::os_name()` | 操作系统名称 | `sys_utils::getSystemName` |
 | `SystemInfo::os_version()` | 操作系统版本 | `sys_utils::getSystemVersion` |
-| `SystemInfo::locale_code()` | 系统语言/区域代码 | `sys_utils::getSystemLocaleCode` |
+| `SystemInfo::locale()` | 系统语言/区域代码 | `sys_utils::getSystemLocaleCode` |
 | `SystemInfo::local_time()` | 本地时间（含毫秒） | `sys_utils::getLocalTime` |
-| `SystemInfo::get_env(name)` | 读取环境变量 | `sys_utils::getEnvironmentVariable` |
+| `SystemInfo::env(name)` | 读取环境变量 | `sys_utils::getEnvironmentVariable` |
 | `SystemInfo::set_env(name, value)` | 设置环境变量 | `sys_utils::setEnvironmentVariable` |
 | `SystemInfo::is_wine()` | 是否运行在 Wine 兼容层下 | `sys_utils::isWine` |
+
+> 这些在 crate 里是 `system` 模块的自由函数（如 `system::os_name()`、`system::env(name)`），本页 `SystemInfo::` 前缀只作分组标识。
 
 > CPU / 内存占用这类进程级指标，`sys_utils` 里没有找到对应封装；真要做，会是 Rust 侧用 `sysinfo` 这类 crate 实现，同样不需要桥接参与。
 

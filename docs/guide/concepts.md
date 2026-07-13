@@ -37,7 +37,7 @@
 
 - `Log::*`（日志）
 - `Scheduler::*`（`Server::schedule` / `schedule_after`）
-- `Server::status()`（`gaming_status`）
+- `Server::gaming_status()`
 
 其余一切 API 都**只能在服务器线程**调用。这不是保守限制：BDS 的玩家列表、区块、方块源本身就不是线程安全的，从别的线程调用是未定义行为。
 

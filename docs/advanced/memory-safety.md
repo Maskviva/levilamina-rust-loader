@@ -35,7 +35,7 @@ std::string enrichWithPlayer(CompoundTag const& data) {
 
 ## 线程模型
 
-**只有 `Log::*`、`Scheduler::*`、`Server::status()` 是线程安全的**，可以从任意线程调用。除此之外的一切——包括所有句柄方法、`Command::execute`、`World::*`——都**只能在服务器线程**上调用。这不是保守起见的限制：BDS/LeviLamina 自己的核心数据结构（玩家列表、区块、方块源）本身就不是线程安全的，从其他线程调用是未定义行为，不是"可能会慢"。
+**只有 `Log::*`、`Scheduler::*`、`Server::gaming_status()` 是线程安全的**，可以从任意线程调用。除此之外的一切——包括所有句柄方法、`Command::execute`、`World::*`——都**只能在服务器线程**上调用。这不是保守起见的限制：BDS/LeviLamina 自己的核心数据结构（玩家列表、区块、方块源）本身就不是线程安全的，从其他线程调用是未定义行为，不是"可能会慢"。
 
 后台线程（比如一个 Tokio 任务、一个 HTTP 回调）要影响游戏世界，唯一合法路径是 `Scheduler::run(f)` / `Scheduler::run_after(delay, f)`——把闭包投递回服务器线程排队执行，`f` 本身在服务器线程上跑的时候，就可以正常调用其余所有 API 了。
 

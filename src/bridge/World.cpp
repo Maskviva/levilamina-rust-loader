@@ -1,5 +1,5 @@
 /**
- * bridge/World.cpp — world reading & writing (ABI v3 migrated + v4 §A/§D
+ * bridge/World.cpp — world reading & writing (ABI v3 migrated + v5 §A/§D
  * blocks + explode).
  *
  * Block "handles" are (dimension, position) — resolved against the live
@@ -41,7 +41,7 @@ namespace levi_rs::bridge
     LeviRsPlayerPos api_get_player_position(LeviRsStr name)
     {
         LeviRsPlayerPos out{0.0, 0.0, 0.0, 0, false};
-        // Unified with the v4 player identity model: resolvePlayer matches
+        // Unified with the v5 player identity model: resolvePlayer matches
         // getRealName() first, then falls back to getNameTag() (display name) —
         // for normal players the two are identical, so v3 behaviour is preserved.
         Player* p = resolvePlayer(LeviRsPlayerSel{0, name});
@@ -118,7 +118,7 @@ namespace levi_rs::bridge
         return true;
     }
 
-    // ───────────────────────── v4 §A: single-block read/write ─────────────────────────
+    // ───────────────────────── v5 §A: single-block read/write ─────────────────────────
 
     bool api_get_block(int32_t dim, int32_t x, int32_t y, int32_t z, void* ctx, LeviRsBlockSink sink)
     {
@@ -135,14 +135,13 @@ namespace levi_rs::bridge
         if (!blockSourceOf(dim)) return false;
         // Dimension-targeted via /execute in — the command path keeps this stable
         // across BDS versions (decision #3).
-        static char const* kDimNames[] = {"overworld", "nether", "the_end"};
         if (dim < 0 || dim > 2) return false;
-        std::string cmd = "execute in " + std::string{kDimNames[dim]} + " run setblock " + std::to_string(x) + " "
+        std::string cmd = std::string("execute in ") + dimensionName(dim) + " run setblock " + std::to_string(x) + " "
             + std::to_string(y) + " " + std::to_string(z) + " " + std::string{blockSpec};
         return runConsoleCommand(cmd);
     }
 
-    // ───────────────────────── v4 §D: block properties ─────────────────────────
+    // ───────────────────────── v5 §D: block properties ─────────────────────────
 
     namespace
     {
@@ -264,7 +263,7 @@ namespace levi_rs::bridge
         return true;
     }
 
-    // ───────────────────────── v4 §C: explode ─────────────────────────
+    // ───────────────────────── v5 §C: explode ─────────────────────────
 
     bool api_explode(
         int32_t dim,

@@ -1,5 +1,5 @@
 /**
- * bridge/Items.cpp — item value objects (ABI v4 §E).
+ * bridge/Items.cpp — item value objects (ABI v5 §E).
  *
  * Items cross the boundary as ItemStack::save SNBT. Every call rebuilds a
  * transient ItemStack (ItemStack::fromTag), queries or mutates it, and —
@@ -14,34 +14,12 @@
 #include "mc/deps/nbt/CompoundTag.h"
 #include "mc/safety/RedactableString.h"
 #include "mc/world/item/ItemStack.h"
-#include "mc/world/item/SaveContext.h"
-#include "mc/world/item/SaveContextFactory.h"
 
 namespace levi_rs::bridge
 {
-    namespace
-    {
-        /** Rebuild a transient ItemStack from item SNBT; nullopt on parse failure. */
-        std::optional<ItemStack> rebuild(LeviRsStr itemSnbt)
-        {
-            auto tag = CompoundTag::fromSnbt(std::string_view{itemSnbt});
-            if (!tag) return std::nullopt;
-            return ItemStack::fromTag(*tag);
-        }
-
-        /** Serialize an ItemStack back to SNBT via the clone save context. */
-        std::string serialize(ItemStack const& item)
-        {
-            auto ctx = SaveContextFactory::createCloneSaveContext();
-            auto tag = item.save(*ctx);
-            if (!tag) return "{}";
-            return tag->toSnbt(SnbtFormat::Minimize);
-        }
-    } // namespace
-
     bool api_item_get_num(LeviRsStr itemSnbt, int32_t prop, double* out)
     {
-        auto item = rebuild(itemSnbt);
+        auto item = itemFromSnbt(std::string_view{itemSnbt});
         if (!item || !out) return false;
         switch (prop)
         {
@@ -85,7 +63,7 @@ namespace levi_rs::bridge
 
     bool api_item_get_str(LeviRsStr itemSnbt, int32_t prop, void* ctx, LeviRsStrSink sink)
     {
-        auto item = rebuild(itemSnbt);
+        auto item = itemFromSnbt(std::string_view{itemSnbt});
         if (!item || !sink) return false;
         switch (prop)
         {
@@ -108,7 +86,7 @@ namespace levi_rs::bridge
 
     bool api_item_transform(LeviRsStr itemSnbt, int32_t op, LeviRsStr sarg, double narg, void* ctx, LeviRsStrSink out)
     {
-        auto item = rebuild(itemSnbt);
+        auto item = itemFromSnbt(std::string_view{itemSnbt});
         if (!item || !out) return false;
         switch (op)
         {
@@ -142,7 +120,7 @@ namespace levi_rs::bridge
         default:
             return false;
         }
-        out(ctx, serialize(*item));
+        out(ctx, itemToSnbt(*item));
         return true;
     }
 } // namespace levi_rs::bridge

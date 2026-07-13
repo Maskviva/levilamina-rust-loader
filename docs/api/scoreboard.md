@@ -1,6 +1,6 @@
 # ScoreBoard — 计分板
 
-> 状态：🧩 规划。
+> 状态：✅ 已支持。
 >
 > **接口来源**：本页方法对应原生 C++ 类 `Scoreboard`（`mc/world/scores/Scoreboard.h`，服务端实际用的是其子类 `ServerScoreboard`）与 `Objective`（`mc/world/scores/Objective.h`）。入口是 `Level::getScoreboard()`（真实存在的公开虚方法，和取 `Player`/`Block` 走的是同一个 `level` 对象）。命名沿用 LSE 风格（snake_case）。
 
@@ -8,27 +8,27 @@
 
 | API | 作用 | 原生对应 |
 | --- | --- | --- |
-| `ScoreBoard::get()` | 获取全局计分板 | `Level::getScoreboard` |
+| `Scoreboard::get()` | 获取全局计分板 | `Level::getScoreboard` |
 
 ## 计分项 Objective
 
 | API | 作用 | 原生对应 |
 | --- | --- | --- |
-| `ScoreBoard::add_objective(name, display_name, criteria?)` | 新建计分项 | `Scoreboard::addObjective`（`criteria` 默认走 `Scoreboard::createObjectiveCriteria`/`DEFAULT_CRITERIA`） |
-| `ScoreBoard::get_objective(name)` | 按名获取计分项 | `Scoreboard::getObjective` |
-| `ScoreBoard::remove_objective(objective)` | 删除计分项 | `Scoreboard::removeObjective` |
-| `ScoreBoard::objective_names()` | 全部计分项的名字 | `Scoreboard::getObjectiveNames` |
-| `ScoreBoard::objectives()` | 全部计分项 | `Scoreboard::getObjectives` |
+| `Scoreboard::add_objective(name, display_name, criteria?)` | 新建计分项 | `Scoreboard::addObjective`（`criteria` 默认走 `Scoreboard::createObjectiveCriteria`/`DEFAULT_CRITERIA`） |
+| `Scoreboard::get_objective(name)` | 按名获取计分项 | `Scoreboard::getObjective` |
+| `Scoreboard::remove_objective(objective)` | 删除计分项 | `Scoreboard::removeObjective` |
+| `Scoreboard::objective_names()` | 全部计分项的名字 | `Scoreboard::getObjectiveNames` |
+| `Scoreboard::objectives()` | 全部计分项 | `Scoreboard::getObjectives` |
 
 ## 分数读写
 
 | API | 作用 | 原生对应 |
 | --- | --- | --- |
 | `objective.player_score(id)` | 读取某目标在该计分项下的分数 | `Objective::getPlayerScore` |
-| `ScoreBoard::modify_score(id, objective, value, op)` | 按操作类型（设置/加/减）修改分数，一步到位 | `Scoreboard::modifyPlayerScore`（LeviLamina 自带的便捷封装） |
-| `ScoreBoard::reset_player_score(id, objective)` | 清除某目标在该计分项下的分数 | `Scoreboard::resetPlayerScore` |
-| `ScoreBoard::id_scores(id)` | 某目标在所有计分项下的分数 | `Scoreboard::getIdScores` |
-| `ScoreBoard::scoreboard_id(actor)` | 某实体/玩家对应的计分板 id | `Scoreboard::getScoreboardId` |
+| `Scoreboard::modify_score(id, objective, value, op)` | 按操作类型（设置/加/减）修改分数，一步到位 | `Scoreboard::modifyPlayerScore`（LeviLamina 自带的便捷封装） |
+| `Scoreboard::reset_player_score(id, objective)` | 清除某目标在该计分项下的分数 | `Scoreboard::resetPlayerScore` |
+| `Scoreboard::id_scores(id)` | 某目标在所有计分项下的分数 | `Scoreboard::getIdScores` |
+| `Scoreboard::scoreboard_id(actor)` | 某实体/玩家对应的计分板 id | `Scoreboard::getScoreboardId` |
 
 ## 显示位置
 
@@ -36,19 +36,19 @@
 
 | API | 作用 | 原生对应 |
 | --- | --- | --- |
-| `ScoreBoard::SIDEBAR` / `LIST` / `BELOW_NAME` | 三个显示槽位的名字常量 | `Scoreboard::DISPLAY_SLOT_SIDEBAR` / `DISPLAY_SLOT_LIST` / `DISPLAY_SLOT_BELOWNAME` |
-| `ScoreBoard::set_display(slot, objective, sort_order?)` | 把计分项显示到指定槽位 | `Scoreboard::setDisplayObjective` |
-| `ScoreBoard::clear_display(slot)` | 清空指定显示槽位 | `Scoreboard::clearDisplayObjective` |
-| `ScoreBoard::get_display(slot)` | 读取指定槽位当前显示的计分项 | `Scoreboard::getDisplayObjective` |
-| `ScoreBoard::display_slot_names()` | 全部显示槽位名字 | `Scoreboard::getDisplayObjectiveSlotNames` |
-| `ScoreBoard::display_scores(slot)` | 指定槽位当前显示的全部分数（已按规则过滤） | `Scoreboard::getDisplayInfoFiltered` |
+| `Scoreboard::SIDEBAR` / `LIST` / `BELOW_NAME` | 三个显示槽位的名字常量 | `Scoreboard::DISPLAY_SLOT_SIDEBAR` / `DISPLAY_SLOT_LIST` / `DISPLAY_SLOT_BELOWNAME` |
+| `Scoreboard::set_display(slot, objective, sort_order?)` | 把计分项显示到指定槽位 | `Scoreboard::setDisplayObjective` |
+| `Scoreboard::clear_display(slot)` | 清空指定显示槽位 | `Scoreboard::clearDisplayObjective` |
+| `Scoreboard::get_display(slot)` | 读取指定槽位当前显示的计分项 | `Scoreboard::getDisplayObjective` |
+| `Scoreboard::display_slot_names()` | 全部显示槽位名字 | `Scoreboard::getDisplayObjectiveSlotNames` |
+| `Scoreboard::display_scores(slot)` | 指定槽位当前显示的全部分数（已按规则过滤） | `Scoreboard::getDisplayInfoFiltered` |
 
 ## 分数变化监听
 
 | API | 作用 | 原生对应 |
 | --- | --- | --- |
-| `ScoreBoard::add_score_listener(player, objective_name)` | 监听某玩家在某计分项下的分数变化（用于自动刷新客户端显示） | `Scoreboard::addScoreListener` |
-| `ScoreBoard::remove_score_listener(player, objective_name)` | 取消监听 | `Scoreboard::removeScoreListener` |
+| `Scoreboard::add_score_listener(player, objective_name)` | 监听某玩家在某计分项下的分数变化（用于自动刷新客户端显示） | `Scoreboard::addScoreListener` |
+| `Scoreboard::remove_score_listener(player, objective_name)` | 取消监听 | `Scoreboard::removeScoreListener` |
 
 ## 附录：其余原生方法
 

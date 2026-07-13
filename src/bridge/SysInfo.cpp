@@ -1,5 +1,5 @@
 /**
- * bridge/SysInfo.cpp — system information & environment (ABI v4 §I).
+ * bridge/SysInfo.cpp — system information & environment (ABI v5 §I).
  * Plain OS calls; thread-safe by contract.
  */
 #include "bridge/Api.h"

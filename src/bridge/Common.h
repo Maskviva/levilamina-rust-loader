@@ -18,6 +18,7 @@ class Actor;
 class BlockSource;
 class CompoundTag;
 class Container;
+class ItemStack;
 class Level;
 class Player;
 
@@ -54,6 +55,15 @@ namespace levi_rs
         std::string snbtEscape(std::string_view s);
 
         /**
+         * Item (de)serialization across the FFI boundary — items always cross as
+         * `ItemStack::save` SNBT. `itemToSnbt` produces it (empty item → "{}");
+         * `itemFromSnbt` rebuilds a transient `ItemStack`, returning nullopt on
+         * malformed input. Shared so Items/Containers/Players agree byte-for-byte.
+         */
+        std::string itemToSnbt(ItemStack const& item);
+        std::optional<ItemStack> itemFromSnbt(std::string_view snbt);
+
+        /**
          * The player-identity enrichment used by the event path: if `data` embeds a
          * live Player pointer stub, splice a `_player` {name,xuid,uuid} field into a
          * copy and serialize that; otherwise serialize `data` as-is.
@@ -62,6 +72,13 @@ namespace levi_rs
 
         /** Run a command as server console, discarding output. True on ≥1 success. */
         bool runConsoleCommand(std::string const& cmd);
+
+        /**
+         * Vanilla dimension name ("overworld" / "nether" / "the_end") for a
+         * dimension id, used to build `/execute in <dim> run …` commands.
+         * Out-of-range ids fall back to "overworld".
+         */
+        char const* dimensionName(int dim);
 
         /** Serialize a player's identity + position line: {name,xuid,uuid,dim,x,y,z}. */
         std::string playerSummarySnbt(Player& p);

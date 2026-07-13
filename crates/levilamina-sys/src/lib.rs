@@ -1,4 +1,4 @@
-//! Raw FFI declarations mirroring `src/LeviRsAbi.h` (ABI v4).
+//! Raw FFI declarations mirroring `src/LeviRsAbi.h` (ABI v5).
 //!
 //! This crate contains no logic — only `#[repr(C)]` types. Keep it in
 //! lockstep with the C header: fields are append-only, never reordered.
@@ -12,7 +12,7 @@
 
 use core::ffi::c_void;
 
-pub const LEVI_RS_ABI_VERSION: u32 = 4;
+pub const LEVI_RS_ABI_VERSION: u32 = 5;
 pub const LEVI_RS_MAIN_SYMBOL: &str = "levi_rs_main";
 
 /// UTF-8 string view. Not guaranteed NUL-terminated.
@@ -82,7 +82,7 @@ pub type LeviRsEntitySink = unsafe extern "C" fn(
     snbt: LeviRsStr,
 );
 
-// ── ABI v4: types ──
+// ── ABI v5: types ──
 
 /// Player selector: kind 0 = name, 1 = xuid, 2 = uuid. Mirrors `LeviRsPlayerSel`.
 #[repr(C)]
@@ -120,7 +120,7 @@ pub type LeviRsFormResultCb = unsafe extern "C" fn(user: *mut c_void, result_snb
 /// Opaque handle to an open key-value database owned by the loader.
 pub type LeviRsKvDbHandle = *mut c_void;
 
-// ── v4 property / action keys (append-only; unknown values → call returns false) ──
+// ── v5 property / action keys (append-only; unknown values → call returns false) ──
 
 // LeviRsPlayerNumProp
 pub const PPROP_GAME_TYPE: i32 = 0;
@@ -346,7 +346,7 @@ pub struct LeviRsApi {
         entities_sink: LeviRsEntitySink,
     ) -> bool,
 
-    // ── ABI v4 §A world read/write & clock (server thread only unless noted) ──
+    // ── ABI v5 §A world read/write & clock (server thread only unless noted) ──
     pub get_block: unsafe extern "C" fn(
         dim: i32,
         x: i32,
@@ -592,7 +592,74 @@ pub struct LeviRsApi {
     pub game_rule_set: unsafe extern "C" fn(name: LeviRsStr, value: LeviRsStr) -> bool,
     pub server_info_str:
         unsafe extern "C" fn(prop: i32, ctx: *mut c_void, sink: LeviRsStrSink) -> bool,
-    // ABI v5+: append new fields here only.
+    /// Per-player particle packet (additive, gated by `struct_size`): sends a
+    /// `SpawnParticleEffectPacket` only to the resolved player instead of the
+    /// dimension-wide broadcast. False if the player can't be resolved.
+    pub spawn_particle_for: unsafe extern "C" fn(
+        sel: LeviRsPlayerSel,
+        dimension: i32,
+        effect_name: LeviRsStr,
+        x: f64,
+        y: f64,
+        z: f64,
+    ) -> bool,
+    /// Raw per-connection packet send — the generic primitive
+    /// `spawn_particle_for` derives from. `packet_id` is a MinecraftPacketIds
+    /// value; `body` is the packet's wire-format body for the CURRENT game
+    /// version (version-specific; caller's responsibility). False on offline
+    /// player, unknown id, parse failure, or leftover bytes after parsing.
+    pub send_packet: unsafe extern "C" fn(
+        sel: LeviRsPlayerSel,
+        packet_id: i32,
+        body: *const u8,
+        body_len: usize,
+    ) -> bool,
+    /// Freeze the world clock (mobs/blocks/redstone/time stop; players can
+    /// still move and chat). Backed by a bridge-owned detour on `Level::tick`,
+    /// installed lazily and left in place. Server thread only.
+    pub tick_freeze: unsafe extern "C" fn(on: bool) -> bool,
+    /// Only while frozen: queue exactly `n` extra frames. False if not frozen
+    /// or `n == 0`.
+    pub tick_step: unsafe extern "C" fn(n: u32) -> bool,
+    /// `0 < factor <= 100`; fractional = slow motion, `1.0` restores normal.
+    pub tick_warp: unsafe extern "C" fn(factor: f64) -> bool,
+    /// Arm a profiling window of `ticks` level ticks (1..=12000). False if
+    /// 0, too big, or already sampling.
+    pub profile_begin: unsafe extern "C" fn(ticks: u32) -> bool,
+    /// Poll for the finished report; true exactly once per window, sinking
+    /// one SNBT report (bucket times are inclusive — don't sum them).
+    pub profile_take: unsafe extern "C" fn(ctx: *mut c_void, sink: LeviRsStrSink) -> bool,
+    /// Spawn a simulated player. It's a real ServerPlayer: all per-player
+    /// entries work on it via the usual name selector.
+    pub sim_spawn:
+        unsafe extern "C" fn(name: LeviRsStr, dimension: i32, x: f64, y: f64, z: f64) -> bool,
+    /// Multiplexed simulate* verb dispatcher (args as SNBT; unknown verb /
+    /// malformed args / non-sim target => false).
+    pub sim_do:
+        unsafe extern "C" fn(sel: LeviRsPlayerSel, action: LeviRsStr, args_snbt: LeviRsStr) -> bool,
+    /// True if the selector resolves to a live simulated player (re-validate
+    /// a bot after a restart).
+    pub sim_is: unsafe extern "C" fn(sel: LeviRsPlayerSel) -> bool,
+    /// Enumerate live simulated-player names (sink receives each name).
+    pub sim_list: unsafe extern "C" fn(ctx: *mut c_void, name_sink: LeviRsStrSink),
+    /// Enumerate villages in a dimension (one SNBT object per village).
+    pub villages: unsafe extern "C" fn(dimension: i32, ctx: *mut c_void, snbt_sink: LeviRsStrSink),
+    /// Hardcoded spawn areas near a point, loaded chunks only (one SNBT
+    /// object per area).
+    pub structures_near: unsafe extern "C" fn(
+        dimension: i32,
+        x: i32,
+        y: i32,
+        z: i32,
+        radius: i32,
+        ctx: *mut c_void,
+        snbt_sink: LeviRsStrSink,
+    ),
+    /// Send a message of a specific `TextPacketType` (see MessageType) to one
+    /// player. Out-of-range type falls back to Raw.
+    pub player_send_message_typed:
+        unsafe extern "C" fn(sel: LeviRsPlayerSel, msg: LeviRsStr, type_: i32) -> bool,
+    // Future additive fields: append here only.
 }
 
 /// Filled in by the Rust mod inside `levi_rs_main`. Mirrors `LeviRsModVTable`.

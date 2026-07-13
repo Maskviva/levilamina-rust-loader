@@ -18,6 +18,10 @@
 #include "mc/server/commands/ServerCommandOrigin.h"
 #include "mc/world/Container.h"
 #include "mc/world/actor/Actor.h"
+#include "mc/world/item/ItemStack.h"
+#include "mc/world/item/SaveContext.h"
+#include "mc/world/item/SaveContextFactory.h"
+#include "mc/world/actor/ActorDefinitionIdentifier.h"
 #include "mc/world/actor/player/Inventory.h"
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/inventory/EnderChestContainer.h"
@@ -150,6 +154,21 @@ namespace levi_rs
             return out;
         }
 
+        std::string itemToSnbt(ItemStack const& item)
+        {
+            auto ctx = SaveContextFactory::createCloneSaveContext();
+            auto tag = item.save(*ctx);
+            if (!tag) return "{}";
+            return tag->toSnbt(SnbtFormat::Minimize);
+        }
+
+        std::optional<ItemStack> itemFromSnbt(std::string_view snbt)
+        {
+            auto tag = CompoundTag::fromSnbt(snbt);
+            if (!tag) return std::nullopt;
+            return ItemStack::fromTag(*tag);
+        }
+
         // Live player addresses. Only pointers found here get dereferenced.
         static std::unordered_set<uintptr_t> livePlayerAddrs()
         {
@@ -164,10 +183,12 @@ namespace levi_rs
             return addrs;
         }
 
-        // Find an embedded Player pointer stub in the event's tag: a field holding a
-        // compound with `_type_` ("Player") and `_pointer_`. Top-level only — every
-        // event seen so far (join/chat/death/disconnect) has it there.
-        static uintptr_t findPlayerPointer(CompoundTag const& data)
+        // Find an embedded pointer stub in an event's tag: a top-level field
+        // holding a compound with `_type_ == typeName` and a numeric
+        // `_pointer_`. LL's generic reflection emits these for non-serialisable
+        // fields (Player&, ActorDefinitionIdentifier const&, …). Returns 0 if
+        // absent. Read-only; never dereferences.
+        static uintptr_t findPointerOfType(CompoundTag const& data, std::string_view typeName)
         {
             for (auto const& entry : data.mTags)
             {
@@ -177,7 +198,7 @@ namespace levi_rs
                 if (!obj.contains("_type_") || !obj.contains("_pointer_")) continue;
 
                 auto const& typeVar = obj.at("_type_");
-                if (!typeVar.is_string() || std::string_view(typeVar) != "Player") continue;
+                if (!typeVar.is_string() || std::string_view(typeVar) != typeName) continue;
 
                 auto const& ptrVar = obj.at("_pointer_");
                 if (!ptrVar.is_number()) continue;
@@ -186,18 +207,32 @@ namespace levi_rs
             return 0;
         }
 
-        std::string enrichWithPlayer(CompoundTag const& data)
+        static uintptr_t findPlayerPointer(CompoundTag const& data)
         {
-            uintptr_t addr = findPlayerPointer(data);
-            if (addr != 0)
+            return findPointerOfType(data, "Player");
+        }
+
+        // Single enrichment pass for the generic event path. Walks the event's
+        // reflected pointer stubs and splices in decoded fields on ONE copy,
+        // serialising once:
+        //   Player&                    → `_player` {name,xuid,uuid}
+        //   ActorDefinitionIdentifier& → `_identifier` {full,namespace,name}
+        // Each injection is independent and best-effort; an event with neither
+        // stub serialises unchanged. Read-only, no virtual calls on the decoded
+        // pointers (Player uses accessor methods; identifier reads fields).
+        std::string enrichEventData(CompoundTag const& data)
+        {
+            CompoundTag copy = data;
+            bool changed = false;
+
+            // Player: only dereference pointers of currently-online players.
+            if (uintptr_t addr = findPlayerPointer(data); addr != 0)
             {
-                // Safety gate: only dereference pointers of currently online players.
                 auto addrs = livePlayerAddrs();
                 if (addrs.find(addr) != addrs.end())
                 {
                     if (auto* player = reinterpret_cast<Player*>(addr))
                     {
-                        CompoundTag copy = data;
                         copy["_player"] = CompoundTagVariant::object(
                             {
                                 {"name", CompoundTagVariant(player->getRealName())},
@@ -205,11 +240,35 @@ namespace levi_rs
                                 {"uuid", CompoundTagVariant(player->getUuid().asString())}
                             }
                         );
-                        return copy.toSnbt(SnbtFormat::Minimize);
+                        changed = true;
                     }
                 }
             }
-            return data.toSnbt(SnbtFormat::Minimize);
+
+            // ActorDefinitionIdentifier: sanity-gate the pointer, read the three
+            // std::string fields (TypedStorage object wrappers → .get()).
+            if (uintptr_t addr = findPointerOfType(data, "ActorDefinitionIdentifier");
+                addr >= 0x10000 && (addr & 0x7) == 0)
+            {
+                if (auto* id = reinterpret_cast<ActorDefinitionIdentifier*>(addr))
+                {
+                    copy["_identifier"] = CompoundTagVariant::object(
+                        {
+                            {"full", CompoundTagVariant(id->mFullName.get())},
+                            {"namespace", CompoundTagVariant(id->mNamespace.get())},
+                            {"name", CompoundTagVariant(id->mIdentifier.get())}
+                        }
+                    );
+                    changed = true;
+                }
+            }
+
+            return (changed ? copy : data).toSnbt(SnbtFormat::Minimize);
+        }
+
+        std::string enrichWithPlayer(CompoundTag const& data)
+        {
+            return enrichEventData(data);
         }
 
         bool runConsoleCommand(std::string const& cmd)
@@ -224,6 +283,19 @@ namespace levi_rs
             };
             auto output = ll::command::CommandRegistrar::getServerInstance().executeCommand(cmd, origin);
             return output.mSuccessCount > 0;
+        }
+
+        char const* dimensionName(int dim)
+        {
+            switch (dim)
+            {
+            case 1:
+                return "nether";
+            case 2:
+                return "the_end";
+            default:
+                return "overworld";
+            }
         }
 
         std::string playerSummarySnbt(Player& p)

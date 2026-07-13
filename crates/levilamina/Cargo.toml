@@ -1,13 +1,21 @@
 [package]
 name = "levilamina"
-version = "1.0.0"
+version = "26.20.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "Write LeviLamina (Minecraft Bedrock Dedicated Server) mods in safe Rust."
+description = "Write LeviLamina (Minecraft Bedrock Dedicated Server) mods in safe Rust. Targets BDS 1.26.20 / LeviLamina 26.20 (ABI v5)."
 repository = "https://github.com/Maskviva/levilamina-rust-loader"
 readme = "../../README.md"
 keywords = ["levilamina", "minecraft", "bedrock", "mod", "bds"]
 categories = ["game-development", "api-bindings"]
 
+# Minecraft / LeviLamina compatibility is metadata, NOT the crate version:
+# the crate follows its own SemVer (ABI stayed v5 across 1.0.0..26.20), while
+# these track which game/loader build the current release is verified against.
+[package.metadata.minecraft]
+bds_version = "1.26.20"
+levilamina_version = "26.20"
+abi_version = 4
+
 [dependencies]
-levilamina-sys = { version = "1.0.0", path = "../levilamina-sys" }
+levilamina-sys = { version = "26.20.0", path = "../levilamina-sys" }

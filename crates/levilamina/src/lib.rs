@@ -71,9 +71,10 @@ mod logger;
 pub mod nbt;
 pub mod player;
 pub mod scoreboard;
-mod server;
+pub mod server;
+pub mod sim;
 pub mod system;
-mod world;
+pub mod world;
 
 pub use block::Block;
 pub use command::{
@@ -89,10 +90,13 @@ pub use item::ItemStack;
 pub use kvdb::KvDb;
 pub use logger::{LogLevel, Logger};
 pub use nbt::NbtValue;
-pub use player::{Ability, GameMode, Player, PlayerInfo};
+pub use player::{Ability, GameMode, MessageType, Player, PlayerInfo};
 pub use scoreboard::{DisplaySlot, Objective, Scoreboard};
 pub use server::{GamingStatus, Server, SoftEnumOp, Weather};
-pub use world::{BlockInfo, Cell, EntityInfo, PlayerPos, Scan, ScanLayer};
+pub use sim::SimPlayer;
+pub use world::{
+    BlockInfo, Bounds, Cell, EntityInfo, PlayerPos, Scan, ScanLayer, StructureInfo, VillageInfo,
+};
 
 pub mod prelude {
     //! Everything most mods need, in one `use`.
@@ -101,7 +105,7 @@ pub mod prelude {
         CommandInvocationEx, CommandPermission, Container, DisplaySlot, Entity, EntityInfo,
         EventPriority, EventRef, FormResponse, FormValue, GameMode, GamingStatus, ItemStack, KvDb,
         LeviMod, Listener, LogLevel, Logger, ModContext, NbtValue, ParamType, Player, PlayerInfo,
-        PlayerPos, Result, Scan, ScanLayer, Scoreboard, Server, SoftEnumOp, Weather,
+        PlayerPos, Result, Scan, ScanLayer, Scoreboard, Server, SimPlayer, SoftEnumOp, Weather,
     };
 }
 

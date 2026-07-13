@@ -1,6 +1,6 @@
 # Nbt — NBT 读写
 
-> 状态：🧩 规划（今天的桥接已经在**大量使用** NBT——事件数据、方块/实体扫描结果都以 SNBT 文本形式跨 FFI 边界传递，见 [Event](/api/event)/[World](/api/world)；这一层要做的是把背后的 `CompoundTag`/`CompoundTagVariant` 对象模型也变成 Rust 里可直接操作的结构化对象，而不必总是手工拼/解析 SNBT 字符串）。
+> 状态：✅ 已支持。除了事件数据、方块/实体扫描结果以 SNBT 文本跨 FFI 传递（见 [Event](/api/event)/[World](/api/world)）之外，背后的 `CompoundTag`/`CompoundTagVariant` 对象模型也已封装成 Rust 里可直接操作的结构化对象（`Nbt`），无需手工拼 / 解析 SNBT 字符串。
 >
 > **接口来源**：`mc/deps/nbt/` 下的一族真实类型：`Tag`（基类）、`CompoundTag`（复合标签）、`CompoundTagVariant`（类型擦除的"任意 NBT 值"包装，`CompoundTag` 内部就是靠它存字段值）、以及各叶子类型 `ByteTag`/`ShortTag`/`IntTag`/`Int64Tag`/`FloatTag`/`DoubleTag`/`StringTag`/`ByteArrayTag`/`IntArrayTag`/`ListTag`。命名沿用 LSE 风格（snake_case）。
 >
@@ -31,7 +31,7 @@
 
 | API | 作用 | 原生对应 |
 | --- | --- | --- |
-| `Nbt::parse(snbt)` | 解析一段 SNBT 文本，失败时带错误信息 | `CompoundTag::fromSnbt`（返回 `Expected<CompoundTag>`，不是裸指针/`Option`） |
+| `NbtValue::parse(snbt)` | 解析一段 SNBT 文本，失败时带错误信息 | `CompoundTag::fromSnbt`（返回 `Expected<CompoundTag>`，不是裸指针/`Option`） |
 | `tag.to_snbt(format?, indent?)` | 序列化为 SNBT 文本 | `Tag::toSnbt` |
 | `Nbt::from_binary(bytes, little_endian=true)` / `tag.to_binary(little_endian=true)` | 与二进制 NBT 互转（存档格式） | `CompoundTag::fromBinaryNbt` / `toBinaryNbt` |
 | `Nbt::from_network_binary(bytes)` / `tag.to_network_binary()` | 与网络传输用的二进制 NBT 互转（和存档格式不完全相同） | `CompoundTag::fromNetworkNbt` / `toNetworkNbt` |
@@ -53,7 +53,7 @@
 | --- | --- | --- |
 | `value.kind()` | 返回具体是上面 12 种里的哪一种 | `CompoundTagVariant::index` / `getId` |
 | `value.is_null()` / `is_object()` / `is_array()` / `is_string()` / `is_number()` / `is_number_int()` / `is_number_float()` / `is_boolean()` / `is_binary()` | 类型判断 | 对应的 `is_xxx()` 系列 |
-| `value.as_compound()` / `as_list()` / `as_string()` / `as_i32()` / `as_i64()` / `as_f32()` / `as_f64()` / `as_bool()` | 按类型取值（类型不符时返回 `None`） | `CompoundTagVariant::get<T>()` |
+| `value.as_compound()` / `as_list()` / `as_str()` / `as_i64()` / `as_f64()` / `as_bool()` | 按类型取值（类型不符时返回 `None`） | `CompoundTagVariant::get<T>()` |
 | `value[key]` | 当值持有 Compound 时，直接按键取子字段（无需先手动转换类型） | `CompoundTagVariant::operator[]` |
 | `Nbt::compound_value(fields)` | 直接构造一个 Compound 类型的值 | `CompoundTagVariant::object(...)` |
 | `Nbt::array_value(items)` | 直接构造一个 List 类型的值 | `CompoundTagVariant::array(...)` |

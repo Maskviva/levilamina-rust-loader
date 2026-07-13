@@ -1,6 +1,8 @@
 # Block — 方块对象
 
-> 状态：🧩 规划（单点读取 `World::get_block` 与放置 `World::set_block` 已在当前桥接以坐标形式支持，见 [World](/api/world)；完整句柄属规划）。
+> 状态：✅ 已支持。方块句柄经由 `World::get_block(dim, pos)` 获取。
+>
+> ⚠️ `is_crafting_block()` / `is_interactive_block()` 这两个判定在 BDS **26.20.0** 生成的头文件里被 `#ifdef LL_PLAT_C` 守卫、正常编译不可用，桥接对这两项返回「不支持」错误；其余方法均可用。
 >
 > **接口来源**：本页方法对应原生 C++ 类 `Block`（`mc/world/level/block/Block.h`），排除引擎内部虚函数插桩（`$` 前缀）。命名沿用 LSE 风格（snake_case）。
 >
@@ -50,8 +52,8 @@
 
 | API | 作用 | 原生对应 |
 | --- | --- | --- |
-| `block.is_crafting_block()` | 是否为工作台类方块 | `Block::isCraftingBlock` |
-| `block.is_interactive_block()` | 是否可交互（如箱子、按钮） | `Block::isInteractiveBlock` |
+| `block.is_crafting_block()` ⚠️ | 是否为工作台类方块（26.20.0 不可用，见页首） | `Block::isCraftingBlock` |
+| `block.is_interactive_block()` ⚠️ | 是否可交互（26.20.0 不可用，见页首） | `Block::isInteractiveBlock` |
 | `block.is_partial_block(pos)` / `is_top_partial_block(pos)` | 是否为半高/顶部半高方块 | `Block::isPartialBlock` / `isTopPartialBlock` |
 | `block.is_solid_blocking_and_not_signal_source()` | 是否为"实心且非红石信号源"的方块 | `Block::isSolidBlockingBlockAndNotSignalSource` |
 | `block.can_connect(other, face)` | 能否与相邻方块相连（如围栏/墙） | `Block::canConnect` |

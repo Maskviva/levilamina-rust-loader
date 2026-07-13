@@ -1,5 +1,5 @@
 /**
- * bridge/ScoreboardApi.cpp — scoreboard operations (ABI v4 §F).
+ * bridge/ScoreboardApi.cpp — scoreboard operations (ABI v5 §F).
  *
  * Reads and writes go through the native Scoreboard (Level::getScoreboard).
  * Score identities are "fake player" names — the same namespace vanilla

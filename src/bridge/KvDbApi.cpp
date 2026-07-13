@@ -1,5 +1,5 @@
 /**
- * bridge/KvDbApi.cpp — key-value database (ABI v4 §I).
+ * bridge/KvDbApi.cpp — key-value database (ABI v5 §I).
  *
  * The one resource-style handle in the ABI, so the ownership rules are
  * explicit: the loader news every KeyValueDB into a registry keyed by mod;

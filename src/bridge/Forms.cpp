@@ -1,7 +1,7 @@
 /**
- * bridge/Forms.cpp — forms with async result callbacks (ABI v4 §G).
+ * bridge/Forms.cpp — forms with async result callbacks (ABI v5 §G).
  *
- * The only v4 entry point whose callback fires after the call frame. The
+ * The only v5 entry point whose callback fires after the call frame. The
  * lifetime discipline mirrors commands: the ll::form callback captures a
  * weak_ptr<RustMod> plus a ticket into a per-loader pending table; if the mod
  * is gone or disabled by the time the player responds, the Rust callback is

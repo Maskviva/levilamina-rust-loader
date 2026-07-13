@@ -8,6 +8,8 @@
  */
 #pragma once
 
+#include <string_view>
+
 #include "LeviRsAbi.h"
 
 namespace levi_rs
@@ -66,6 +68,40 @@ namespace levi_rs
         bool api_game_rule_get(LeviRsStr name, void* ctx, LeviRsStrSink sink);
         bool api_game_rule_set(LeviRsStr name, LeviRsStr value);
         bool api_server_info_str(int32_t prop, void* ctx, LeviRsStrSink sink);
+        bool api_spawn_particle_for(
+            LeviRsPlayerSel sel, int32_t dimension, LeviRsStr effectName, double x, double y, double z);
+        bool api_send_packet(LeviRsPlayerSel sel, int32_t packetId, uint8_t const* body, size_t bodyLen);
+
+        /* ── hooks/TickControl.cpp ── */
+        bool api_tick_freeze(bool on);
+        bool api_tick_step(uint32_t n);
+        bool api_tick_warp(double factor);
+
+        /* ── hooks/Profiler.cpp ── */
+        bool api_profile_begin(uint32_t ticks);
+        bool api_profile_take(void* ctx, LeviRsStrSink sink);
+
+        /* ── hooks/HookEvents.cpp ── */
+        /* bridge-hook events (not ABI slots): plumbing used by Events.cpp and
+         * RustModManager to route synthetic hook-backed event ids. Individual
+         * events self-register from hooks/{Hopper,Destroy,…}Events.cpp. */
+        LeviRsListenerHandle
+        hookEventSubscribe(RustMod* mod, std::string_view eventId, LeviRsEventCb cb, void* user);
+        bool hookEventUnsubscribe(RustMod* mod, LeviRsListenerHandle handle);
+        void hookEventDropMod(RustMod* mod);
+        void hookEventList(void* ctx, LeviRsStrSink sink);
+
+        /* ── SimPlayer.cpp ── */
+        bool api_sim_spawn(LeviRsStr name, int32_t dimension, double x, double y, double z);
+        bool api_sim_do(LeviRsPlayerSel sel, LeviRsStr action, LeviRsStr args_snbt);
+        bool api_sim_is(LeviRsPlayerSel sel);
+        void api_sim_list(void* ctx, LeviRsStrSink name_sink);
+
+        /* ── WorldInfo.cpp ── */
+        void api_villages(int32_t dimension, void* ctx, LeviRsStrSink snbt_sink);
+        void api_structures_near(
+            int32_t dimension, int32_t x, int32_t y, int32_t z, int32_t radius, void* ctx,
+            LeviRsStrSink snbt_sink);
 
         /* ── World.cpp ── */
         bool api_spawn_particle(int32_t dimension, LeviRsStr effectName, double x, double y, double z);
@@ -115,6 +151,7 @@ namespace levi_rs
         void api_list_players(void* ctx, LeviRsStrSink snbtSink);
         bool api_player_resolve(LeviRsPlayerSel sel, LeviRsActorId* out);
         bool api_player_send_message(LeviRsPlayerSel sel, LeviRsStr msg);
+        bool api_player_send_message_typed(LeviRsPlayerSel sel, LeviRsStr msg, int32_t type);
         bool api_player_disconnect(LeviRsPlayerSel sel, LeviRsStr reason);
         void api_broadcast_message(LeviRsStr msg);
         bool api_player_set_gamemode(LeviRsPlayerSel sel, int32_t mode);

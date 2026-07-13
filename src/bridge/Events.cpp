@@ -211,6 +211,14 @@ namespace levi_rs::bridge
             return static_cast<LeviRsListenerHandle>(typedListener.get());
         }
 
+        // --- Bridge-hook events: synthetic ids backed by native detours ---
+        // (hooks/ owns the detours; matched by name like the command
+        // events above, so they never touch the dynamic registry.)
+        if (auto h = hookEventSubscribe(mod, wanted, cb, user))
+        {
+            return h;
+        }
+
         // --- Normal events: resolve against the registry + DynamicListener ---
         auto resolved = resolveEventId(eventId);
         if (!resolved)
@@ -264,6 +272,7 @@ namespace levi_rs::bridge
     {
         auto* mod = asMod(modHandle);
         if (!mod || !handle) return false;
+        if (hookEventUnsubscribe(mod, handle)) return true; // bridge-hook events first
         for (auto it = mod->listeners.begin(); it != mod->listeners.end(); ++it)
         {
             if (it->get() == handle)
@@ -283,5 +292,6 @@ namespace levi_rs::bridge
         {
             sink(ctx, id.name);
         }
+        hookEventList(ctx, sink); // bridge-hook events (hooks/) are subscribable too
     }
 } // namespace levi_rs::bridge

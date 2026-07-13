@@ -1,12 +1,12 @@
 # Entity — 实体对象
 
-> 状态：🧩 规划（读写生命值等少数能力已在 [World](/api/world)/[Player](/api/player) 里以桥接函数形式支持；完整句柄属规划）。
+> 状态：✅ 已支持。实体句柄经由 `Entity::from_id(id)` / `Entity::list()` 获取；生命值、位置、状态判定、传送、标签、药水效果、生成/击杀等均已封装。
 >
 > **接口来源**：本页方法对应原生 C++ 类 `Actor`（`mc/world/actor/Actor.h`）与 `Mob`（`mc/world/actor/Mob.h`，继承自 `Actor`）的公开成员函数——即真实存在于 LeviLamina SDK 头文件里、可被调用的方法（不含引擎内部的虚函数插桩，即头文件里以 `$` 开头或前导下划线的条目）。命名沿用 LSE 的简洁风格（snake_case）。
 >
 > **继承关系**：原生是 `Actor → Mob → Player`。本页覆盖 `Actor`/`Mob` 两层，即除玩家外的一切实体（生物、载具、掉落物等）通用的方法；`Player` 在下一层文档中给出玩家独有的部分，会附带"继承自 Entity"的说明，不重复列出这里的内容。
 >
-> 获取：从事件回调，或 `Entity::get(id)` / `Entity::all()` / `Entity::in_range(from, to, range)` / `Entity::spawn_mob(name, pos)`。
+> 获取：从事件回调，或 `Entity::from_id(id)`（按 id 取单个）/ `Entity::list()`（枚举全部）；生成实体用 `Server::spawn_mob(name, pos)`。
 
 以下针对一个实体句柄 `entity`。每行标注对应的原生方法名，便于对照原生头文件核实。
 
@@ -16,10 +16,10 @@
 
 | API | 作用 | 原生对应 |
 | --- | --- | --- |
-| `Entity::get(id)` | 按 `ActorUniqueID` / 运行时 id 获取实体 | `Actor::tryGetFromEntity` |
-| `Entity::all()` | 获取全部已加载实体 | 遍历 `Level::getRuntimeActorList` |
+| `Entity::from_id(id)` | 按 `ActorUniqueID` 获取实体 | `Actor::tryGetFromEntity` |
+| `Entity::list()` | 枚举全部已加载实体 | 遍历 `Level::getRuntimeActorList` |
 | `Entity::in_range(from, to, range)` | 获取指定范围内的实体 | `Actor::fetchNearbyActorsSorted` |
-| `Entity::spawn_mob(name, pos)` | 在坐标生成生物 | — |
+| `Server::spawn_mob(name, pos)` | 在坐标生成生物（实际在 `Server` 句柄上） | `Spawner::spawnMob` |
 | `Entity::load_mob(nbt, pos)` | 用 NBT 在坐标生成生物 | — |
 | `Entity::clone_mob(entity, pos)` | 复制实体到坐标 | `Actor::clone` |
 

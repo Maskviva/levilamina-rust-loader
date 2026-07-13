@@ -1,6 +1,6 @@
 # Item — 物品对象
 
-> 状态：🧩 规划。
+> 状态：✅ 已支持。
 >
 > **接口来源**：本页方法对应原生 C++ 类 `ItemStackBase`（`mc/world/item/ItemStackBase.h`，绝大部分方法在这里）与其叶子类 `ItemStack`（`mc/world/item/ItemStack.h`，新增网络/耐久相关的少量方法）。排除引擎内部虚函数插桩（`$` 前缀）与 Mojang 自行标记为内部的方法（前导下划线）。命名沿用 LSE 风格（snake_case）。
 >
@@ -8,7 +8,7 @@
 > 1. **堆叠数量没有 getter**——`mCount` 是公开成员字段（`uchar`），原生没有 `getCount()` 方法，只有 `add`/`remove`/`set`/`setStackSize` 这些修改它的方法；桥接会把字段读出来做成 `count()`。
 > 2. **完整 NBT 的读写不对称**：读出整个物品用 `ItemStackBase::save(ctx)`；反过来"用一整份 NBT 构造/替换一个物品"用的是 `ItemStack::fromTag(tag)`（静态工厂），而 `setUserData(tag)` 只覆盖物品的"用户数据"子标签（lore/附魔/展示名等），并不是整个物品的通用 NBT 写入口。
 >
-> 获取：从事件回调，或 `Item::new(name, count)` / `ItemStack::from_nbt(tag)`。
+> 获取：从事件回调 / 玩家物品栏，或 `ItemStack::create(name, count)` / `ItemStack::from_snbt(snbt)` / `ItemStack::empty()`。
 
 以下针对一个物品句柄 `item`。
 
@@ -16,8 +16,9 @@
 
 | API | 作用 | 原生对应 | 状态 |
 | --- | --- | --- | :---: |
-| `Item::new(name, count)` | 按类型名创建一个新物品堆 | 组合 `ItemRegistry::lookupByName`（按名查类型）+ 构造/`init` 出 `ItemStack`（具体构造路径待钉实） | 🧩 |
-| `ItemStack::from_nbt(tag)` | 从一份完整 NBT 构造物品 | `ItemStack::fromTag` | 🧩 |
+| `ItemStack::create(name, count)` | 按类型名创建一个新物品堆 | 桥接内部按名查类型并构造 `ItemStack` | ✅ |
+| `ItemStack::from_snbt(snbt)` | 从一份 SNBT 文本构造物品 | 解析 SNBT 后走 `ItemStack::fromTag` | ✅ |
+| `ItemStack::empty()` | 空物品堆 | `ItemStack::EMPTY_ITEM` | ✅ |
 
 ## 名称
 

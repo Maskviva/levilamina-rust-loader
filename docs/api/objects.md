@@ -21,20 +21,29 @@
 
 ## Packet — 数据包
 
-> 状态：🧩 规划。
+> 状态：部分✅——**原始发包原语已支持**；类型化的 Packet 富对象（按包种类构造、填字段）仍属 🧩 规划。
 >
-> **接口来源**：原生基类 `Packet`（`mc/network/Packet.h`）。具体的包（聊天消息、标题、计分板更新……）各自是独立的类，`mc/network/packet/` 下有几十个，例如 `TextPacket`、`SetTitlePacket`。命名沿用 LSE 风格。
+> **接口来源**：原生基类 `Packet`（`mc/network/Packet.h`）。具体的包（聊天消息、标题、计分板更新……）各自是独立的类，`mc/network/packet/` 下有几十个，例如 `TextPacket`、`SetTitlePacket`。
+
+### 已支持：原始发包（逃生舱口）
+
+| API | 作用 | 原生对应 | 状态 |
+| --- | --- | --- | :---: |
+| `player.send_packet(packet_id, body)` | 把一段**当前游戏版本线格式**的包体，按 `MinecraftPacketIds` 数值 id 反序列化成真实数据包对象，**只发给这一个玩家的连接** | `MinecraftPackets::createPacket` + `Packet::read` + `Player::sendNetworkPacket` | ✅ |
+
+- 桥接会校验：玩家在线、id 可构造、包体解析成功、且**字节恰好读完**（有剩余字节说明形状不匹配当前版本，直接拒发，不会发出半解析的包）。
+- ⚠️ 线格式随游戏版本变化，由调用方负责；能解析但内容不合理的包仍会被送达，可能造成客户端表现异常。**有类型化 API 时优先用类型化 API**（如 [`Server::spawn_particle_for`](/api/world) 就是在这个原语的发送路径上做的类型化派生）。
+
+### 🧩 规划：类型化 Packet 对象
 
 | API | 作用 | 原生对应 |
 | --- | --- | --- |
 | `packet.send_to(player)` | 发送给指定玩家 | `Packet::sendTo` |
-| `packet.send_to_client(network_id, sub_client_id)` | 按网络连接标识发送 | `Packet::sendToClient` |
 | `packet.send_to_all_clients()` | 广播给所有已连接客户端 | `Packet::sendToClients` |
-| `player.send_packet(packet)` | 从玩家一侧发送（等效于 `packet.send_to(player)`） | `Player::sendNetworkPacket` |
-| `Packet::create(id)` | 按数值 id 构造一个空的具体类型数据包（进阶，构造后还需自行填充字段） | `MinecraftPackets::createPacket` |
+| `Packet::create(id)` | 按数值 id 构造一个空的具体类型数据包，构造后填充字段 | `MinecraftPackets::createPacket` |
 | `TextPacket::raw_message(text)` | 构造一条原始聊天消息包（不做名字/翻译替换） | `TextPacket::createRawMessage` |
 
-> 除了上面这两个通用构造入口，绝大多数具体数据包（标题、计分板更新、Boss 血条……）都各自有自己的构造函数/字段，需要逐个按用途绑定，暂未纳入简化层。
+> 绝大多数具体数据包（标题、计分板更新、Boss 血条……）都各自有自己的构造函数/字段，需要逐个按用途绑定；在被绑定之前，`player.send_packet` 是通用的绕行通道。
 
 ## Device — 设备信息
 
@@ -52,4 +61,4 @@
 
 > **不对应任何原生 API**。原生服务端只有单点粒子生成 `Level::spawnParticleEffect`（已作为 ✅ 的 `World::spawn_particle` 支持，见 [World](/api/world)）；"沿一条线/一个圆/一个立方体轮廓画粒子"这类几何图形，原生完全没有对应支持（客户端渲染那侧的 `ParticleEmitter` 是纯客户端内部实现，服务端模组接触不到）。
 >
-> 这类效果本质是**在 Rust 侧按几何计算出一串坐标，对每个坐标调用一次 `World::spawn_particle`**——纯应用层逻辑，不需要新的桥接支持。仓库自带的 `examples/region-scan` 示例就是这么做的：按固定间距在选区边缘上取点、逐点生成粒子，拼出一个动画外框。需要"画线/画圆"效果时，参考那个示例即可，不必等一个专门的 `ParticleSpawner` API。
+> 这类效果本质是**在 Rust 侧按几何计算出一串坐标，对每个坐标调用一次 `World::spawn_particle`（或只想给一个玩家看时用 `World::spawn_particle_for`）**——纯应用层逻辑，不需要新的桥接支持。仓库自带的 `examples/region-scan` 示例就是这么做的：按固定间距在选区边缘上取点、逐点生成粒子，拼出一个动画外框。需要"画线/画圆"效果时，参考那个示例即可，不必等一个专门的 `ParticleSpawner` API。

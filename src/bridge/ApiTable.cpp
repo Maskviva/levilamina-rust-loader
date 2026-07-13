@@ -46,14 +46,14 @@ namespace levi_rs
             /* get_player_position */ api_get_player_position,
             /* scan_region         */ api_scan_region,
 
-            /* ── v4 §A world read/write & clock ── */
+            /* ── v5 §A world read/write & clock ── */
             /* get_block           */ api_get_block,
             /* set_block           */ api_set_block,
             /* get_time            */ api_get_time,
             /* set_time            */ api_set_time,
             /* set_weather         */ api_set_weather,
 
-            /* ── v4 §B player management ── */
+            /* ── v5 §B player management ── */
             /* list_players        */ api_list_players,
             /* player_resolve      */ api_player_resolve,
             /* player_send_message */ api_player_send_message,
@@ -66,7 +66,7 @@ namespace levi_rs
             /* player_set_num      */ api_player_set_num,
             /* player_action       */ api_player_action,
 
-            /* ── v4 §C actors ── */
+            /* ── v5 §C actors ── */
             /* list_actors         */ api_list_actors,
             /* actor_snapshot      */ api_actor_snapshot,
             /* actor_get_num       */ api_actor_get_num,
@@ -75,13 +75,13 @@ namespace levi_rs
             /* spawn_mob           */ api_spawn_mob,
             /* explode             */ api_explode,
 
-            /* ── v4 §D blocks & block entities ── */
+            /* ── v5 §D blocks & block entities ── */
             /* block_get_num       */ api_block_get_num,
             /* block_get_str       */ api_block_get_str,
             /* block_action        */ api_block_action,
             /* block_entity_snbt   */ api_block_entity_snbt,
 
-            /* ── v4 §E items & containers ── */
+            /* ── v5 §E items & containers ── */
             /* item_get_num        */ api_item_get_num,
             /* item_get_str        */ api_item_get_str,
             /* item_transform      */ api_item_transform,
@@ -92,19 +92,19 @@ namespace levi_rs
             /* container_remove_item */ api_container_remove_item,
             /* container_clear     */ api_container_clear,
 
-            /* ── v4 §F scoreboard ── */
+            /* ── v5 §F scoreboard ── */
             /* scoreboard_op       */ api_scoreboard_op,
 
-            /* ── v4 §G forms ── */
+            /* ── v5 §G forms ── */
             /* form_send           */ api_form_send,
 
-            /* ── v4 §H parameterized commands & enums ── */
+            /* ── v5 §H parameterized commands & enums ── */
             /* register_command_ex        */ api_register_command_ex,
             /* register_command_enum      */ api_register_command_enum,
             /* register_command_soft_enum */ api_register_command_soft_enum,
             /* update_command_soft_enum   */ api_update_command_soft_enum,
 
-            /* ── v4 §I nbt / kvdb / system / server ── */
+            /* ── v5 §I nbt / kvdb / system / server ── */
             /* nbt_snbt_to_binary  */ api_nbt_snbt_to_binary,
             /* nbt_binary_to_snbt  */ api_nbt_binary_to_snbt,
             /* kvdb_open           */ api_kvdb_open,
@@ -125,6 +125,20 @@ namespace levi_rs
             /* game_rule_get       */ api_game_rule_get,
             /* game_rule_set       */ api_game_rule_set,
             /* server_info_str     */ api_server_info_str,
+            /* spawn_particle_for  */ api_spawn_particle_for,
+            /* send_packet         */ api_send_packet,
+            /* tick_freeze         */ api_tick_freeze,
+            /* tick_step           */ api_tick_step,
+            /* tick_warp           */ api_tick_warp,
+            /* profile_begin       */ api_profile_begin,
+            /* profile_take        */ api_profile_take,
+            /* sim_spawn           */ api_sim_spawn,
+            /* sim_do              */ api_sim_do,
+            /* sim_is              */ api_sim_is,
+            /* sim_list            */ api_sim_list,
+            /* villages            */ api_villages,
+            /* structures_near     */ api_structures_near,
+            /* player_send_message_typed */ api_player_send_message_typed,
         };
     } // namespace
 
@@ -137,6 +151,7 @@ namespace levi_rs
             bridge::commandsOnRustModGone(mod);
             bridge::formsOnRustModGone(mod);
             bridge::kvdbOnRustModGone(mod);
+            bridge::hookEventDropMod(mod); // detach bridge-hook event subscribers
         }
     } // namespace detail
 } // namespace levi_rs

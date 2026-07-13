@@ -1,5 +1,5 @@
 /**
- * levilamina-rs C++ ABI — v4
+ * levilamina-rs C++ ABI — v5
  *
  * This header is the single source of truth for the FFI contract between the
  * C++ loader mod (`levilamina-rust-loader`) and Rust mods (`levilamina-sys`).
@@ -30,7 +30,7 @@
 #include <string_view>
 
 extern "C" {
-#define LEVI_RS_ABI_VERSION 4u
+#define LEVI_RS_ABI_VERSION 5u
 
 /**
  * UTF-8 string view — an alias for std::string_view, not a custom struct.
@@ -129,7 +129,7 @@ typedef void (*LeviRsBlockSink)(void* ctx, int32_t x, int32_t y, int32_t z, Levi
 typedef void (*LeviRsEntitySink)(void* ctx, int32_t x, int32_t y, int32_t z, LeviRsStr type, LeviRsStr snbt);
 
 
-/* ═════════════════════════ ABI v4: types ═════════════════════════ */
+/* ═════════════════════════ ABI v5: types ═════════════════════════ */
 
 /**
  * Player selector — the identifier half of the "handles are identifiers,
@@ -181,7 +181,7 @@ typedef void (*LeviRsFormResultCb)(void* user, LeviRsStr result_snbt);
 /** Opaque handle to an open key-value database owned by the loader. */
 typedef void* LeviRsKvDbHandle;
 
-/* ── v4 property / action keys.  APPEND-ONLY: never renumber or remove. ──
+/* ── v5 property / action keys.  APPEND-ONLY: never renumber or remove. ──
  * Unknown values make the call return false; the Rust safe layer maps that
  * to Err("unsupported"), which is the forward-compat negotiation.        */
 
@@ -522,7 +522,7 @@ typedef struct LeviRsApi
     );
 
 
-    /* ═════════════════ ABI v4 (v1.0.0) — append-only ═════════════════
+    /* ═════════════════ ABI v5 (v1.0.0) — append-only ═════════════════
      * Everything below: SERVER THREAD ONLY unless noted. All calls return
      * false / do nothing while the level is not ready. Unknown enum keys
      * return false (forward-compat negotiation).                        */
@@ -714,7 +714,118 @@ typedef struct LeviRsApi
     bool (*game_rule_set)(LeviRsStr name, LeviRsStr value); /* /gamerule */
     bool (*server_info_str)(int32_t prop, void* ctx, LeviRsStrSink sink);
 
-    /* ABI v5+: append new fields here only. */
+    /*
+     * Per-player particle packet (additive, gated by struct_size).
+     * Sends a SpawnParticleEffectPacket ONLY to the resolved player
+     * (Player::sendNetworkPacket) instead of Level::spawnParticleEffect's
+     * dimension-wide broadcast — other clients never receive it.
+     * `dimension` is the vanilla dimension id carried in the packet; pass the
+     * dimension the coordinates refer to (normally the player's own — clients
+     * don't render particles for another dimension).
+     * False if the player is offline / can't be resolved.
+     */
+    bool (*spawn_particle_for)(
+        LeviRsPlayerSel sel, int32_t dimension, LeviRsStr effect_name, double x, double y, double z);
+
+    /*
+     * Raw per-connection packet send (additive, gated by struct_size) — the
+     * generic primitive spawn_particle_for derives from.
+     * `packet_id` is a MinecraftPacketIds value; `body`/`body_len` is the
+     * packet's wire-format body for the CURRENT game version. The bridge
+     * deserialises it into a real packet object (MinecraftPackets::createPacket
+     * + Packet::read) and delivers it to the resolved player's connection only.
+     * False if: player offline, unknown/unconstructible id, body fails to
+     * parse, or bytes are left over after parsing (wrong shape for this
+     * version). ESCAPE HATCH: the wire format is version-specific and is the
+     * caller's responsibility; prefer typed entries when one exists.
+     */
+    bool (*send_packet)(LeviRsPlayerSel sel, int32_t packet_id, uint8_t const* body, size_t body_len);
+
+    /*
+     * Tick control (additive, gated by struct_size). Backed by a bridge-owned
+     * detour on Level::tick, installed lazily on the first control call and
+     * left in place (idle cost: one predictable branch per frame — a control
+     * call can arrive from a command handler that is executing INSIDE the
+     * tick, where unpatching would not be safe). Server thread only.
+     * While frozen, mobs/blocks/redstone/time stop; players can still move
+     * and chat (movement is client-authoritative, network runs outside the
+     * level tick).
+     */
+    bool (*tick_freeze)(bool on);
+    /** Only while frozen: queue exactly n extra frames. False if not frozen or n == 0. */
+    bool (*tick_step)(uint32_t n);
+    /** 0 < factor <= 100. Fractional = slow motion (accumulator), 1.0 restores normal. */
+    bool (*tick_warp)(double factor);
+
+    /*
+     * Per-subsystem MSPT profiler (additive, gated by struct_size). Backed by
+     * five timing detours (Level/Dimension tick, redstone, chunk block ticks,
+     * block entities), installed lazily on the first profile_begin and left
+     * in place. One sampling window at a time. Server thread only.
+     */
+    /** Arm a window of `ticks` level ticks (1..12000). False if 0, too big, or already sampling. */
+    bool (*profile_begin)(uint32_t ticks);
+    /**
+     * Poll for the finished report. False while sampling / nothing armed;
+     * true exactly once per window, sinking one SNBT report:
+     * {ticks:N, buckets:{level_tick:{us,calls}, dimension_tick:{…}, redstone:{…},
+     *  chunk_blocks:{…}, block_entities:{…}}}. Bucket times are INCLUSIVE
+     * (nested subsystems), report side by side, don't sum.
+     */
+    bool (*profile_take)(void* ctx, LeviRsStrSink sink);
+
+    /*
+     * Simulated ("fake") players (additive, gated by struct_size).
+     * sim_spawn creates a real ServerPlayer with that name — every existing
+     * per-player entry (teleport, health, inventory, kick, …) works on it via
+     * the usual name selector. sim_do multiplexes the simulate* verb family:
+     * the action vocabulary grows bridge-side without new table slots
+     * (verbs: despawn stop jump attack interact use_item drop respawn
+     * move_to navigate_to look_at destroy_block destroy_look stop_destroy
+     * interact_block sneak fly chat — args as SNBT, see docs). Gated on
+     * isSimulatedPlayer(): a real player can never be puppeted. False on
+     * unknown verb, malformed args, offline/non-sim target.
+     */
+    bool (*sim_spawn)(LeviRsStr name, int32_t dimension, double x, double y, double z);
+    bool (*sim_do)(LeviRsPlayerSel sel, LeviRsStr action, LeviRsStr args_snbt);
+    /** True if the selector resolves to a live simulated player. Lets a mod
+     *  re-validate a bot after a restart (the SimulatedPlayer persists in the
+     *  world, but in-memory handles don't). */
+    bool (*sim_is)(LeviRsPlayerSel sel);
+    /** Enumerate the names of all live simulated players (sink receives each
+     *  name). Rebuild a handle from a name to drive a bot that outlived the
+     *  session that spawned it. */
+    void (*sim_list)(void* ctx, LeviRsStrSink name_sink);
+
+    /*
+     * Read-only world-data queries (additive, gated by struct_size). Both
+     * stream one SNBT object per result through the sink; observational only.
+     * Server thread only.
+     */
+    /** Enumerate villages in a dimension. Each: {uuid, center:[x,y,z],
+     *  bounds:{min,max}, poi_count}. */
+    void (*villages)(int32_t dimension, void* ctx, LeviRsStrSink snbt_sink);
+    /** Hardcoded spawn areas (nether fortress / witch hut / ocean monument /
+     *  pillager outpost) whose chunks intersect a radius around (x,y,z). Each:
+     *  {type, bounds:{min,max}}. Only LOADED chunks are inspected — a
+     *  read-only query never force-loads. */
+    void (*structures_near)(
+        int32_t dimension, int32_t x, int32_t y, int32_t z, int32_t radius, void* ctx,
+        LeviRsStrSink snbt_sink);
+
+    /*
+     * Send a message of a specific TextPacketType to one player (additive,
+     * gated by struct_size). `type` is a TextPacketType value:
+     *   0 Raw · 1 Chat · 2 Translate · 3 Popup · 4 JukeboxPopup · 5 Tip ·
+     *   6 SystemMessage · 7 Whisper · 8 Announcement · 9 TextObjectWhisper ·
+     *   10 TextObject · 11 TextObjectAnnouncement.
+     * Out-of-range falls back to Raw. Single-string body (like LSE tell): the
+     * author/param kinds (Chat/Whisper/Translate) arrive as plain text.
+     * plain `player_send_message` remains the Raw/Chat convenience path.
+     */
+    bool (*player_send_message_typed)(LeviRsPlayerSel sel, LeviRsStr msg, int32_t type);
+
+    /* Future additive fields: append here only. */
 } LeviRsApi;
 
 /**
