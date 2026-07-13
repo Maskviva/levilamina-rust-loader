@@ -55,7 +55,7 @@ impl Block {
         }
     }
 
-    pub fn position(&self) -> (i32, i32, i32) {
+    pub fn position(&self) -> crate::types::PositionI32 {
         (self.x, self.y, self.z)
     }
 

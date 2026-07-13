@@ -10,6 +10,7 @@ use crate::sys;
 pub mod builder;
 
 pub use builder::{CommandBuilder, OverloadBuilder};
+use crate::types::PositionF64;
 
 /// Mirrors `CommandPermissionLevel`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,7 +55,7 @@ pub struct CommandOrigin {
     pub origin_type: i32,
     /// Present when the origin has an entity (players, mobs, /execute as).
     pub dimension: Option<i32>,
-    pub position: Option<(f64, f64, f64)>,
+    pub position: Option<PositionF64>,
 }
 
 /// Invocation context for parameterized commands ([`CommandBuilder`]).

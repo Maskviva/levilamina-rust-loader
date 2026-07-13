@@ -1,6 +1,8 @@
 //! Region-scan value types: a [`Scan`] is layers of [`Cell`]s, each cell a
 //! [`BlockInfo`] plus any [`EntityInfo`]s; [`PlayerPos`] is a player's location.
 
+use crate::types::PositionI32;
+
 /// A connected player's feet position and dimension.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PlayerPos {
@@ -12,7 +14,7 @@ pub struct PlayerPos {
 
 impl PlayerPos {
     /// The integer block cell the player is standing in.
-    pub fn block(&self) -> (i32, i32, i32) {
+    pub fn block(&self) -> PositionI32 {
         (
             self.x.floor() as i32,
             self.y.floor() as i32,
@@ -73,14 +75,14 @@ pub struct ScanLayer {
 /// [`Cell`] describing the block and entities at that grid position.
 #[derive(Debug, Clone)]
 pub struct Scan {
-    pub min: (i32, i32, i32),
-    pub max: (i32, i32, i32),
+    pub min: PositionI32,
+    pub max: PositionI32,
     /// One entry per Y level, from `min.1` (index 0) up to `max.1`.
     pub layers: Vec<ScanLayer>,
 }
 
 impl Scan {
-    pub(crate) fn new(min: (i32, i32, i32), max: (i32, i32, i32)) -> Self {
+    pub(crate) fn new(min: PositionI32, max: PositionI32) -> Self {
         let size_x = (max.0 - min.0 + 1).max(0) as usize;
         let size_z = (max.2 - min.2 + 1).max(0) as usize;
         let layers = (min.1..=max.1)

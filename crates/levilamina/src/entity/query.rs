@@ -5,6 +5,7 @@ use crate::error::Result;
 use crate::ffi::call_out_str;
 use crate::nbt::NbtValue;
 use crate::{rt, sys};
+use crate::types::PositionF64;
 
 impl Entity {
     /// Wrap a raw ActorUniqueID (from a snapshot, a command selector arg, …).
@@ -58,7 +59,7 @@ impl Entity {
         self.get_str(sys::ASTR_NAME_TAG)
     }
 
-    pub fn pos(&self) -> Result<(f64, f64, f64)> {
+    pub fn pos(&self) -> Result<PositionF64> {
         Ok((
             self.get_num(sys::APROP_POS_X)?,
             self.get_num(sys::APROP_POS_Y)?,

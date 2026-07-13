@@ -143,15 +143,13 @@ impl<'a> EventRef<'a> {
     /// `cancelled = 1b`, serialize; falls back to the v0.x textual flip if
     /// the payload doesn't parse.
     pub fn cancel(&mut self) {
-        match self.value() {
-            Ok(mut v) => {
-                if v.insert("cancelled", NbtValue::Byte(1)) {
-                    self.replacement = Some(v.to_snbt());
-                    return;
-                }
+        if let Ok(mut v) = self.value() {
+            if v.insert("cancelled", NbtValue::Byte(1)) {
+                self.replacement = Some(v.to_snbt());
+                return;
             }
-            Err(_) => {}
         }
+
         let base = self.replacement.as_deref().unwrap_or(self.snbt);
         if base.contains("cancelled:0b") {
             self.replacement = Some(base.replace("cancelled:0b", "cancelled:1b"));

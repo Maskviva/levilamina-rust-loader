@@ -75,6 +75,7 @@ pub mod server;
 pub mod sim;
 pub mod system;
 pub mod world;
+pub mod types;
 
 pub use block::Block;
 pub use command::{

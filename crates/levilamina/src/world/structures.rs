@@ -1,6 +1,7 @@
 //! Read-only world-data types from `Server::villages` / `structures_near`:
 //! [`VillageInfo`] and [`StructureInfo`], with SNBT parsing helpers.
 
+use crate::types::PositionF64;
 use super::*;
 
 /// One village, from [`Server::villages`](crate::server::Server::villages).
@@ -9,7 +10,7 @@ pub struct VillageInfo {
     /// Stable village UUID string.
     pub uuid: String,
     /// Approximate village centre.
-    pub center: (f64, f64, f64),
+    pub center: PositionF64,
     /// Village bounding box.
     pub bounds: Bounds,
     /// Number of points of interest (claimed + unclaimed) tracked by the
@@ -28,7 +29,7 @@ pub struct StructureInfo {
     pub bounds: Bounds,
 }
 
-fn triple_i64(v: &crate::nbt::NbtValue) -> Option<(i32, i32, i32)> {
+fn triple_i64(v: &crate::nbt::NbtValue) -> Option<PositionI32> {
     let l = v.as_list()?;
     Some((
         l.first()?.as_i64()? as i32,
@@ -37,7 +38,7 @@ fn triple_i64(v: &crate::nbt::NbtValue) -> Option<(i32, i32, i32)> {
     ))
 }
 
-fn triple_f64(v: &crate::nbt::NbtValue) -> Option<(f64, f64, f64)> {
+fn triple_f64(v: &crate::nbt::NbtValue) -> Option<PositionF64> {
     let l = v.as_list()?;
     Some((
         l.first()?.as_f64()?,

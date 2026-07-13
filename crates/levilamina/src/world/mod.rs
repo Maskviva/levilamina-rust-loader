@@ -4,6 +4,7 @@
 pub mod scan;
 pub mod structures;
 
+use crate::types::PositionI32;
 pub use scan::*;
 pub use structures::*;
 
@@ -11,6 +12,6 @@ pub use structures::*;
 /// and structure bounds.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Bounds {
-    pub min: (i32, i32, i32),
-    pub max: (i32, i32, i32),
+    pub min: PositionI32,
+    pub max: PositionI32,
 }

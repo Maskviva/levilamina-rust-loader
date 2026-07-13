@@ -19,6 +19,7 @@
 //! get_player_position).
 
 use levilamina::prelude::*;
+use levilamina::types::{PositionF64, PositionI32 as Position};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -36,13 +37,13 @@ const MAX_AUTO_SCAN_CELLS: usize = 32 * 32 * 32;
 #[derive(Default, Clone)]
 struct Selection {
     dim: i32,
-    pos1: Option<(i32, i32, i32)>,
-    pos2: Option<(i32, i32, i32)>,
+    pos1: Option<Position>,
+    pos2: Option<Position>,
 }
 
 impl Selection {
     /// Min/max corners once both are set.
-    fn bounds(&self) -> Option<((i32, i32, i32), (i32, i32, i32))> {
+    fn bounds(&self) -> Option<(Position, Position)> {
         match (self.pos1, self.pos2) {
             (Some(a), Some(b)) => Some((
                 (a.0.min(b.0), a.1.min(b.1), a.2.min(b.2)),
@@ -274,7 +275,7 @@ fn log_once(logger: Logger, sig: (usize, usize), msg: &str) {
 }
 
 /// Trace the 12 edges of the block-space box [min..max] with particles.
-fn draw_outline(server: &Server, dim: i32, min: (i32, i32, i32), max: (i32, i32, i32)) {
+fn draw_outline(server: &Server, dim: i32, min: Position, max: Position) {
     // A block at `min` occupies world [min, min+1); the visual box therefore
     // spans min .. max+1 in world coordinates.
     let (x0, y0, z0) = (min.0 as f64, min.1 as f64, min.2 as f64);
@@ -310,7 +311,7 @@ fn draw_outline(server: &Server, dim: i32, min: (i32, i32, i32), max: (i32, i32,
     }
 }
 
-fn draw_edge(server: &Server, dim: i32, a: (f64, f64, f64), b: (f64, f64, f64)) {
+fn draw_edge(server: &Server, dim: i32, a: PositionF64, b: PositionF64) {
     let (dx, dy, dz) = (b.0 - a.0, b.1 - a.1, b.2 - a.2);
     let len = (dx * dx + dy * dy + dz * dz).sqrt();
     let steps = (len / EDGE_STEP).ceil().max(1.0) as i32;
@@ -355,7 +356,7 @@ fn report_scan(inv: &CommandInvocation, scan: &Scan) {
     }
 }
 
-fn size_of_box(min: (i32, i32, i32), max: (i32, i32, i32)) -> (usize, usize, usize) {
+fn size_of_box(min: Position, max: Position) -> (usize, usize, usize) {
     (
         (max.0 - min.0 + 1) as usize,
         (max.1 - min.1 + 1) as usize,

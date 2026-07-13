@@ -4,6 +4,7 @@ use super::*;
 use crate::entity::Entity;
 use crate::error::{Error, Result};
 use crate::ffi::{r, s};
+use crate::types::PositionI32;
 use crate::world::{BlockInfo, EntityInfo, PlayerPos, Scan};
 use crate::{rt, sys};
 
@@ -75,7 +76,7 @@ impl Server {
     /// [`Scan`]: one [`crate::ScanLayer`] per Y level, each a 2-D grid of
     /// [`crate::Cell`]s holding the block and any entities in that cell.
     /// Server thread only.
-    pub fn scan_region(&self, dim: i32, a: (i32, i32, i32), b: (i32, i32, i32)) -> Result<Scan> {
+    pub fn scan_region(&self, dim: i32, a: PositionI32, b: PositionI32) -> Result<Scan> {
         let min = (a.0.min(b.0), a.1.min(b.1), a.2.min(b.2));
         let max = (a.0.max(b.0), a.1.max(b.1), a.2.max(b.2));
         let mut scan = Scan::new(min, max);

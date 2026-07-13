@@ -1,5 +1,7 @@
 //! Player-related value types: [`PlayerInfo`], [`Ability`], [`GameMode`], [`MessageType`].
 
+use crate::types::PositionF64;
+
 /// A summary line from [`Player::list`]: identity + position.
 #[derive(Debug, Clone, Default)]
 pub struct PlayerInfo {
@@ -7,7 +9,7 @@ pub struct PlayerInfo {
     pub xuid: String,
     pub uuid: String,
     pub dimension: i32,
-    pub pos: (f64, f64, f64),
+    pub pos: PositionF64,
 }
 
 /// Which ability slots [`Player::set_ability`] speaks. Raw values mirror
