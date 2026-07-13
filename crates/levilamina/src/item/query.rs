@@ -1,10 +1,9 @@
 //! Item queries and property setters.
 
 use super::*;
-use crate::error::{Error, Result};
-use crate::ffi::{call_out_str, s};
+use crate::error::Result;
 use crate::nbt::NbtValue;
-use crate::{rt, sys};
+use crate::sys;
 
 impl ItemStack {
     /// The stack's serialized form (vanilla `ItemStack::save` layout).

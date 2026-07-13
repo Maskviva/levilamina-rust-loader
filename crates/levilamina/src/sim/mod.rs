@@ -13,7 +13,6 @@
 
 use crate::error::{Error, Result};
 use crate::ffi::s;
-use crate::nbt::NbtValue;
 use crate::player::Player;
 use crate::{rt, sys};
 

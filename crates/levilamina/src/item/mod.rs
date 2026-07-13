@@ -7,7 +7,7 @@
 use crate::error::{Error, Result};
 use crate::ffi::s;
 use crate::nbt::NbtValue;
-use crate::{rt, sys};
+use crate::rt;
 
 /// An item stack value object. Cloning clones the value; nothing is shared
 /// with the game until you hand it to a container or a player.

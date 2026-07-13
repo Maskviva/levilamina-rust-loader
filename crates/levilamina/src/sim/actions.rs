@@ -1,11 +1,8 @@
 //! Simulated-player actions (the simulate* verb surface).
 
 use super::*;
-use crate::error::{Error, Result};
-use crate::ffi::s;
+use crate::error::Result;
 use crate::nbt::NbtValue;
-use crate::player::Player;
-use crate::{rt, sys};
 
 impl SimPlayer {
     /// Disconnect and remove the bot.

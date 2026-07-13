@@ -2,9 +2,7 @@
 
 use super::*;
 use crate::error::{Error, Result};
-use crate::ffi::{call_out_str, s};
-use crate::nbt::NbtValue;
-use crate::{rt, sys};
+use crate::rt;
 
 impl Block {
     /// Replace this block. `spec` is anything `/setblock` accepts:

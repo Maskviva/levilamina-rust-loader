@@ -2,9 +2,8 @@
 
 use super::*;
 use crate::error::{Error, Result};
-use crate::ffi::{call_out_str, collect_strs, s};
+use crate::ffi::s;
 use crate::item::ItemStack;
-use crate::nbt::NbtValue;
 use crate::{rt, sys};
 
 impl Player {

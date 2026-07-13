@@ -3,8 +3,7 @@
 use super::*;
 use crate::entity::Entity;
 use crate::error::{Error, Result};
-use crate::ffi::{call_out_str, r, s};
-use crate::player::PlayerInfo;
+use crate::ffi::{r, s};
 use crate::world::{BlockInfo, EntityInfo, PlayerPos, Scan};
 use crate::{rt, sys};
 

@@ -4,7 +4,6 @@
 
 use crate::error::{Error, Result};
 use crate::ffi::{call_out_str, s};
-use crate::nbt::NbtValue;
 use crate::{rt, sys};
 
 /// An objective's identity from [`Scoreboard::objectives`].

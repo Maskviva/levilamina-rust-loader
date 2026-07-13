@@ -3,8 +3,7 @@
 
 use crate::error::{Error, Result};
 use crate::ffi::call_out_str;
-use crate::nbt::NbtValue;
-use crate::{rt, sys};
+use crate::rt;
 
 /// A block handle. Copy-cheap; re-reads the world every call, so it always
 /// reflects the *current* block at that position.

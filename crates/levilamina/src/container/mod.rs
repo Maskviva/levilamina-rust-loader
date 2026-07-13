@@ -2,11 +2,10 @@
 //! chests, and block containers — the bridge resolves an "owner + which"
 //! reference through the engine's `Container` virtual interface per call.
 
-use crate::error::{Error, Result};
+use crate::error::Error;
 use crate::ffi::s;
-use crate::item::ItemStack;
 use crate::player::Player;
-use crate::{rt, sys};
+use crate::sys;
 
 #[derive(Debug, Clone)]
 enum Target {

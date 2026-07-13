@@ -4,7 +4,6 @@ use super::*;
 use crate::error::Result;
 use crate::nbt::NbtValue;
 use crate::player::Player;
-use std::collections::HashMap;
 
 /// A settings-style form with named inputs; results come back keyed by the
 /// element names you pass in.

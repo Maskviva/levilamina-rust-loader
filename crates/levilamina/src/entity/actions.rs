@@ -1,10 +1,8 @@
 //! Entity actions (mutations).
 
 use super::*;
-use crate::error::{Error, Result};
-use crate::ffi::{call_out_str, s};
-use crate::nbt::NbtValue;
-use crate::{rt, sys};
+use crate::error::Result;
+use crate::sys;
 
 impl Entity {
     pub fn kill(&self) -> Result<()> {

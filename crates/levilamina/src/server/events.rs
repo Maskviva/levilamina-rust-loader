@@ -3,8 +3,8 @@
 use super::*;
 use crate::error::{Error, Result};
 use crate::event::{event_trampoline, EventCallback, EventPriority, EventRef, Listener};
-use crate::ffi::{collect_strs, s};
-use crate::{rt, sys};
+use crate::ffi::s;
+use crate::rt;
 use std::time::Duration;
 
 impl Server {

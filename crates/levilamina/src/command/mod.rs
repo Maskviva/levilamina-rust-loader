@@ -2,13 +2,10 @@
 //! builder ([`CommandBuilder`]) with typed overloads, enums and soft enums.
 
 use std::ffi::c_void;
-use std::panic::{catch_unwind, AssertUnwindSafe};
 
-use crate::error::{Error, Result};
-use crate::ffi::{r, s};
-use crate::logger::Logger;
+use crate::ffi::s;
 use crate::nbt::NbtValue;
-use crate::{rt, sys};
+use crate::sys;
 
 pub mod builder;
 

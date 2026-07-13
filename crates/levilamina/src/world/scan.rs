@@ -1,8 +1,6 @@
 //! Region-scan value types: a [`Scan`] is layers of [`Cell`]s, each cell a
 //! [`BlockInfo`] plus any [`EntityInfo`]s; [`PlayerPos`] is a player's location.
 
-use super::*;
-
 /// A connected player's feet position and dimension.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PlayerPos {

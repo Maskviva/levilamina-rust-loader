@@ -2,9 +2,7 @@
 
 use super::*;
 use crate::entity::Entity;
-use crate::error::{Error, Result};
-use crate::ffi::{call_out_str, collect_strs, s};
-use crate::nbt::NbtValue;
+use crate::error::Result;
 use crate::{rt, sys};
 
 impl Player {

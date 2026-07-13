@@ -2,9 +2,7 @@
 
 use super::*;
 use crate::error::{Error, Result};
-use crate::ffi::{call_out_str, s};
 use crate::nbt::NbtValue;
-use crate::rt;
 
 impl Scoreboard {
     /// Create an objective (criteria: `dummy`). `display_name` may be empty

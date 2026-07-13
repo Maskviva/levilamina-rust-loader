@@ -2,10 +2,6 @@
 
 use super::*;
 use crate::container::Container;
-use crate::error::{Error, Result};
-use crate::ffi::{call_out_str, collect_strs, s};
-use crate::nbt::NbtValue;
-use crate::{rt, sys};
 
 impl Player {
     /// The player's main inventory.

@@ -4,7 +4,6 @@ use super::*;
 use crate::error::Result;
 use crate::nbt::NbtValue;
 use crate::player::Player;
-use std::collections::HashMap;
 
 /// A two-button confirm dialog.
 pub struct ModalFormBuilder {

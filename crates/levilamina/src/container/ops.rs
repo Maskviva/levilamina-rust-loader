@@ -3,7 +3,7 @@
 use super::*;
 use crate::error::{Error, Result};
 use crate::item::ItemStack;
-use crate::{rt, sys};
+use crate::rt;
 
 impl Container {
     /// The container inside the block at `(x, y, z)` — chest, barrel,
