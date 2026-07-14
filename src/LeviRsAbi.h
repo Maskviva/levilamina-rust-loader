@@ -33,6 +33,30 @@ extern "C" {
 #define LEVI_RS_ABI_VERSION 5u
 
 /**
+ * Oldest mod ABI this loader still accepts.
+ *
+ * Every ABI bump so far has been *additive*: new fields appended to the end
+ * of LeviRsApi, existing fields never reordered or removed (see
+ * docs/DESIGN.md §8 and the CHANGELOG — v2, v3, … all "additive"). A mod
+ * built against ABI vN therefore only calls the first N-version's worth of
+ * table slots, and because those slots are byte-identical in every later
+ * table, a NEWER loader can safely run an OLDER mod. The loader hands over
+ * its full (larger) table; the mod simply never reaches the trailing slots
+ * it doesn't know about.
+ *
+ * So this floor is 1: all historical versions are forward-compatible into
+ * the current table. If a future major version ever makes a *non-additive*
+ * change (reorders/removes a field, or changes an existing field's
+ * signature), bump this to that version — it's the single knob that says
+ * "tables below here are NOT a prefix of mine, refuse them."
+ *
+ * The reverse direction (older loader, newer mod) is guarded on the mod
+ * side: __init_runtime compares the loader's `struct_size` against the
+ * mod's own compiled size and refuses a loader whose table is too small.
+ */
+#define LEVI_RS_ABI_MIN_SUPPORTED 1u
+
+/**
  * UTF-8 string view — an alias for std::string_view, not a custom struct.
  * Rust (`levilamina_sys::LeviRsStr`) still declares its own independent
  * #[repr(C)] { ptr, len } — it can't depend on a C++ type, so it mirrors
@@ -391,6 +415,10 @@ typedef struct LeviRsApi
     uint32_t abi_version;
     /** sizeof(LeviRsApi) as compiled into the loader; enables forward-compat checks. */
     uint32_t struct_size;
+
+    enum class LLMoneyEvent { Set, Add, Reduce, Trans };
+
+    typedef bool (*LLMoneyCallback)(LLMoneyEvent type, LeviRsStr from, LeviRsStr to, long long value);
 
     /**
      * Log a message through the mod's own LeviLamina logger.
@@ -824,6 +852,18 @@ typedef struct LeviRsApi
      * plain `player_send_message` remains the Raw/Chat convenience path.
      */
     bool (*player_send_message_typed)(LeviRsPlayerSel sel, LeviRsStr msg, int32_t type);
+
+    /* —— Money (ABI v5 Additive) —— */
+    long long (*get_money)(LeviRsStr xuid);
+    bool (*set_money)(LeviRsStr xuid, long long money);
+    bool (*add_money)(LeviRsStr xuid, long long money);
+    bool (*reduce_money)(LeviRsStr xuid, long long money);
+    bool (*trans_money)(LeviRsStr from, LeviRsStr to, long long val, LeviRsStr note);
+    void (*money_get_hist)(LeviRsStr xuid, int timediff, void* ctx, LeviRsStrSink sink);
+    void (*money_clear_hist)(int difftime);
+    void (*money_listen_before_event)(LLMoneyCallback callback);
+    void (*money_listen_after_event)(LLMoneyCallback callback);
+    void (*money_ranking)(unsigned short num, void* ctx, LeviRsStrSink sink);
 
     /* Future additive fields: append here only. */
 } LeviRsApi;

@@ -68,6 +68,7 @@ pub mod gui;
 pub mod item;
 pub mod kvdb;
 mod logger;
+pub mod money;
 pub mod nbt;
 pub mod player;
 pub mod scoreboard;
@@ -177,14 +178,23 @@ pub unsafe fn __init_runtime(api: *const sys::LeviRsApi, handle: sys::LeviRsModH
     }
     // SAFETY: the bridge guarantees the api table outlives the mod.
     let api: &'static sys::LeviRsApi = &*api;
-    if api.abi_version != sys::LEVI_RS_ABI_VERSION {
+
+    // ABI compatibility is a RANGE (mirrors the loader's RustModManager check).
+    // The loader's `abi_version` must be >= the one we compiled against: a
+    // newer loader exposes an additive superset of our table, so every slot we
+    // know about is present and byte-identical. A loader OLDER than us may be
+    // missing trailing slots we'd call — refuse it.
+    //
+    // (Historically some additive bumps advanced `abi_version` too, not just
+    // `struct_size`, so this must be `<`, not `!=` — otherwise a v4-built mod
+    // rejects a perfectly compatible v5 loader.)
+    if api.abi_version < sys::LEVI_RS_ABI_VERSION {
         return false;
     }
-    // DESIGN.md §8: additive ABI changes bump `struct_size`, not `abi_version`,
-    // so a mod built against a newer `levilamina-sys` (expecting a larger
-    // `LeviRsApi`) must refuse a loader whose table is smaller than what this
-    // crate was compiled against — otherwise a trailing field access would
-    // read past what the loader actually allocated.
+    // The precise gate regardless of how the version was bumped: the loader's
+    // actual table must be at least as large as the `LeviRsApi` this crate was
+    // compiled against, or a trailing field access would read past what the
+    // loader allocated.
     if (api.struct_size as usize) < core::mem::size_of::<sys::LeviRsApi>() {
         return false;
     }

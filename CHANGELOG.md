@@ -1,5 +1,56 @@
 # Changelog
 
+## 26.20.1
+
+### Changed
+
+- **ABI version acceptance is now a range, restoring backward compatibility.**
+  The loader previously required `mod_abi == LEVI_RS_ABI_VERSION` (strict
+  equality), so a mod built against *any* other version — including an older,
+  fully additive-compatible one — was rejected at load. Because every ABI bump
+  in this project's history is additive (fields appended, never
+  reordered/removed), a newer loader can safely run an older mod: the mod calls
+  a byte-identical prefix of the loader's larger table.
+    - **[loader]** `RustModManager::load` now accepts any mod whose
+      `abi_version` is in `[LEVI_RS_ABI_MIN_SUPPORTED, LEVI_RS_ABI_VERSION]`.
+      Too-new mods (built against a version the loader doesn't have) and
+      below-floor mods (predating a hypothetical non-additive break) are still
+      refused, each with a message pointing at the right fix (update the loader
+      vs rebuild the mod). A version skew that's accepted logs an info line.
+    - **[header]** New `LEVI_RS_ABI_MIN_SUPPORTED` (currently `1`) in
+      `src/LeviRsAbi.h` — the single knob to raise if a future major version
+      ever breaks layout non-additively.
+    - **[safe crate]** `__init_runtime` relaxed symmetrically: a mod now accepts
+      any loader whose `abi_version` is `>=` its own (an additive superset),
+      with the pre-existing `struct_size` check remaining the precise
+      forward-compat gate. Previously a v(N) mod would reject a compatible
+      v(N+1) loader.
+
+- **LLMoney / LegacyMoney is now an OPTIONAL runtime dependency.**
+    - **[build]** `LegacyMoney.dll` is now **delay-loaded**
+      (`/DELAYLOAD:LegacyMoney.dll` + `delayimp`), so the loader starts normally
+      without it and the `LLMoney_*` thunks resolve lazily on first use.
+        - **[bridge]** New `src/bridge/MoneyGuard.{h,cpp}` gates every money entry
+          point behind a **dual check**: (1) `ModManagerRegistry` reports an
+          *enabled* mod named `LegacyMoney`, and (2) the `LLMoney_Get` export
+          actually resolves via `ll::memory::SymbolView::resolve`. The symbol probe
+          is memoized; the mod-state check runs each call so disabling LegacyMoney at
+          runtime is honored. On the first failure the loader logs a single
+          actionable warning ("请检查是否安装并启用了 LegacyMoney") and every money
+          call returns a safe default (`get_money` → 0, mutators → false, listeners →
+          no-op). No exception ever crosses the C ABI.
+        - **[safe crate]** `levilamina::money` docs updated: a failing `Err` on a
+          server without LegacyMoney is expected, not a bug.
+
+### Fixed
+
+- **[tools] `check_abi_sync.py` false positive.** The struct-body scanner
+  matched the nested `typedef bool (*LLMoneyCallback)(...)` as a phantom
+  v-table field, shifting every subsequent field by one and reporting a
+  spurious ABI break. It now strips nested `enum class` / `typedef`
+  declarations before extracting fields. All three definitions verify in sync
+  (104 fields).
+
 ## 26.20.0
 
 ### Added (additive, `struct_size`-gated — ABI stays v5; table slot 94)
@@ -101,17 +152,17 @@
 ### Added (additive, `struct_size`-gated — ABI stays v5; table slots 92–93)
 
 - **Read-only world data** (ROADMAP §5), new `src/bridge/WorldInfo.cpp`:
-  - `villages` → `Server::villages(dim) -> Vec<VillageInfo>`: walks the
-    dimension's `VillageManager::mVillages`, emitting `{uuid, center, bounds,
+    - `villages` → `Server::villages(dim) -> Vec<VillageInfo>`: walks the
+      dimension's `VillageManager::mVillages`, emitting `{uuid, center, bounds,
     poi_count}` per village. Unblocks `/village`.
-  - `structures_near` → `Server::structures_near(dim, x, y, z, radius) ->
+    - `structures_near` → `Server::structures_near(dim, x, y, z, radius) ->
     Vec<StructureInfo>`: reads `LevelChunk::mSpawningAreas` (hardcoded spawn
-    areas: nether fortress / witch hut / ocean monument / pillager outpost) for
-    the loaded chunks intersecting the radius, emitting `{type, bounds}`. Loaded
-    chunks only — a read-only query never force-loads. Unblocks `/hsa`.
-  - New typed structs `VillageInfo` / `StructureInfo` / `Bounds` in `world`.
-    Villager enumeration deliberately omitted (POI weak_ptr arrays keyed by
-    role — fragile/version-sensitive; POI count is the stable signal).
+      areas: nether fortress / witch hut / ocean monument / pillager outpost) for
+      the loaded chunks intersecting the radius, emitting `{type, bounds}`. Loaded
+      chunks only — a read-only query never force-loads. Unblocks `/hsa`.
+    - New typed structs `VillageInfo` / `StructureInfo` / `Bounds` in `world`.
+      Villager enumeration deliberately omitted (POI weak_ptr arrays keyed by
+      role — fragile/version-sensitive; POI count is the stable signal).
 
 ## v1.8
 
@@ -120,13 +171,13 @@
 - **Re-acquire simulated players by name**, closing the handle-lifetime gap in
   the v1.7 SimPlayer landing (a bot persists across a restart, but the spawn
   handle didn't — nothing could re-drive or see it):
-  - `sim_is` → `Server::is_simulated(name) -> bool` (same `isSimulatedPlayer()`
-    check `sim_do` gates on).
-  - `sim_list` → `Server::list_sim_players() -> Vec<SimPlayer>` (filters the
-    existing `forEachPlayer` enumeration to bots).
-  - `SimPlayer::by_name` is now `pub`; `Server::sim_player(name)` rebuilds a
-    handle. So `/self list` and post-restart control work without the mod
-    caching handles.
+    - `sim_is` → `Server::is_simulated(name) -> bool` (same `isSimulatedPlayer()`
+      check `sim_do` gates on).
+    - `sim_list` → `Server::list_sim_players() -> Vec<SimPlayer>` (filters the
+      existing `forEachPlayer` enumeration to bots).
+    - `SimPlayer::by_name` is now `pub`; `Server::sim_player(name)` rebuilds a
+      handle. So `/self list` and post-restart control work without the mod
+      caching handles.
 
 ## v1.7
 
@@ -165,12 +216,12 @@ native detour once; mods only ever see a safe control API or an ordinary
 
 - **Per-connection packet delivery** (`src/bridge/Packets.cpp`), two layers
   sharing one delivery helper:
-  - `send_packet` (slot 82) — raw primitive: any `MinecraftPacketIds` + a
-    wire-format body, deserialised (`MinecraftPackets::createPacket` +
-    `Packet::read`, rejecting parse failures / trailing bytes) and sent to one
-    player (`Player::sendNetworkPacket`). Exposed as
-    `Player::send_packet(packet_id, body)`.
-  - (`spawn_particle_for`, the typed derivation, shipped in v1.5.)
+    - `send_packet` (slot 82) — raw primitive: any `MinecraftPacketIds` + a
+      wire-format body, deserialised (`MinecraftPackets::createPacket` +
+      `Packet::read`, rejecting parse failures / trailing bytes) and sent to one
+      player (`Player::sendNetworkPacket`). Exposed as
+      `Player::send_packet(packet_id, body)`.
+    - (`spawn_particle_for`, the typed derivation, shipped in v1.5.)
 - **Tick control** (slots 83–85): `tick_freeze` / `tick_step` / `tick_warp`,
   exposed as `Server::set_tick_freeze` / `step_ticks` / `set_tick_warp`. One
   detour on `Level::$tick`, installed lazily on first control call, never
@@ -179,15 +230,15 @@ native detour once; mods only ever see a safe control API or an ordinary
   slow-motion via an accumulator. Unblocks `/tick` (ROADMAP §2).
 - **Bridge-hook events** (0 new ABI slots): synthetic ids matched by name in
   `subscribe_event`, like the command events.
-  - `HopperTransferEvent` (detour on `HopperBlockActor::$setItem`), payload
-    `{x,y,z,slot,item,count,old_item,old_count}` — before/after stack so
-    subscribers compute the flow delta. Unblocks `/counter` (ROADMAP §5).
-  - `PlayerStartDestroyBlockEvent` (detour on `GameMode::startDestroyBlock`),
-    dispatched *before* the destroy logic — the autotool timing LL's
-    completion-time `PlayerDestroyBlockEvent` can't provide (ROADMAP §10).
-  - Installed on the first subscriber (unused = zero cost); dispatch snapshots
-    the subscriber list so callbacks may (un)subscribe during dispatch; mod
-    unload detaches subscribers; `list_events` reports these ids.
+    - `HopperTransferEvent` (detour on `HopperBlockActor::$setItem`), payload
+      `{x,y,z,slot,item,count,old_item,old_count}` — before/after stack so
+      subscribers compute the flow delta. Unblocks `/counter` (ROADMAP §5).
+    - `PlayerStartDestroyBlockEvent` (detour on `GameMode::startDestroyBlock`),
+      dispatched *before* the destroy logic — the autotool timing LL's
+      completion-time `PlayerDestroyBlockEvent` can't provide (ROADMAP §10).
+    - Installed on the first subscriber (unused = zero cost); dispatch snapshots
+      the subscriber list so callbacks may (un)subscribe during dispatch; mod
+      unload detaches subscribers; `list_events` reports these ids.
 
 ### Fixed
 
@@ -291,10 +342,10 @@ flip as fallback. `event::names` ships verified event-id constants
 ## v0.1.4
 
 - ABI v3: add world-reading API (server-thread only)
-  - `spawn_particle` — spawn a particle at a world coord (`Level::spawnParticleEffect`)
-  - `get_player_position` — a player's feet pos + dimension by name (`Level::forEachPlayer`)
-  - `scan_region` — walk a cuboid, streaming each cell's block (name + state SNBT via
-    `Block::getSerializationId().toSnbt`) and each contained entity (`Actor::save`)
+    - `spawn_particle` — spawn a particle at a world coord (`Level::spawnParticleEffect`)
+    - `get_player_position` — a player's feet pos + dimension by name (`Level::forEachPlayer`)
+    - `scan_region` — walk a cuboid, streaming each cell's block (name + state SNBT via
+      `Block::getSerializationId().toSnbt`) and each contained entity (`Actor::save`)
 - Safe Rust: `Server::spawn_particle()`, `player_position()`, `scan_region()`, plus the
   layered data model `Scan` / `ScanLayer` / `Cell` / `BlockInfo` / `EntityInfo` / `PlayerPos`
   (one 2-D array per Y level; each cell holds the block and any entities in it)
@@ -304,10 +355,10 @@ flip as fallback. `event::names` ships verified event-id constants
 ## v0.1.3
 
 - ABI v2: add server stats API
-  - `get_current_tick` — current tick ID (`Level::getCurrentTick()`)
-  - `get_tick_delta_time` — ms between ticks, TPS = 1000.0 / delta_time
-  - `get_player_count` — active player count (`Level::getActivePlayerCount()`)
-  - `get_sim_paused` — whether simulation is paused (`Level::getSimPaused()`)
+    - `get_current_tick` — current tick ID (`Level::getCurrentTick()`)
+    - `get_tick_delta_time` — ms between ticks, TPS = 1000.0 / delta_time
+    - `get_player_count` — active player count (`Level::getActivePlayerCount()`)
+    - `get_sim_paused` — whether simulation is paused (`Level::getSimPaused()`)
 - Safe Rust: `Server::get_current_tick()`, `get_tick_delta_time()`, `get_tps()`,
   `get_active_player_count()`, `is_sim_paused()`
 - Bump `LEVI_RS_ABI_VERSION` to 2 (additive: new fields appended to `LeviRsApi`)

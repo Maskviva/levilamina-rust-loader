@@ -5,6 +5,7 @@
 #include <string>
 #include <utility>
 
+#include "ll/api/mod/NativeMod.h"
 #include "ll/api/utils/StringUtils.h"
 
 #include "BridgeApi.h"
@@ -56,13 +57,55 @@ namespace levi_rs
             (void)mod->lib.free();
             return ll::makeStringError("'" + mod->getName() + "' " LEVI_RS_MAIN_SYMBOL " returned false");
         }
-        if (mod->vtable.abi_version != LEVI_RS_ABI_VERSION)
+        // ABI compatibility is a RANGE, not exact equality. Additive-only
+        // evolution (fields appended, never reordered/removed) means a newer
+        // loader can run an older mod: the mod calls a byte-identical prefix
+        // of our table and never reaches the trailing slots it doesn't know.
+        //
+        //   too new  (mod_abi > loader)  → the mod may call table slots we
+        //                                  don't have. Refuse; user updates
+        //                                  the loader.
+        //   too old  (mod_abi < floor)   → predates a non-additive break, so
+        //                                  our table is NOT a prefix of what
+        //                                  the mod expects. Refuse; user
+        //                                  rebuilds the mod.
+        //   in range (floor ≤ mod_abi ≤ loader) → safe, load it.
+        //
+        // The opposite skew (older loader, newer mod) is caught on the mod
+        // side by __init_runtime's `struct_size` check, so we don't need to.
+        const uint32_t modAbi = mod->vtable.abi_version;
+        if (modAbi > LEVI_RS_ABI_VERSION)
         {
             (void)mod->lib.free();
             return ll::makeStringError(
                 "'" + mod->getName() + "' was built against levilamina-rs ABI v"
-                + std::to_string(mod->vtable.abi_version) + ", loader speaks v" + std::to_string(LEVI_RS_ABI_VERSION)
+                + std::to_string(modAbi) + ", but this loader only speaks up to v"
+                + std::to_string(LEVI_RS_ABI_VERSION) + " — update the levilamina-rust-loader mod"
             );
+        }
+        if (modAbi < LEVI_RS_ABI_MIN_SUPPORTED)
+        {
+            (void)mod->lib.free();
+            return ll::makeStringError(
+                "'" + mod->getName() + "' was built against levilamina-rs ABI v"
+                + std::to_string(modAbi) + ", which is older than the minimum this loader supports (v"
+                + std::to_string(LEVI_RS_ABI_MIN_SUPPORTED) + ") — rebuild the mod against a newer levilamina crate"
+            );
+        }
+        if (modAbi != LEVI_RS_ABI_VERSION)
+        {
+            // Accepted, but note the skew so version-mismatch reports in the
+            // wild are easy to spot. The mod runs against a strict superset
+            // of the table it was built for.
+            if (auto self = ll::mod::NativeMod::current())
+            {
+                self->getLogger().info(
+                    "'{}' was built against ABI v{}; loader provides v{} (additive superset) — loading",
+                    mod->getName(),
+                    modAbi,
+                    LEVI_RS_ABI_VERSION
+                );
+            }
         }
 
         // Wire Mod lifecycle callbacks to the Rust vtable. ModManager's default

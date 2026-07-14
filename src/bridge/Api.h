@@ -9,7 +9,7 @@
 #pragma once
 
 #include <string_view>
-
+#include <vector>
 #include "LeviRsAbi.h"
 
 namespace levi_rs
@@ -229,6 +229,25 @@ namespace levi_rs
         bool api_kvdb_is_empty(LeviRsKvDbHandle h);
         void api_kvdb_iter(LeviRsKvDbHandle h, void* ctx, LeviRsKvSink sink);
         void kvdbOnRustModGone(RustMod* mod);
+
+        /* —— Money.cpp —— */
+        using LLMoneyEvent = ::LeviRsApi::LLMoneyEvent;
+        using LLMoneyCallback = ::LeviRsApi::LLMoneyCallback;
+
+        long long api_get_money(LeviRsStr xuid);
+
+        bool api_set_money(LeviRsStr xuid, long long money);
+        bool api_add_money(LeviRsStr xuid, long long money);
+        bool api_reduce_money(LeviRsStr xuid, long long money);
+        bool api_trans_money(LeviRsStr from, LeviRsStr to, long long val, LeviRsStr note = "");
+
+        void api_money_get_hist(LeviRsStr xuid, int timediff, void* ctx, LeviRsStrSink sink);
+        void api_money_clear_hist(int difftime = 0);
+
+        void api_money_listen_before_event(LLMoneyCallback callback);
+        void api_money_listen_after_event(LLMoneyCallback callback);
+
+        void api_money_ranking(unsigned short num, void* ctx, LeviRsStrSink sink);
 
         /* ── SysInfo.cpp ── */
         bool api_sys_info_str(int32_t prop, void* ctx, LeviRsStrSink sink);

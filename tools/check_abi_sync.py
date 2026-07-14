@@ -28,6 +28,12 @@ def header_fields() -> list[str]:
     # strip comments
     body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
     body = re.sub(r"//[^\n]*", "", body)
+    # Drop nested type declarations that live inside the struct but are NOT
+    # v-table fields: the LLMoney `enum class` and the `typedef bool
+    # (*LLMoneyCallback)(...)`. Without this the typedef's `(*name)(` shape is
+    # picked up as a phantom function-pointer field and shifts everything.
+    body = re.sub(r"^\s*enum\s+class\s+\w+\s*\{[^}]*\}\s*;", "", body, flags=re.M)
+    body = re.sub(r"^\s*typedef\b.*?;", "", body, flags=re.M | re.S)
     fields = []
     # data members: `uint32_t abi_version;` / `uint32_t struct_size;`
     for mm in re.finditer(r"^\s*uint32_t\s+(\w+);", body, re.M):

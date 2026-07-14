@@ -104,7 +104,7 @@ namespace levi_rs
             /* register_command_soft_enum */ api_register_command_soft_enum,
             /* update_command_soft_enum   */ api_update_command_soft_enum,
 
-            /* ── v5 §I nbt / kvdb / system / server ── */
+            /* ── v5 §I nbt / kvdb / system / server / money ── */
             /* nbt_snbt_to_binary  */ api_nbt_snbt_to_binary,
             /* nbt_binary_to_snbt  */ api_nbt_binary_to_snbt,
             /* kvdb_open           */ api_kvdb_open,
@@ -139,6 +139,17 @@ namespace levi_rs
             /* villages            */ api_villages,
             /* structures_near     */ api_structures_near,
             /* player_send_message_typed */ api_player_send_message_typed,
+            /* get_money                 */ api_get_money,
+            /* set_money                 */ api_set_money,
+            /* add_money                 */ api_add_money,
+            /* reduce_money              */ api_reduce_money,
+            /* trans_money               */ api_trans_money,
+            /* money_get_hist            */ api_money_get_hist,
+            /* money_clear_hist          */ api_money_clear_hist,
+            /* money_listen_before_event */ api_money_listen_before_event,
+            /* money_listen_after_event  */ api_money_listen_after_event,
+            /* money_ranking             */ api_money_ranking,
+
         };
     } // namespace
 

@@ -12,6 +12,13 @@
 
 use core::ffi::c_void;
 
+/// The ABI version this crate mirrors. Compatibility is a *range*, not exact
+/// equality: the loader accepts any mod whose version is between its
+/// `LEVI_RS_ABI_MIN_SUPPORTED` floor and its own version (newer loaders run
+/// older mods, since the table only ever grows additively), and a mod accepts
+/// any loader whose version is >= this one and whose `struct_size` is at least
+/// as large as the `LeviRsApi` this crate was compiled against. See
+/// `__init_runtime` in the `levilamina` crate and `RustModManager::load`.
 pub const LEVI_RS_ABI_VERSION: u32 = 5;
 pub const LEVI_RS_MAIN_SYMBOL: &str = "levi_rs_main";
 
@@ -267,6 +274,29 @@ pub const SYS_LOCAL_TIME: i32 = 3;
 // LeviRsServerInfoProp
 pub const SRV_BDS_VERSION: i32 = 0;
 pub const SRV_PROTOCOL_VERSION: i32 = 1;
+
+// ── v5 Additive: LLMoney ──
+//
+// Mirrors the nested types `LeviRsApi::LLMoneyEvent` and
+// `LeviRsApi::LLMoneyCallback` from LeviRsAbi.h. C++ `enum class` defaults
+// to `int` as its underlying type; on MSVC that's `i32`, so `#[repr(i32)]`
+// matches byte-for-byte.
+
+/// LLMoney event kind — mirrors C++ `LeviRsApi::LLMoneyEvent`.
+#[repr(i32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LLMoneyEvent {
+    Set = 0,
+    Add = 1,
+    Reduce = 2,
+    Trans = 3,
+}
+
+/// LLMoney before/after event callback. Returning `false` from a
+/// before-event handler cancels the operation; the after-event handler's
+/// return is ignored by the loader.
+pub type LLMoneyCallback =
+    unsafe extern "C" fn(type_: LLMoneyEvent, from: LeviRsStr, to: LeviRsStr, value: i64) -> bool;
 
 /// Function table handed to the Rust mod. Mirrors `LeviRsApi`.
 /// FIELD ORDER IS THE ABI — append-only, verified by tools/check_abi_sync.py.
@@ -659,6 +689,37 @@ pub struct LeviRsApi {
     /// player. Out-of-range type falls back to Raw.
     pub player_send_message_typed:
         unsafe extern "C" fn(sel: LeviRsPlayerSel, msg: LeviRsStr, type_: i32) -> bool,
+
+    // ── Money (ABI v5, additive) ──
+    // Backed by the LLMoney plugin. All functions return false / do nothing
+    // if LLMoney isn't loaded. Server thread only.
+    /// Get `xuid`'s balance. Missing account = 0.
+    pub get_money: unsafe extern "C" fn(xuid: LeviRsStr) -> i64,
+    /// Set `xuid`'s balance. False on backend failure (LLMoney absent, DB error).
+    pub set_money: unsafe extern "C" fn(xuid: LeviRsStr, money: i64) -> bool,
+    /// Add `money` to `xuid`'s balance.
+    pub add_money: unsafe extern "C" fn(xuid: LeviRsStr, money: i64) -> bool,
+    /// Subtract `money` from `xuid`'s balance.
+    pub reduce_money: unsafe extern "C" fn(xuid: LeviRsStr, money: i64) -> bool,
+    /// Transfer `val` from `from` to `to`, with optional `note`. False on
+    /// backend failure or insufficient balance.
+    pub trans_money:
+        unsafe extern "C" fn(from: LeviRsStr, to: LeviRsStr, val: i64, note: LeviRsStr) -> bool,
+    /// Sink one line of transfer history per record within the last
+    /// `timediff` seconds.
+    pub money_get_hist:
+        unsafe extern "C" fn(xuid: LeviRsStr, timediff: i32, ctx: *mut c_void, sink: LeviRsStrSink),
+    /// Purge history older than `difftime` seconds. `0` = purge everything.
+    pub money_clear_hist: unsafe extern "C" fn(difftime: i32),
+    /// Register a callback fired BEFORE each money change. Returning `false`
+    /// cancels the change. Loader keeps a single slot: a second call
+    /// replaces the first. Pass a stub returning `true` to "unregister".
+    pub money_listen_before_event: unsafe extern "C" fn(callback: LLMoneyCallback),
+    /// Register a callback fired AFTER each money change. Return value is
+    /// ignored. Same one-slot semantics as `money_listen_before_event`.
+    pub money_listen_after_event: unsafe extern "C" fn(callback: LLMoneyCallback),
+    /// Sink top-`num` accounts as `"xuid:balance"` lines, richest first.
+    pub money_ranking: unsafe extern "C" fn(num: u16, ctx: *mut c_void, sink: LeviRsStrSink),
     // Future additive fields: append here only.
 }
 
