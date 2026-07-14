@@ -53,6 +53,8 @@ levilamina = { git = "https://github.com/Maskviva/levilamina-rust-loader" }
 
 `"type": "rust"` 和那条 `dependencies` 是这套机制的全部魔法：LeviLamina 按依赖拓扑排序加载，加载器先注册好 `"rust"` 类型的模组管理器，轮到你的模组时自然被它接管。
 
+> **可选：经济功能**。只有当你用到 [`levilamina::money`](/api/money)（余额/转账/流水等）时，才需要额外装 [LegacyMoney](https://github.com/LiteLDev/LegacyMoney) 插件。它是**软依赖**——没装的话加载器照常启动，只是 `money::*` 调用会空转并在控制台警告一次。若你的模组把它当硬需求，记得在 `manifest.json` 的 `dependencies` 里也加上 `{ "name": "LegacyMoney" }`，让 LeviLamina 保证加载顺序。不碰经济功能就无需关心它。
+
 ## 3. 写第一个模组
 
 ```rust
@@ -124,4 +126,4 @@ plugins/
 4. [世界与玩家](/guide/world) —— 粒子、玩家坐标、区域扫描，以及"一切写操作走命令"的实用模式。
 5. [日志与调度](/guide/logging-scheduling) —— 以及后台线程（Tokio 等）如何安全地影响游戏。
 
-> ⚠️ **版本提醒**：加载器与模组的 ABI 大版本必须一致（加载时自动检查，不一致会拒绝加载并打印两侧版本号）。升级加载器大版本后，模组需要用配套版本的 `levilamina` crate 重新编译。详见[核心概念](/guide/concepts)。
+> ⚠️ **版本提醒**：加载器的 ABI 大版本需**不低于**模组编译时的版本（加载时自动检查）——新加载器能跑旧模组，但旧加载器会拒绝更新的模组。若看到"加载器版本过旧"之类的提示，升级加载器，或用配套版本的 `levilamina` crate 重新编译模组。详见[核心概念](/guide/concepts)。

@@ -99,6 +99,12 @@ layered `Scan` data model are in `crates/levilamina/src/lib.rs`.
 rebuilt.** A v2 loader will refuse a v3 mod (and vice-versa) via the existing
 `abi_version` / `struct_size` checks — that's intended, not a bug.
 
+> **Updated (26.20.1):** the "vice-versa" no longer holds. Version acceptance
+> is now a *range* — a newer loader accepts an older mod (down to
+> `LEVI_RS_ABI_MIN_SUPPORTED`), since additive tables are prefix-compatible.
+> A v3 loader running a v2 mod is fine; only the older-loader/newer-mod
+> direction is refused. See `docs/advanced/abi.md` §版本控制.
+
 ## Source-verified API mapping (all confirmed against LeviLamina-main)
 
 - **Level handle**: `ll::service::getLevel()` (already used by the v2 stats fns).

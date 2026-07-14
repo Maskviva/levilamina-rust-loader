@@ -29,6 +29,7 @@
 | `Server` | 服务端状态、时间、天气、设置 | 部分✅ | [Server](/api/server) |
 | `Nbt` | NBT 读写 | ✅ | [Nbt](/api/nbt) |
 | `Data` | 键值数据库（配置/经济/玩家数据可在其上自建） | 部分✅ | [Data](/api/data) |
+| `Money` | 经济：余额/转账/流水/排行/交易事件（桥接可选的 LegacyMoney） | ✅ | [Money](/api/money) |
 | `Gui` | 表单界面 | ✅ | [Gui](/api/gui) |
 | `System` | 系统信息、环境变量 | ✅ | [System](/api/system) |
 | `Log` | 日志 | ✅ | [Log](/api/log) |

@@ -108,8 +108,14 @@ and can be added as new ABI entries without breaking v1.
    go at the end; existing fields are never reordered, removed, or retyped.
 2. Additive changes (new trailing fields) do **not** bump `abi_version`;
    consumers must check `struct_size` before using trailing fields.
-3. Breaking changes (semantics, signatures) bump `LEVI_RS_ABI_VERSION`; the
-   loader refuses mods with a different major and reports both versions.
+3. Version acceptance is a **range, not exact equality**. The loader accepts a
+   mod whose `abi_version` is in `[LEVI_RS_ABI_MIN_SUPPORTED, LEVI_RS_ABI_VERSION]`
+   (a newer loader runs an older mod, since the table only grows additively and
+   the old mod calls a byte-identical prefix); the mod accepts any loader whose
+   `abi_version >= ` its own, with `struct_size` as the precise forward-compat
+   gate. A breaking change (semantics, signature, field reorder/removal) bumps
+   `LEVI_RS_ABI_VERSION` **and** raises `LEVI_RS_ABI_MIN_SUPPORTED` to that
+   version, so tables that are no longer a prefix are refused.
 4. The C header and the Rust `-sys` crate change in the same commit, always.
 
 ## 9. Deliberately out of scope for v0.1
