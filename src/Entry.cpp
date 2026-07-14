@@ -48,11 +48,7 @@ namespace levi_rs
                 return false;
             }
             logger.info("levilamina-rust-loader ready (ABI v{})", LEVI_RS_ABI_VERSION);
-            logger.info(
-                std::string{
-                    R"(rust mods: manifest {"type": "rust", "dependencies": [{"name": "levilamina-rust-loader"}]})"
-                }
-            );
+
             return true;
         }
 

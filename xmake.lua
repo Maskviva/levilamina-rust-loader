@@ -24,7 +24,7 @@ target("levilamina-rust-loader")
     add_files("src/**.cpp")
     add_includedirs("src")
     add_packages("levilamina", "legacymoney")
-    add_ldflags("/DELAYLOAD:LegacyMoney.dll", {force = true})
+    add_shflags("/DELAYLOAD:LegacyMoney.dll", {force = true})
     add_syslinks("delayimp")
     set_exceptions("none") -- /EHa
     set_kind("shared")

@@ -6,6 +6,11 @@
     "version": "26.20.1",
     "author": "levilamina-rs contributors",
     "description": "Loads LeviLamina mods written in Rust (manifest type: rust).",
+    "optionalDependencies": [
+        {
+            "name": "LegacyMoney"
+        }
+    ],
     "minecraft": {
         "bds_version": "1.26.20",
         "levilamina_version": "26.20.0",
