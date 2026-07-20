@@ -2,7 +2,7 @@
   "format_version": 3,
   "format_uuid": "289f771f-2c9a-4d73-9f3f-8492495a924d",
   "tooth": "github.com/Maskviva/levilamina-rust-loader",
-  "version": "26.20.1",
+  "version": "26.20.2",
   "info": {
     "name": "levilamina-rust-loader",
     "description": "Loads LeviLamina mods written in Rust (manifest type: rust).",
@@ -26,7 +26,7 @@
         {
           "type": "zip",
           "urls": [
-            "https://github.com/Maskviva/levilamina-rust-loader/releases/download/26.20.1/levilamina-rust-loader-windows-x64.zip"
+            "https://github.com/Maskviva/levilamina-rust-loader/releases/download/26.20.2/levilamina-rust-loader-windows-x64.zip"
           ],
           "placements": [
             {
