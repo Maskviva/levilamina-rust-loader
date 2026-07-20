@@ -288,7 +288,7 @@ namespace levi_rs::bridge
                         list += "{name:\"" + snbtEscape(pl->getRealName())
                             + "\",xuid:\"" + snbtEscape(pl->getXuid())
                             + "\",uuid:\"" + snbtEscape(pl->getUuid().asString())
-                            + "\",id:" + std::to_string(pl->getOrCreateUniqueID().rawID) + "L},";
+                            + "\",id:" + std::to_string(pl->getOrCreateUniqueID().rawID) + "l},";
                     }
                     if (list.back() == ',') list.pop_back();
                     list += "]";
@@ -303,7 +303,7 @@ namespace levi_rs::bridge
                     {
                         if (!a) continue;
                         list += "{id:" + std::to_string(a->getOrCreateUniqueID().rawID)
-                            + "L,type:\"" + snbtEscape(a->getTypeName()) + "\"},";
+                            + "l,type:\"" + snbtEscape(a->getTypeName()) + "\"},";
                     }
                     if (list.back() == ',') list.pop_back();
                     list += "]";

@@ -34,22 +34,22 @@ impl CustomFormBuilder {
         e
     }
 
-    pub fn input(mut self, name: &str, text: &str, placeholder: &str, default: &str) -> Self {
+    pub fn input(mut self, name: &str, text: &str, placeholder: &str, r#default: &str) -> Self {
         let mut e = Self::named("input", name, text);
         e.insert("placeholder", NbtValue::String(placeholder.into()));
-        e.insert("default", NbtValue::String(default.into()));
+        e.insert("default", NbtValue::String(r#default.into()));
         self.elements.push(e);
         self
     }
 
-    pub fn toggle(mut self, name: &str, text: &str, default: bool) -> Self {
+    pub fn toggle(mut self, name: &str, text: &str, r#default: bool) -> Self {
         let mut e = Self::named("toggle", name, text);
-        e.insert("default", NbtValue::Byte(if default { 1 } else { 0 }));
+        e.insert("default", NbtValue::Byte(if r#default { 1 } else { 0 }));
         self.elements.push(e);
         self
     }
 
-    pub fn dropdown(mut self, name: &str, text: &str, options: &[&str], default: usize) -> Self {
+    pub fn dropdown(mut self, name: &str, text: &str, options: &[&str], r#default: usize) -> Self {
         let mut e = Self::named("dropdown", name, text);
         e.insert(
             "options",
@@ -60,7 +60,7 @@ impl CustomFormBuilder {
                     .collect(),
             ),
         );
-        e.insert("default", NbtValue::Int(default as i32));
+        e.insert("default", NbtValue::Int(r#default as i32));
         self.elements.push(e);
         self
     }
@@ -72,18 +72,18 @@ impl CustomFormBuilder {
         min: f64,
         max: f64,
         step: f64,
-        default: f64,
+        r#default: f64,
     ) -> Self {
         let mut e = Self::named("slider", name, text);
         e.insert("min", NbtValue::Double(min));
         e.insert("max", NbtValue::Double(max));
         e.insert("step", NbtValue::Double(step));
-        e.insert("default", NbtValue::Double(default));
+        e.insert("default", NbtValue::Double(r#default));
         self.elements.push(e);
         self
     }
 
-    pub fn step_slider(mut self, name: &str, text: &str, steps: &[&str], default: usize) -> Self {
+    pub fn step_slider(mut self, name: &str, text: &str, steps: &[&str], r#default: usize) -> Self {
         let mut e = Self::named("step_slider", name, text);
         e.insert(
             "options",
@@ -94,7 +94,7 @@ impl CustomFormBuilder {
                     .collect(),
             ),
         );
-        e.insert("default", NbtValue::Int(default as i32));
+        e.insert("default", NbtValue::Int(r#default as i32));
         self.elements.push(e);
         self
     }

@@ -86,7 +86,7 @@ namespace levi_rs::bridge
 
         double numField(CompoundTag const& o, char const* key, double def)
         {
-            if (o.contains(key) && o.at(key).is_number()) return static_cast<double>(o.at(key));
+            if (o.contains(key)) return nbtToDouble(o.at(key), def);
             return def;
         }
 
@@ -241,7 +241,7 @@ namespace levi_rs::bridge
                         snbt += "\"" + snbtEscape(key) + "\":";
                         if (std::holds_alternative<uint64_t>(value))
                         {
-                            snbt += std::to_string(std::get<uint64_t>(value)) + "L";
+                            snbt += std::to_string(std::get<uint64_t>(value)) + "l";
                         }
                         else if (std::holds_alternative<double>(value))
                         {

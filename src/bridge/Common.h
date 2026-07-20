@@ -17,6 +17,7 @@
 class Actor;
 class BlockSource;
 class CompoundTag;
+class CompoundTagVariant;
 class Container;
 class ItemStack;
 class Level;
@@ -30,6 +31,13 @@ namespace levi_rs
 
     namespace bridge
     {
+        /**
+         * Safely extract a double from an NBT variant, bypassing the C++20
+         * std::integral constraint that causes ByteTag/IntTag -> double
+         * static_casts to silently return 0.
+         */
+        double nbtToDouble(CompoundTagVariant const& val, double def = 0.0);
+
         /** Level pointer if the world is usable, nullptr otherwise. */
         Level* levelReady();
 

@@ -39,6 +39,13 @@ namespace levi_rs
 
     namespace bridge
     {
+        double nbtToDouble(CompoundTagVariant const& val, double def)
+        {
+            if (val.is_number_float()) return static_cast<double>(val);
+            if (val.is_number_integer()) return static_cast<double>(static_cast<int64_t>(val));
+            return def;
+        }
+
         Level* levelReady()
         {
             auto level = ll::service::getLevel();

@@ -47,13 +47,13 @@ namespace levi_rs::bridge
         double argD(CompoundTag const& t, std::string_view key, double def)
         {
             if (!t.contains(key)) return def;
-            return t.at(key); // CompoundTagVariant -> arithmetic conversion
+            return nbtToDouble(t.at(key), def);
         }
 
         bool argB(CompoundTag const& t, std::string_view key, bool def)
         {
             if (!t.contains(key)) return def;
-            return static_cast<double>(t.at(key)) != 0.0;
+            return nbtToDouble(t.at(key), def != 0.0) != 0.0;
         }
 
         std::string argS(CompoundTag const& t, std::string_view key)
