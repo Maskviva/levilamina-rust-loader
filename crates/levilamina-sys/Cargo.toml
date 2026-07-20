@@ -1,6 +1,6 @@
 [package]
 name = "levilamina-sys"
-version = "26.20.1"
+version = "26.20.2"
 edition = "2021"
 license = "Apache-2.0"
 description = "Raw FFI declarations for the levilamina-rs ABI (src/LeviRsAbi.h)."
