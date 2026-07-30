@@ -13,6 +13,7 @@
 #include <string>
 
 #include "mc/deps/core/math/Vec3.h"
+#include "mc/world/phys/AABB.h"
 #include "mc/deps/nbt/CompoundTag.h"
 #include "mc/world/actor/Actor.h"
 #include "mc/world/actor/player/Player.h"
@@ -135,8 +136,12 @@ namespace levi_rs::bridge
         if (!blockSourceOf(dim)) return false;
         // Dimension-targeted via /execute in — the command path keeps this stable
         // across BDS versions (decision #3).
-        if (dim < 0 || dim > 2) return false;
-        std::string cmd = std::string("execute in ") + dimensionName(dim) + " run setblock " + std::to_string(x) + " "
+        //
+        // Custom dimensions (MoreDimensions, ids >= 3) used to be rejected here,
+        // so nothing could ever write a block into one.
+        auto const target = dimensionSelector(dim);
+        if (target.empty()) return false;
+        std::string cmd = "execute in " + target + " run setblock " + std::to_string(x) + " "
             + std::to_string(y) + " " + std::to_string(z) + " " + std::string{blockSpec};
         return runConsoleCommand(cmd);
     }
@@ -182,6 +187,81 @@ namespace levi_rs::bridge
         case LEVI_RS_BPROP_HAS_BLOCK_ENTITY:
             *out = (bs->getBlockEntity(BlockPos{x, y, z}) != nullptr) ? 1.0 : 0.0;
             return true;
+        /* ── v5 additive: block gap fill ── */
+        case LEVI_RS_BPROP_LIGHT:
+            *out = static_cast<double>(block->getLight().mValue);
+            return true;
+        case LEVI_RS_BPROP_LIGHT_EMISSION:
+            *out = static_cast<double>(block->getLightEmission().mValue);
+            return true;
+        case LEVI_RS_BPROP_DESTROY_SPEED:
+            *out = static_cast<double>(block->getDestroySpeed());
+            return true;
+        case LEVI_RS_BPROP_EXPLOSION_RESISTANCE:
+            *out = static_cast<double>(block->getExplosionResistance());
+            return true;
+        case LEVI_RS_BPROP_FRICTION:
+            *out = static_cast<double>(block->getFriction());
+            return true;
+        case LEVI_RS_BPROP_IS_CONTAINER:
+            *out = block->isContainerBlock() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_BPROP_IS_DOOR:
+            *out = block->isDoorBlock() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_BPROP_IS_FENCE:
+            *out = block->isFenceBlock() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_BPROP_IS_RAIL:
+            *out = block->isRailBlock() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_BPROP_IS_SLAB:
+            *out = block->isSlabBlock() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_BPROP_IS_STAIR:
+            *out = block->isStairBlock() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_BPROP_IS_WALL:
+            *out = block->isWallBlock() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_BPROP_IS_CROP:
+            *out = block->isCropBlock() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_BPROP_IS_UNBREAKABLE:
+            *out = block->isUnbreakable() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_BPROP_REDSTONE_SIGNAL:
+            *out = static_cast<double>(bs->getBlock(BlockPos{x, y, z}).getDirectSignal(*bs, BlockPos{x, y, z}, 0));
+            return true;
+        case LEVI_RS_BPROP_COMPARATOR_SIGNAL:
+            // getComparatorSignal(BlockSource&, BlockPos const&, uchar dir)
+            // — dir=0 (down) is a safe default; callers needing a specific
+            // direction should use the block-action API.
+            *out = static_cast<double>(block->getComparatorSignal(*bs, BlockPos{x, y, z}, 0));
+            return true;
+        case LEVI_RS_BPROP_IS_SIGNAL_SOURCE:
+            *out = block->isSignalSource() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_BPROP_VARIANT:
+            *out = static_cast<double>(block->getVariant());
+            return true;
+        case LEVI_RS_BPROP_BURN_ODDS:
+            *out = static_cast<double>(block->getBurnOdds());
+            return true;
+        case LEVI_RS_BPROP_FLAME_ODDS:
+            *out = static_cast<double>(block->getFlameOdds());
+            return true;
+        case LEVI_RS_BPROP_BOUNCINESS:
+            // getBounciness(IConstBlockSource const&, BlockPos const&) — needs
+            // the region for context-dependent bounciness (e.g. slime blocks).
+            *out = static_cast<double>(block->getBounciness(*bs, BlockPos{x, y, z}));
+            return true;
+        case LEVI_RS_BPROP_IS_SOLID:
+            *out = block->isSolid() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_BPROP_REQUIRES_TOOL:
+            *out = block->requiresCorrectToolForDrops() ? 1.0 : 0.0;
+            return true;
         default:
             return false;
         }
@@ -189,8 +269,9 @@ namespace levi_rs::bridge
 
     bool api_block_get_str(int32_t dim, int32_t x, int32_t y, int32_t z, int32_t prop, void* ctx, LeviRsStrSink sink)
     {
-        auto const* block = blockAt(dim, x, y, z);
-        if (!block || !sink) return false;
+        BlockSource* bs = nullptr;
+        auto const* block = blockAt(dim, x, y, z, &bs);
+        if (!block || !sink || !bs) return false;
         switch (prop)
         {
         case LEVI_RS_BSTR_TYPE_NAME:
@@ -219,6 +300,46 @@ namespace levi_rs::bridge
                 sink(ctx, out);
                 return true;
             }
+        /* ── v5 additive ── */
+        case LEVI_RS_BSTR_STATE:
+            {
+                // Serialize all block states as SNBT {name:value, …}
+                sink(ctx, block->mSerializationId.get().toSnbt(SnbtFormat::Minimize));
+                return true;
+            }
+        case LEVI_RS_BSTR_COLLISION_SHAPE:
+            {
+                // getCollisionShape(AABB& out, IConstBlockSource const&,
+                // BlockPos const&, optional_ref) — fills a single AABB and
+                // returns true when the block has a collision box. Multi-box
+                // shapes need BlockSource::fetchCollisionShapes; this reports
+                // the primary shape only.
+                AABB aabb;
+                bool has = block->getCollisionShape(aabb, *bs, BlockPos{x, y, z}, nullptr);
+                std::string out = has
+                    ? ("[{min:[" + std::to_string(aabb.min.x) + "," + std::to_string(aabb.min.y)
+                        + "," + std::to_string(aabb.min.z) + "],max:[" + std::to_string(aabb.max.x)
+                        + "," + std::to_string(aabb.max.y) + "," + std::to_string(aabb.max.z) + "]}]")
+                    : "[]";
+                sink(ctx, out);
+                return true;
+            }
+        case LEVI_RS_BSTR_OUTLINE_SHAPE:
+            {
+                // getOutline(IConstBlockSource const&, BlockPos const&, AABB& buffer)
+                // — returns const ref to the buffer (so the call still works
+                // when the buffer is on the stack).
+                AABB buffer;
+                auto const& aabb = block->getOutline(*bs, BlockPos{x, y, z}, buffer);
+                std::string out = "[{min:[" + std::to_string(aabb.min.x) + "," + std::to_string(aabb.min.y) + ","
+                    + std::to_string(aabb.min.z) + "],max:[" + std::to_string(aabb.max.x) + ","
+                    + std::to_string(aabb.max.y) + "," + std::to_string(aabb.max.z) + "]}]";
+                sink(ctx, out);
+                return true;
+            }
+        case LEVI_RS_BSTR_DISPLAY_NAME:
+            sink(ctx, block->getDisplayName());
+            return true;
         default:
             return false;
         }
@@ -235,14 +356,47 @@ namespace levi_rs::bridge
         LeviRsStrSink out
     )
     {
-        auto const* block = blockAt(dim, x, y, z);
-        if (!block) return false;
+        BlockSource* bs = nullptr;
+        auto const* block = blockAt(dim, x, y, z, &bs);
+        if (!block || !bs) return false;
         switch (action)
         {
         case LEVI_RS_BACT_HAS_TAG:
             {
                 bool has = block->hasTag(HashedString{std::string_view{sarg}});
                 if (out) out(ctx, has ? "1" : "0");
+                return true;
+            }
+        /* ── v5 additive ── */
+        case LEVI_RS_BACT_GET_STATE:
+            {
+                // Block state lookup by name — not directly available via a
+                // single getState(name) in this LL version. Return false
+                // (unsupported) until a proper BlockState API is plumbed.
+                return false;
+            }
+        case LEVI_RS_BACT_POP_RESOURCE:
+            {
+                // Pop a resource at the block position via /setblock air destroy
+                // which drops the block's resources. The sarg (item SNBT) is
+                // ignored — the engine handles the drop table.
+                auto const target = dimensionSelector(dim);
+                if (target.empty()) return false;
+                return runConsoleCommand(
+                    "execute in " + target + " run setblock "
+                    + std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(z) + " air destroy"
+                );
+            }
+        case LEVI_RS_BACT_AS_ITEM:
+            {
+                if (!out) return false;
+                // asItemInstance(BlockSource&, BlockPos const&) returns an
+                // ItemInstance (not an ItemStack). ItemInstance has no
+                // SNBT serializer compatible with itemToSnbt's signature,
+                // so serialize its user-data CompoundTag instead.
+                auto item = block->asItemInstance(*bs, BlockPos{x, y, z});
+                auto* ud = item.getUserData();
+                out(ctx, ud ? ud->toSnbt(SnbtFormat::Minimize) : "{}");
                 return true;
             }
         default:

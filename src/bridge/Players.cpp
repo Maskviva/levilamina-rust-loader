@@ -7,16 +7,26 @@
  */
 #include "bridge/Api.h"
 #include "bridge/Common.h"
+#include "ll/api/io/Logger.h"
+#ifdef LEVI_RS_FEATURE_MORE_DIMENSIONS
+#include "more_dimensions/NativeDimensions.h"
+#include "mc/world/level/dimension/Dimension.h"
+#endif
+
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "mc/deps/core/math/Vec3.h"
+#include "mc/deps/core/string/HashedString.h"
 #include "mc/deps/nbt/CompoundTag.h"
+#include "mc/network/NetworkPeer.h"
 #include "mc/platform/UUID.h"
 #include "mc/world/actor/Actor.h"
+#include "mc/world/actor/ActorHurtResult.h"
 #include "mc/world/actor/player/AbilitiesIndex.h"
 #include "mc/network/packet/TextPacket.h"
 #include "mc/network/packet/TextPacketPayload.h"
@@ -27,8 +37,12 @@
 #include "mc/world/attribute/AttributeInstanceConstRef.h"
 #include "mc/world/attribute/AttributeInstanceForwarder.h"
 #include "mc/world/attribute/MutableAttributeWithContext.h"
+#include "mc/world/gamemode/InteractionResult.h"
 #include "mc/world/item/ItemStack.h"
 #include "mc/world/level/Level.h"
+#include "mc/deps/core/math/Vec2.h"
+#include "mc/world/level/dimension/DimensionType.h"
+
 
 namespace levi_rs::bridge
 {
@@ -130,14 +144,60 @@ namespace levi_rs::bridge
         return runConsoleCommand("gamemode " + std::string{name} + " \"" + p->getRealName() + "\"");
     }
 
+    /**
+     * Teleport a player, across dimensions if needed.
+     *
+     * Two things were wrong with the previous implementation:
+     *
+     *  1. `if (dim < 0 || dim > 2) return false;` rejected every custom
+     *     dimension (MoreDimensions ids start at 3), so entering a custom
+     *     dimension through this API was simply impossible. Note the *actor*
+     *     teleport path in Actors.cpp never had that restriction — the player
+     *     one was just an oversight.
+     *
+     *  2. It shelled out to `/execute in <name> run tp`. The `execute in`
+     *     subcommand takes a *command enum* of dimensions built from the
+     *     vanilla set, so a custom dimension name isn't necessarily a valid
+     *     token there — the command could fail to parse, or parse into the
+     *     wrong dimension, even after the name was registered.
+     *
+     * Actor::teleport is LeviLamina's own cross-dimension helper (already used
+     * by api_actor_action), so it goes through the engine's own dimension-change
+     * machinery. With navdim the client knows the custom dimension for real
+     * (it is described to the client by DimensionDataPacket), so the vanilla
+     * path is all that is needed — there is no packet-rewriting layer left to
+     * go through. The command path bypassed the engine machinery entirely.
+     */
     bool api_player_teleport(LeviRsPlayerSel sel, int32_t dim, double x, double y, double z)
     {
         Player* p = resolvePlayer(sel);
         if (!p) return false;
-        if (dim < 0 || dim > 2) return false;
-        std::string cmd = std::string("execute in ") + dimensionName(dim) + " run tp \"" + p->getRealName() + "\" "
-            + std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(z);
-        return runConsoleCommand(cmd);
+
+        auto const name = dimensionSelector(dim);
+        if (name.empty()) return false;
+
+#ifdef LEVI_RS_FEATURE_MORE_DIMENSIONS
+        if (dim >= 3)
+        {
+            // blockSourceOf() 只保证"有个维度对象",不保证它的 id 就是 dim。
+            // 两者不一致时把玩家送进 dim,引擎会在区块工作线程上抛出未捕获异常,
+            // 整个进程 fastfail(0xC0000409) —— 不是一句"传送失败"能兜住的。
+            auto* real = ::more_dimensions::native::getOrCreateByName(name);
+            if (!real) return false;
+            if (real->getDimensionId().value() != dim)
+            {
+                bridgeLogger().error(
+                    "拒绝传送：维度 '{}' 台账 id {}，引擎实例 id {}",
+                    name, dim, real->getDimensionId().value());
+                return false;
+            }
+        }
+#endif
+
+        if (!blockSourceOf(dim)) return false;
+
+        p->teleport(Vec3{(float)x, (float)y, (float)z}, DimensionType{dim}, p->getRotation());
+        return true;
     }
 
     // ───────────────────────── attributes helper ─────────────────────────
@@ -235,6 +295,62 @@ namespace levi_rs::bridge
         case LEVI_RS_PPROP_CLIENT_SUB_ID:
             *out = static_cast<double>(static_cast<int>(p->getClientSubId()));
             return true;
+        /* ── v5 additive: player gap fill ── */
+        case LEVI_RS_PPROP_DIRECTION:
+            *out = static_cast<double>(p->getDirection());
+            return true;
+        case LEVI_RS_PPROP_CHUNK_RADIUS:
+            *out = static_cast<double>(p->getChunkRadius());
+            return true;
+        case LEVI_RS_PPROP_NETWORK_RTT:
+            {
+                // getNetworkStatus() returns std::optional<NetworkPeer::NetworkStatus>;
+                // mCurrentPing is a wrapped chrono::milliseconds, so use ->count().
+                auto opt = p->getNetworkStatus();
+                if (!opt) return false;
+                *out = static_cast<double>(opt->mCurrentPing->count());
+                return true;
+            }
+        case LEVI_RS_PPROP_PLATFORM:
+            *out = static_cast<double>(static_cast<int>(p->getPlatform()));
+            return true;
+        case LEVI_RS_PPROP_ENCHANTMENT_SEED:
+            *out = static_cast<double>(p->getEnchantmentSeed());
+            return true;
+        case LEVI_RS_PPROP_IS_USING_ITEM:
+            *out = p->isUsingItem() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_PPROP_IS_BLOCKING:
+            *out = p->isBlocking() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_PPROP_IS_GLIDING:
+            *out = p->isGliding() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_PPROP_IS_SWIMMING:
+            *out = p->isSwimming() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_PPROP_PERMISSION_LEVEL:
+            *out = static_cast<double>(static_cast<int>(p->getPlayerPermissionLevel()));
+            return true;
+        case LEVI_RS_PPROP_SCORE:
+            // Player has no getScore(); the value lives in the public mScore
+            // member (TypedStorage<int> collapses to a raw int on access).
+            *out = static_cast<double>(p->mScore);
+            return true;
+        case LEVI_RS_PPROP_FALL_DISTANCE:
+            *out = static_cast<double>(p->getFallDistance());
+            return true;
+        case LEVI_RS_PPROP_IS_DEAD:
+            *out = p->isDead() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_PPROP_HAS_DIED_BEFORE:
+            *out = p->hasDiedBefore() ? 1.0 : 0.0;
+            return true;
+        // 玩家当前所在维度。自定义维度的 id >= 3，所以调用方不能假设只有 0/1/2。
+        // 写法照抄 Actors.cpp 里已有的那一处，Player 继承自 Actor。
+        case LEVI_RS_PPROP_DIMENSION:
+            *out = static_cast<double>(static_cast<int>(p->getDimensionId()));
+            return true;
         default:
             return false;
         }
@@ -263,6 +379,50 @@ namespace levi_rs::bridge
             return true;
         case LEVI_RS_PSTR_NAME_TAG:
             sink(ctx, p->getNameTag());
+            return true;
+        /* ── v5 additive ── */
+        case LEVI_RS_PSTR_LAST_DEATH_POS:
+            {
+                auto pos = p->getLastDeathPos();
+                if (!pos.has_value())
+                {
+                    sink(ctx, "");
+                    return true;
+                }
+                std::string snbt = "{x:" + std::to_string(pos->x) + ",y:" + std::to_string(pos->y)
+                    + ",z:" + std::to_string(pos->z) + "}";
+                sink(ctx, snbt);
+                return true;
+            }
+        case LEVI_RS_PSTR_LAST_DEATH_DIMENSION:
+            {
+                auto dim = p->getLastDeathDimension();
+                if (!dim.has_value())
+                {
+                    sink(ctx, "");
+                    return true;
+                }
+                sink(ctx, std::to_string(static_cast<int>(*dim)));
+                return true;
+            }
+        case LEVI_RS_PSTR_NETWORK_STATUS:
+            {
+                // NetworkStatus fields: mCurrentPing/mAveragePing are wrapped
+                // chrono::milliseconds (use ->count()); the packet-loss fields
+                // are plain float (use directly). Returns optional, so check.
+                auto opt = p->getNetworkStatus();
+                if (!opt) return false;
+                auto const& ns = *opt;
+                std::string snbt = "{ping:" + std::to_string(ns.mCurrentPing->count());
+                snbt += ",avg_ping:" + std::to_string(ns.mAveragePing->count());
+                snbt += ",packet_loss:" + std::to_string(ns.mCurrentPacketLoss);
+                snbt += ",avg_packet_loss:" + std::to_string(ns.mAveragePacketLoss);
+                snbt += ",max_bps:" + std::to_string(ns.mApproximateMaxBps) + "}";
+                sink(ctx, snbt);
+                return true;
+            }
+        case LEVI_RS_PSTR_PLATFORM_ONLINE_ID:
+            sink(ctx, p->getPlatformOnlineId());
             return true;
         default:
             return false;
@@ -337,21 +497,25 @@ namespace levi_rs::bridge
             }
         case LEVI_RS_PACT_SET_SPAWN_POINT:
             {
-                        std::string dimStr{sarg};
+                std::string dimStr{sarg};
                 int dim = 0;
                 if (!dimStr.empty())
                 {
                     try
                     {
-                        dim = std::clamp(std::stoi(dimStr), 0, 2);
+                        // Was clamped to 0..2, which silently moved a spawn
+                        // point meant for a custom dimension into the end.
+                        dim = std::stoi(dimStr);
                     }
                     catch (...)
                     {
                         return false;
                     }
                 }
+                auto const target = dimensionSelector(dim);
+                if (target.empty()) return false;
                 return runConsoleCommand(
-                    std::string("execute in ") + dimensionName(dim) + " run spawnpoint \"" + p->getRealName() + "\" "
+                    "execute in " + target + " run spawnpoint \"" + p->getRealName() + "\" "
                     + std::to_string(static_cast<int>(a)) + " " + std::to_string(static_cast<int>(b)) + " "
                     + std::to_string(static_cast<int>(c))
                 );
@@ -368,6 +532,96 @@ namespace levi_rs::bridge
                     "title \"" + p->getRealName() + "\" " + slot + " " + std::string{sarg}
                 );
             }
+        /* ── v5 additive ── */
+        case LEVI_RS_PACT_ADD_EXPERIENCE:
+            p->addExperience(static_cast<int>(a));
+            return true;
+        case LEVI_RS_PACT_ADD_LEVELS:
+            p->addLevels(static_cast<int>(a));
+            return true;
+        case LEVI_RS_PACT_START_COOLDOWN:
+            // startItemCooldown(HashedString const&, int ticks, bool updateClient)
+            p->startItemCooldown(HashedString{std::string{sarg}}, static_cast<int>(a), true);
+            return true;
+        case LEVI_RS_PACT_START_RIDING:
+            {
+                auto* vehicle = resolveActor(static_cast<LeviRsActorId>(a));
+                if (!vehicle) return false;
+                // startRiding(Actor&, bool forceRiding) — force=true so the
+                // request succeeds even if the vehicle is full.
+                return p->startRiding(*vehicle, true);
+            }
+        case LEVI_RS_PACT_STOP_RIDING:
+            // stopRiding(bool exitFromPassenger, bool actorIsBeingDestroyed,
+            //            bool switchingVehicles, bool isBeingTeleported)
+            p->stopRiding(true, false, false, false);
+            return true;
+        case LEVI_RS_PACT_ATTACK:
+            {
+                auto* target = resolveActor(static_cast<LeviRsActorId>(a));
+                if (!target) return false;
+                // attack(Actor&, ActorDamageCause const&) — use Override (the
+                // generic cause) since the caller didn't specify one.
+                p->attack(*target, ::SharedTypes::Legacy::ActorDamageCause::Override);
+                return true;
+            }
+        case LEVI_RS_PACT_DROP:
+            {
+                auto opt = itemFromSnbt(std::string_view{sarg});
+                if (!opt) return false;
+                return p->drop(std::move(*opt), a != 0.0);
+            }
+        case LEVI_RS_PACT_INTERACT:
+            {
+                auto* target = resolveActor(static_cast<LeviRsActorId>(a));
+                if (!target) return false;
+                // interact(Actor&, Vec3 const& location) returns InteractionResult;
+                // surface its mSuccess bit as the bool return.
+                auto result = p->interact(*target, target->getPosition());
+                return result.mSuccess;
+            }
+        case LEVI_RS_PACT_START_USING_ITEM:
+            {
+                auto opt = itemFromSnbt(std::string_view{sarg});
+                if (!opt) return false;
+                p->startUsingItem(std::move(*opt), static_cast<int>(a));
+                return true;
+            }
+        case LEVI_RS_PACT_STOP_USING_ITEM:
+            p->stopUsingItem();
+            return true;
+        case LEVI_RS_PACT_SET_CHUNK_RADIUS:
+            p->setChunkRadius(static_cast<int>(a));
+            return true;
+        case LEVI_RS_PACT_SET_ENCHANTMENT_SEED:
+            p->setEnchantmentSeed(static_cast<int>(a));
+            return true;
+        case LEVI_RS_PACT_REGISTER_TRACKED_BOSS:
+            {
+                auto* boss = resolveActor(static_cast<LeviRsActorId>(a));
+                if (!boss) return false;
+                // registerTrackedBoss takes an ActorUniqueID, not an Actor ref.
+                p->registerTrackedBoss(boss->getOrCreateUniqueID());
+                return true;
+            }
+        case LEVI_RS_PACT_UNREGISTER_TRACKED_BOSS:
+            {
+                auto* boss = resolveActor(static_cast<LeviRsActorId>(a));
+                if (!boss) return false;
+                p->unRegisterTrackedBoss(boss->getOrCreateUniqueID());
+                return true;
+            }
+        case LEVI_RS_PACT_PLAY_EMOTE:
+            // playEmote(string const& pieceId, bool playChatMessage)
+            p->playEmote(std::string{sarg}, false);
+            return true;
+        case LEVI_RS_PACT_RESEND_ALL_CHUNKS:
+            p->resendAllChunks();
+            return true;
+        case LEVI_RS_PACT_OPEN_INVENTORY:
+            p->openInventory();
+            return true;
+
         default:
             return false;
         }

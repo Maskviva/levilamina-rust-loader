@@ -1,4 +1,4 @@
-/** bridge/LogScheduler.cpp — logging, scheduling, server stats (ABI v1–v2). */
+/** bridge/LogScheduler.cpp — logging, scheduling, game stats (ABI v1–v2). */
 #include "bridge/Api.h"
 #include "bridge/Common.h"
 
@@ -7,7 +7,17 @@
 #include "ll/api/io/LogLevel.h"
 #include "ll/api/io/Logger.h"
 #include "ll/api/service/GamingStatus.h"
+
+// Server build schedules onto the server thread; client build schedules onto
+// the client thread. Both executors have the same interface (execute /
+// executeAfter), inherited from ll::coro::Executor.
+#ifdef LEVI_RS_TARGET_CLIENT
+#include "ll/api/thread/ClientThreadExecutor.h"
+#define LEVI_RS_THREAD_EXEC ll::thread::ClientThreadExecutor
+#else
 #include "ll/api/thread/ServerThreadExecutor.h"
+#define LEVI_RS_THREAD_EXEC ll::thread::ServerThreadExecutor
+#endif
 
 #include "mc/world/level/Level.h"
 #include "mc/world/level/Tick.h"
@@ -52,7 +62,7 @@ namespace levi_rs::bridge
     void api_schedule(LeviRsTaskCb cb, void* user)
     {
         if (!cb) return;
-        ll::thread::ServerThreadExecutor::getDefault().execute([cb, user] { cb(user); });
+        LEVI_RS_THREAD_EXEC::getDefault().execute([cb, user] { cb(user); });
     }
 
     void api_schedule_after(LeviRsTaskCb cb, void* user, uint64_t delayMs)
@@ -60,7 +70,7 @@ namespace levi_rs::bridge
         if (!cb) return;
         // Executor::Duration = std::chrono::steady_clock::duration; milliseconds convert implicitly.
         // Fire-and-forget: the returned CancellableCallback is intentionally dropped.
-        (void)ll::thread::ServerThreadExecutor::getDefault().executeAfter(
+        (void)LEVI_RS_THREAD_EXEC::getDefault().executeAfter(
             [cb, user] { cb(user); },
             std::chrono::milliseconds(delayMs)
         );

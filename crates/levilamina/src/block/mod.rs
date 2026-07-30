@@ -16,6 +16,7 @@ pub struct Block {
 }
 
 mod actions;
+mod gap_fill;
 mod query;
 
 impl Block {

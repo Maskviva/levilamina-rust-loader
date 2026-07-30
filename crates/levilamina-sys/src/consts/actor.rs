@@ -1,0 +1,91 @@
+//! Actor property/action constants — LeviRsActorNumProp, LeviRsActorStrProp,
+//! LeviRsActorAction. Append-only; never renumber.
+
+// LeviRsActorNumProp
+pub const APROP_POS_X: i32 = 0;
+pub const APROP_POS_Y: i32 = 1;
+pub const APROP_POS_Z: i32 = 2;
+pub const APROP_ROT_PITCH: i32 = 3;
+pub const APROP_ROT_YAW: i32 = 4;
+pub const APROP_DIMENSION: i32 = 5;
+pub const APROP_HEALTH: i32 = 6;
+pub const APROP_MAX_HEALTH: i32 = 7;
+pub const APROP_IS_ALIVE: i32 = 8;
+pub const APROP_IS_ON_GROUND: i32 = 9;
+pub const APROP_IS_IN_WATER: i32 = 10;
+pub const APROP_IS_IN_LAVA: i32 = 11;
+pub const APROP_IS_ON_FIRE: i32 = 12;
+pub const APROP_IS_INVISIBLE: i32 = 13;
+pub const APROP_IS_SNEAKING: i32 = 14;
+pub const APROP_IS_BABY: i32 = 15;
+pub const APROP_IS_RIDING: i32 = 16;
+pub const APROP_IS_TAME: i32 = 17;
+pub const APROP_SPEED: i32 = 18;
+pub const APROP_VIEW_X: i32 = 19;
+pub const APROP_VIEW_Y: i32 = 20;
+pub const APROP_VIEW_Z: i32 = 21;
+pub const APROP_VEL_X: i32 = 22;
+pub const APROP_VEL_Y: i32 = 23;
+pub const APROP_VEL_Z: i32 = 24;
+pub const APROP_HEAD_X: i32 = 25;
+pub const APROP_HEAD_Y: i32 = 26;
+pub const APROP_HEAD_Z: i32 = 27;
+pub const APROP_FEET_X: i32 = 28;
+pub const APROP_FEET_Y: i32 = 29;
+pub const APROP_FEET_Z: i32 = 30;
+pub const APROP_FALL_DISTANCE: i32 = 31;
+pub const APROP_IS_PERSISTENT: i32 = 32;
+pub const APROP_IS_LEASHED: i32 = 33;
+pub const APROP_IS_INVULNERABLE: i32 = 34;
+pub const APROP_VARIANT: i32 = 35;
+pub const APROP_MARK_VARIANT: i32 = 36;
+pub const APROP_SCALE: i32 = 37;
+pub const APROP_BRIGHTNESS: i32 = 38;
+pub const APROP_RADIUS: i32 = 39;
+pub const APROP_HAS_TOTEM: i32 = 40;
+pub const APROP_IS_IN_RAIN: i32 = 41;
+pub const APROP_IS_IN_SNOW: i32 = 42;
+pub const APROP_IS_IN_THUNDERSTORM: i32 = 43;
+pub const APROP_IS_FROZEN: i32 = 44;
+pub const APROP_IS_IN_LOVE: i32 = 45;
+pub const APROP_DEATH_TIME: i32 = 46;
+pub const APROP_HAS_PASSENGER: i32 = 47;
+
+// LeviRsActorStrProp
+pub const ASTR_TYPE_NAME: i32 = 0;
+pub const ASTR_NAME_TAG: i32 = 1;
+pub const ASTR_SCORE_TAG: i32 = 2;
+pub const ASTR_FILTERED_NAME: i32 = 3;
+
+// LeviRsActorAction
+pub const AACT_KILL: i32 = 0;
+pub const AACT_DESPAWN: i32 = 1;
+pub const AACT_HEAL: i32 = 2;
+pub const AACT_SET_ON_FIRE: i32 = 3;
+pub const AACT_TELEPORT: i32 = 4;
+pub const AACT_SET_NAME_TAG: i32 = 5;
+pub const AACT_ADD_TAG: i32 = 6;
+pub const AACT_REMOVE_TAG: i32 = 7;
+pub const AACT_HAS_TAG: i32 = 8;
+pub const AACT_ADD_EFFECT: i32 = 9;
+pub const AACT_REMOVE_EFFECT: i32 = 10;
+pub const AACT_CLEAR_EFFECTS: i32 = 11;
+pub const AACT_HURT: i32 = 12;
+pub const AACT_ATTRIBUTE_GET: i32 = 13;
+pub const AACT_SET_VARIANT: i32 = 14;
+pub const AACT_SET_MARK_VARIANT: i32 = 15;
+pub const AACT_SET_PERSISTENT: i32 = 16;
+pub const AACT_SET_LEASH_HOLDER: i32 = 17;
+pub const AACT_SET_INVISIBLE: i32 = 18;
+pub const AACT_SET_SNEAKING: i32 = 19;
+pub const AACT_SET_NAME_TAG_VISIBLE: i32 = 20;
+pub const AACT_SET_TARGET: i32 = 21;
+pub const AACT_SET_OWNER: i32 = 22;
+pub const AACT_BURN: i32 = 23;
+pub const AACT_STOP_FIRE: i32 = 24;
+pub const AACT_SET_VELOCITY: i32 = 25;
+pub const AACT_APPLY_IMPULSE: i32 = 26;
+pub const AACT_SET_SCORE_TAG: i32 = 27;
+pub const AACT_SET_SKIN_ID: i32 = 28;
+pub const AACT_SET_STRENGTH: i32 = 29;
+pub const AACT_REMOVE_ALL_PASSENGERS: i32 = 30;

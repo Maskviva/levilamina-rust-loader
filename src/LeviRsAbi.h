@@ -205,6 +205,32 @@ typedef void (*LeviRsFormResultCb)(void* user, LeviRsStr result_snbt);
 /** Opaque handle to an open key-value database owned by the loader. */
 typedef void* LeviRsKvDbHandle;
 
+/* ═════════════════ Client-only FFI types ═════════════════
+ * Compiled only when building the loader against the CLIENT target
+ * (LEVI_RS_TARGET_CLIENT defined by xmake when target_type=client).
+ * The Rust levilamina-sys crate mirrors these under #[cfg(feature="client")].
+ * A server build never sees them — the struct_size stops before this block. */
+
+#ifdef LEVI_RS_TARGET_CLIENT
+/** Opaque handle to a registered key binding owned by the loader's
+ * ll::input::KeyRegistry. Drop via client_unregister_key. */
+typedef void* LeviRsKeyHandle;
+
+/** Key action: 0 = released (up), 1 = pressed (down).
+ * Mirrors ll::event::KeyInputEvent::Action. */
+typedef int32_t LeviRsKeyAction;
+
+/** Focus impact level: 0=Neutral 1=ActivateFocus 2=DeactivateFocus.
+ * Mirrors ::FocusImpact. */
+typedef int32_t LeviRsFocusImpact;
+
+/** Callback for key press/release events. Runs on the client thread.
+ *  user   — pointer passed to client_register_key
+ *  action — 0=released 1=pressed (see LeviRsKeyAction)
+ *  impact — current focus impact (see LeviRsFocusImpact) */
+typedef void (*LeviRsKeyCb)(void* user, LeviRsKeyAction action, LeviRsFocusImpact impact);
+#endif
+
 /* ── v5 property / action keys.  APPEND-ONLY: never renumber or remove. ──
  * Unknown values make the call return false; the Rust safe layer maps that
  * to Err("unsupported"), which is the forward-compat negotiation.        */
@@ -234,6 +260,22 @@ enum LeviRsPlayerNumProp
     LEVI_RS_PPROP_CLIENT_SUB_ID = 19, /* (G) Player::getClientSubId */
     LEVI_RS_PPROP_CAN_USE_ABILITY = 20,
     /* (G) Player::canUseAbility; ability index passed via player_action GET path — see LEVI_RS_PACT_CAN_USE_ABILITY */
+    /* ── v5 additive: player gap fill ── */
+    LEVI_RS_PPROP_DIRECTION = 21,          /* (G) Player::getDirection (0=S,1=W,2=N,3=E) */
+    LEVI_RS_PPROP_CHUNK_RADIUS = 22,        /* (G) Player::getChunkRadius */
+    LEVI_RS_PPROP_NETWORK_RTT = 23,         /* (G) getNetworkStatus().mPing (ms) */
+    LEVI_RS_PPROP_PLATFORM = 24,            /* (G) Player::getPlatform */
+    LEVI_RS_PPROP_ENCHANTMENT_SEED = 25,    /* (G) Player::getEnchantmentSeed */
+    LEVI_RS_PPROP_IS_USING_ITEM = 26,       /* (G) Player::isUsingItem */
+    LEVI_RS_PPROP_IS_BLOCKING = 27,         /* (G) Player::isBlocking */
+    LEVI_RS_PPROP_IS_GLIDING = 28,          /* (G) Player::isGliding */
+    LEVI_RS_PPROP_IS_SWIMMING = 29,         /* (G) Player::isSwimming */
+    LEVI_RS_PPROP_PERMISSION_LEVEL = 30,    /* (G) Player::getPlayerPermissionLevel */
+    LEVI_RS_PPROP_SCORE = 31,               /* (G) Player::getScore */
+    LEVI_RS_PPROP_FALL_DISTANCE = 32,       /* (G) Actor::getFallDistance */
+    LEVI_RS_PPROP_IS_DEAD = 33,             /* (G) Actor::isDead */
+    LEVI_RS_PPROP_HAS_DIED_BEFORE = 34,     /* (G) Player::hasDiedBefore */
+    LEVI_RS_PPROP_DIMENSION = 35,           /* (G) Actor::getDimensionId */
 };
 
 /** player_get_str keys. */
@@ -245,6 +287,11 @@ enum LeviRsPlayerStrProp
     LEVI_RS_PSTR_IP_AND_PORT = 3, /* Player::getIPAndPort */
     LEVI_RS_PSTR_LOCALE_CODE = 4, /* Player::getLocaleCode */
     LEVI_RS_PSTR_NAME_TAG = 5, /* Actor::getNameTag (display name) */
+    /* ── v5 additive ── */
+    LEVI_RS_PSTR_LAST_DEATH_POS = 6,       /* SNBT {x,y,z} or "" if none */
+    LEVI_RS_PSTR_LAST_DEATH_DIMENSION = 7, /* dimension id as string */
+    LEVI_RS_PSTR_NETWORK_STATUS = 8,       /* SNBT {ping,avg_ping,packet_loss,max_ping} */
+    LEVI_RS_PSTR_PLATFORM_ONLINE_ID = 9,   /* Player::getPlatformOnlineId */
 };
 
 /**
@@ -260,6 +307,24 @@ enum LeviRsPlayerAction
     LEVI_RS_PACT_SET_SPAWN_POINT = 4, /* a,b,c=pos, sarg=dim ("0".."2")  via /spawnpoint */
     LEVI_RS_PACT_CLEAR_TITLE = 5, /* via /title clear */
     LEVI_RS_PACT_SET_TITLE = 6, /* sarg=text, a=slot(0 title,1 subtitle,2 actionbar) via /title */
+    /* ── v5 additive ── */
+    LEVI_RS_PACT_ADD_EXPERIENCE = 7,         /* a=xp                  Player::addExperience */
+    LEVI_RS_PACT_ADD_LEVELS = 8,             /* a=levels              Player::addLevels */
+    LEVI_RS_PACT_START_COOLDOWN = 9,         /* sarg=item name, a=ticks Player::startItemCooldown */
+    LEVI_RS_PACT_START_RIDING = 10,          /* a=vehicle ActorUniqueID (lower 64b) Player::startRiding */
+    LEVI_RS_PACT_STOP_RIDING = 11,           /*                       Player::stopRiding */
+    LEVI_RS_PACT_ATTACK = 12,                /* a=target ActorUniqueID (lower 64b) Player::attack */
+    LEVI_RS_PACT_DROP = 13,                  /* sarg=item SNBT, a=random(0/1) Player::drop */
+    LEVI_RS_PACT_INTERACT = 14,              /* a=target ActorUniqueID        Player::interact */
+    LEVI_RS_PACT_START_USING_ITEM = 15,      /* sarg=item SNBT, a=duration    Player::startUsingItem */
+    LEVI_RS_PACT_STOP_USING_ITEM = 16,       /*                       Player::stopUsingItem */
+    LEVI_RS_PACT_SET_CHUNK_RADIUS = 17,      /* a=radius              Player::setChunkRadius */
+    LEVI_RS_PACT_SET_ENCHANTMENT_SEED = 18,  /* a=seed                Player::setEnchantmentSeed */
+    LEVI_RS_PACT_REGISTER_TRACKED_BOSS = 19, /* a=boss ActorUniqueID  Player::registerTrackedBoss */
+    LEVI_RS_PACT_UNREGISTER_TRACKED_BOSS = 20,/* a=boss ActorUniqueID Player::unRegisterTrackedBoss */
+    LEVI_RS_PACT_PLAY_EMOTE = 21,            /* sarg=piece id         Player::playEmote */
+    LEVI_RS_PACT_RESEND_ALL_CHUNKS = 22,     /*                       Player::resendAllChunks */
+    LEVI_RS_PACT_OPEN_INVENTORY = 23,        /*                       Player::openInventory */
 };
 
 /** actor_get_num / actor_set_num keys. (S)=settable via actor_set_num. */
@@ -284,6 +349,36 @@ enum LeviRsActorNumProp
     LEVI_RS_APROP_IS_RIDING = 16, /* (G) Actor::isRiding */
     LEVI_RS_APROP_IS_TAME = 17, /* (G) Actor::isTame */
     LEVI_RS_APROP_SPEED = 18, /* (G) Actor::getSpeedInMetersPerSecond */
+    /* ── v5 additive: actor gap fill ── */
+    LEVI_RS_APROP_VIEW_X = 19,              /* (G) Actor::getViewVector().x */
+    LEVI_RS_APROP_VIEW_Y = 20,              /* (G) Actor::getViewVector().y */
+    LEVI_RS_APROP_VIEW_Z = 21,              /* (G) Actor::getViewVector().z */
+    LEVI_RS_APROP_VEL_X = 22,               /* (G) Actor::getVelocity().x */
+    LEVI_RS_APROP_VEL_Y = 23,               /* (G) Actor::getVelocity().y */
+    LEVI_RS_APROP_VEL_Z = 24,               /* (G) Actor::getVelocity().z */
+    LEVI_RS_APROP_HEAD_X = 25,              /* (G) Actor::getHeadPos().x */
+    LEVI_RS_APROP_HEAD_Y = 26,              /* (G) Actor::getHeadPos().y */
+    LEVI_RS_APROP_HEAD_Z = 27,              /* (G) Actor::getHeadPos().z */
+    LEVI_RS_APROP_FEET_X = 28,              /* (G) Actor::getFeetPos().x */
+    LEVI_RS_APROP_FEET_Y = 29,              /* (G) Actor::getFeetPos().y */
+    LEVI_RS_APROP_FEET_Z = 30,              /* (G) Actor::getFeetPos().z */
+    LEVI_RS_APROP_FALL_DISTANCE = 31,       /* (G) Actor::getFallDistance */
+    LEVI_RS_APROP_IS_PERSISTENT = 32,       /* (G) Actor::isPersistent */
+    LEVI_RS_APROP_IS_LEASHED = 33,          /* (G) Actor::isLeashed */
+    LEVI_RS_APROP_IS_INVULNERABLE = 34,     /* (G) Actor::isInvulnerable */
+    LEVI_RS_APROP_VARIANT = 35,             /* (G) Actor::getVariant */
+    LEVI_RS_APROP_MARK_VARIANT = 36,        /* (G) Actor::getMarkVariant */
+    LEVI_RS_APROP_SCALE = 37,               /* (G) Actor::getScaleFactor */
+    LEVI_RS_APROP_BRIGHTNESS = 38,          /* (G) Actor::getBrightness */
+    LEVI_RS_APROP_RADIUS = 39,              /* (G) Actor::getRadius */
+    LEVI_RS_APROP_HAS_TOTEM = 40,           /* (G) Actor::hasTotemEquipped */
+    LEVI_RS_APROP_IS_IN_RAIN = 41,          /* (G) Actor::isInRain */
+    LEVI_RS_APROP_IS_IN_SNOW = 42,          /* (G) Actor::isInSnow */
+    LEVI_RS_APROP_IS_IN_THUNDERSTORM = 43,  /* (G) Actor::isInThunderstorm */
+    LEVI_RS_APROP_IS_FROZEN = 44,           /* (G) Actor::isFrozen */
+    LEVI_RS_APROP_IS_IN_LOVE = 45,          /* (G) Actor::isInLove */
+    LEVI_RS_APROP_DEATH_TIME = 46,          /* (G) Actor::getDeathTime */
+    LEVI_RS_APROP_HAS_PASSENGER = 47,       /* (G) Actor::hasPassenger */
 };
 
 /** actor_get_str keys. */
@@ -291,6 +386,9 @@ enum LeviRsActorStrProp
 {
     LEVI_RS_ASTR_TYPE_NAME = 0, /* Actor::getTypeName */
     LEVI_RS_ASTR_NAME_TAG = 1, /* Actor::getNameTag */
+    /* ── v5 additive ── */
+    LEVI_RS_ASTR_SCORE_TAG = 2,            /* Actor::getScoreTag */
+    LEVI_RS_ASTR_FILTERED_NAME = 3,        /* Actor::getFilteredNameTag */
 };
 
 /** actor_action verbs. Args (sarg, a, b, c); `out` receives a result where noted. */
@@ -311,6 +409,24 @@ enum LeviRsActorAction
     LEVI_RS_AACT_CLEAR_EFFECTS = 11, /* Actor::removeAllEffects */
     LEVI_RS_AACT_HURT = 12, /* a=damage (generic damage source)    Actor::hurt */
     LEVI_RS_AACT_ATTRIBUTE_GET = 13, /* sarg=attribute name ("minecraft:health" …) → out value */
+    /* ── v5 additive ── */
+    LEVI_RS_AACT_SET_VARIANT = 14,          /* a=variant             Actor::setVariant */
+    LEVI_RS_AACT_SET_MARK_VARIANT = 15,     /* a=variant             Actor::setMarkVariant */
+    LEVI_RS_AACT_SET_PERSISTENT = 16,       /*                       Actor::setPersistent */
+    LEVI_RS_AACT_SET_LEASH_HOLDER = 17,     /* a=holder ActorUniqueID Actor::setLeashHolder */
+    LEVI_RS_AACT_SET_INVISIBLE = 18,        /* a=0/1                 Actor::setInvisible */
+    LEVI_RS_AACT_SET_SNEAKING = 19,         /* a=0/1                 Actor::setSneaking */
+    LEVI_RS_AACT_SET_NAME_TAG_VISIBLE = 20, /* a=0/1                 Actor::setNameTagVisible */
+    LEVI_RS_AACT_SET_TARGET = 21,           /* a=target ActorUniqueID Actor::setTarget */
+    LEVI_RS_AACT_SET_OWNER = 22,            /* a=owner ActorUniqueID  Actor::setOwner */
+    LEVI_RS_AACT_BURN = 23,                 /* a=damage              Actor::burn */
+    LEVI_RS_AACT_STOP_FIRE = 24,            /*                       Actor::extinguishFire */
+    LEVI_RS_AACT_SET_VELOCITY = 25,         /* a,b,c=vel             Actor::setVelocity */
+    LEVI_RS_AACT_APPLY_IMPULSE = 26,        /* a,b,c=impulse         Actor::applyImpulse */
+    LEVI_RS_AACT_SET_SCORE_TAG = 27,        /* sarg=text             Actor::setScoreTag */
+    LEVI_RS_AACT_SET_SKIN_ID = 28,          /* a=skin id             Actor::setSkinID */
+    LEVI_RS_AACT_SET_STRENGTH = 29,         /* a=strength            Actor::setStrength */
+    LEVI_RS_AACT_REMOVE_ALL_PASSENGERS = 30,/*                       Actor::removeAllPassengers */
 };
 
 /** block_get_num keys. */
@@ -322,6 +438,30 @@ enum LeviRsBlockNumProp
     LEVI_RS_BPROP_IS_CRAFTING_BLOCK = 3, /* Block::isCraftingBlock */
     LEVI_RS_BPROP_IS_INTERACTIVE_BLOCK = 4, /* Block::isInteractiveBlock */
     LEVI_RS_BPROP_HAS_BLOCK_ENTITY = 5, /* BlockSource::getBlockEntity(pos) != null */
+    /* ── v5 additive: block gap fill ── */
+    LEVI_RS_BPROP_LIGHT = 6,               /* Block::getLight */
+    LEVI_RS_BPROP_LIGHT_EMISSION = 7,      /* Block::getLightEmission */
+    LEVI_RS_BPROP_DESTROY_SPEED = 8,       /* Block::getDestroySpeed */
+    LEVI_RS_BPROP_EXPLOSION_RESISTANCE = 9,/* Block::getExplosionResistance */
+    LEVI_RS_BPROP_FRICTION = 10,           /* Block::getFriction */
+    LEVI_RS_BPROP_IS_CONTAINER = 11,       /* Block::isContainerBlock */
+    LEVI_RS_BPROP_IS_DOOR = 12,            /* Block::isDoorBlock */
+    LEVI_RS_BPROP_IS_FENCE = 13,           /* Block::isFenceBlock */
+    LEVI_RS_BPROP_IS_RAIL = 14,            /* Block::isRailBlock */
+    LEVI_RS_BPROP_IS_SLAB = 15,            /* Block::isSlabBlock */
+    LEVI_RS_BPROP_IS_STAIR = 16,           /* Block::isStairBlock */
+    LEVI_RS_BPROP_IS_WALL = 17,            /* Block::isWallBlock */
+    LEVI_RS_BPROP_IS_CROP = 18,            /* Block::isCropBlock */
+    LEVI_RS_BPROP_IS_UNBREAKABLE = 19,     /* Block::isUnbreakable */
+    LEVI_RS_BPROP_REDSTONE_SIGNAL = 20,    /* Block::getDirectSignal */
+    LEVI_RS_BPROP_COMPARATOR_SIGNAL = 21,  /* Block::getComparatorSignal */
+    LEVI_RS_BPROP_IS_SIGNAL_SOURCE = 22,   /* Block::isSignalSource */
+    LEVI_RS_BPROP_VARIANT = 23,            /* Block::getVariant */
+    LEVI_RS_BPROP_BURN_ODDS = 24,          /* Block::getBurnOdds */
+    LEVI_RS_BPROP_FLAME_ODDS = 25,         /* Block::getFlameOdds */
+    LEVI_RS_BPROP_BOUNCINESS = 26,         /* Block::getBounciness */
+    LEVI_RS_BPROP_IS_SOLID = 27,           /* Block::isSolid */
+    LEVI_RS_BPROP_REQUIRES_TOOL = 28,      /* Block::requiresCorrectToolForDrops */
 };
 
 /** block_get_str keys. */
@@ -332,12 +472,21 @@ enum LeviRsBlockStrProp
     LEVI_RS_BSTR_DESCRIPTION_ID = 2, /* Block::getDescriptionId */
     LEVI_RS_BSTR_DEBUG_STRING = 3, /* Block::toDebugString */
     LEVI_RS_BSTR_TAGS = 4, /* Block::mTags → SNBT string list ["a","b"] */
+    /* ── v5 additive ── */
+    LEVI_RS_BSTR_STATE = 5,                /* SNBT {state_name:value, …} all block states */
+    LEVI_RS_BSTR_COLLISION_SHAPE = 6,      /* SNBT [{min:[x,y,z],max:[x,y,z]}, …] */
+    LEVI_RS_BSTR_OUTLINE_SHAPE = 7,        /* SNBT [{min,max}] render outline */
+    LEVI_RS_BSTR_DISPLAY_NAME = 8,         /* Block::getDisplayName */
 };
 
 /** block_action verbs. */
 enum LeviRsBlockAction
 {
     LEVI_RS_BACT_HAS_TAG = 0, /* sarg=tag → out "0"/"1"  Block::hasTag */
+    /* ── v5 additive ── */
+    LEVI_RS_BACT_GET_STATE = 1, /* sarg=state name → out value string  Block::getState */
+    LEVI_RS_BACT_POP_RESOURCE = 2, /* sarg=item SNBT → pop resource at pos  Block::popResource */
+    LEVI_RS_BACT_AS_ITEM = 3,   /* → out item SNBT   Block::asItemInstance */
 };
 
 /** item_get_num keys (query a transient ItemStack rebuilt from SNBT). */
@@ -354,6 +503,24 @@ enum LeviRsItemNumProp
     LEVI_RS_IPROP_IS_ARMOR = 8, /* ItemStackBase::isArmorItem */
     LEVI_RS_IPROP_IS_DAMAGEABLE = 9, /* ItemStackBase::isDamageableItem */
     LEVI_RS_IPROP_IS_DAMAGED = 10, /* ItemStackBase::isDamaged */
+    /* ── v5 additive: item gap fill ── */
+    LEVI_RS_IPROP_MAX_DAMAGE = 11,         /* ItemStackBase::getMaxDamage */
+    LEVI_RS_IPROP_IS_UNBREAKABLE = 12,     /* ItemStackBase::isUnbreakable */
+    LEVI_RS_IPROP_HAS_DURABILITY = 13,     /* ItemStackBase::hasDurability */
+    LEVI_RS_IPROP_IS_POTION = 14,          /* ItemStackBase::isPotionItem */
+    LEVI_RS_IPROP_IS_THROWABLE = 15,       /* ItemStackBase::isThrowable */
+    LEVI_RS_IPROP_IS_FIRE_RESISTANT = 16,  /* ItemStackBase::isFireResistant */
+    LEVI_RS_IPROP_ATTACK_DAMAGE = 17,      /* ItemStackBase::getAttackDamage */
+    LEVI_RS_IPROP_REPAIR_COST = 18,        /* ItemStackBase::getBaseRepairCost */
+    LEVI_RS_IPROP_ENCHANT_VALUE = 19,      /* ItemStackBase::getEnchantValue */
+    LEVI_RS_IPROP_IS_STACKABLE = 20,       /* ItemStackBase::isStackable */
+    LEVI_RS_IPROP_IS_MUSIC_DISC = 21,      /* ItemStackBase::isMusicDiscItem */
+    LEVI_RS_IPROP_IS_OFFHAND = 22,         /* ItemStackBase::isOffhandItem */
+    LEVI_RS_IPROP_USE_DURATION = 23,       /* ItemStackBase::getMaxUseDuration */
+    LEVI_RS_IPROP_IS_GLINT = 24,           /* ItemStackBase::isGlint */
+    LEVI_RS_IPROP_IS_BUNDLE = 25,          /* ItemStackBase::isBundle */
+    LEVI_RS_IPROP_HAS_USER_DATA = 26,      /* ItemStackBase::hasUserData */
+    LEVI_RS_IPROP_HAS_CUSTOM_NAME = 27,    /* ItemStackBase::hasCustomHoverName */
 };
 
 /** item_get_str keys. */
@@ -363,6 +530,14 @@ enum LeviRsItemStrProp
     LEVI_RS_ISTR_NAME = 1, /* ItemStackBase::getName (display) */
     LEVI_RS_ISTR_CUSTOM_NAME = 2, /* ItemStackBase::getCustomName */
     LEVI_RS_ISTR_RAW_NAME_ID = 3, /* ItemStackBase::getRawNameId */
+    /* ── v5 additive ── */
+    LEVI_RS_ISTR_LORE = 4,                /* SNBT list ["l1","l2"]  ItemStackBase::getCustomLore */
+    LEVI_RS_ISTR_CAN_DESTROY = 5,         /* SNBT list ["minecraft:stone", …] */
+    LEVI_RS_ISTR_CAN_PLACE_ON = 6,        /* SNBT list */
+    LEVI_RS_ISTR_USER_DATA = 7,           /* full NBT user data as SNBT */
+    LEVI_RS_ISTR_HOVER_NAME = 8,          /* ItemStackBase::getHoverName */
+    LEVI_RS_ISTR_EFFECT_NAME = 9,         /* ItemStackBase::getEffectName */
+    LEVI_RS_ISTR_COLOR = 10,              /* SNBT {r,g,b}  ItemStackBase::getColor */
 };
 
 /** item_transform ops: rebuild → mutate → serialize back (out = new SNBT). */
@@ -372,6 +547,16 @@ enum LeviRsItemOp
     LEVI_RS_IOP_SET_DAMAGE = 1, /* narg=damage           ItemStackBase::setDamageValue */
     LEVI_RS_IOP_SET_COUNT = 2, /* narg=count            ItemStackBase::mCount */
     LEVI_RS_IOP_SET_LORE = 3, /* sarg=SNBT list ["l1","l2"]  ItemStackBase::setCustomLore */
+    /* ── v5 additive ── */
+    LEVI_RS_IOP_SET_UNBREAKABLE = 4,    /* narg=0/1               ItemStackBase::setUnbreakable */
+    LEVI_RS_IOP_HURT_AND_BREAK = 5,     /* narg=damage            ItemStackBase::hurtAndBreak */
+    LEVI_RS_IOP_SET_REPAIR_COST = 6,    /* narg=cost              ItemStackBase::setRepairCost */
+    LEVI_RS_IOP_ADD_ENCHANT = 7,        /* sarg="name:level"      saveEnchantsToUserData */
+    LEVI_RS_IOP_REMOVE_ENCHANTS = 8,    /*                        ItemStackBase::removeEnchants */
+    LEVI_RS_IOP_CLEAR_LORE = 9,         /*                        ItemStackBase::clearCustomLore */
+    LEVI_RS_IOP_RESET_NAME = 10,        /*                        ItemStackBase::resetHoverName */
+    LEVI_RS_IOP_SET_CAN_DESTROY = 11,   /* sarg=SNBT list         ItemStackBase::setCanDestroy */
+    LEVI_RS_IOP_SET_CAN_PLACE_ON = 12,  /* sarg=SNBT list         ItemStackBase::setCanPlaceOn */
 };
 
 /** scoreboard_op verbs (args a=objective/slot, b=target, n=value). */
@@ -390,6 +575,27 @@ enum LeviRsScoreboardOp
 };
 
 /** sys_info_str keys. */
+/** Per-dimension behaviour rules for md_set_dimension_rule.
+ *
+ *  These are deliberately NOT a mirror of any engine enum: they name things
+ *  the loader intercepts itself. Values are ABI — append only, never renumber.
+ */
+enum LeviRsDimRule
+{
+    LEVI_RS_DIMRULE_SPAWN_MONSTER = 0,  /* natural hostile spawns */
+    LEVI_RS_DIMRULE_SPAWN_ANIMAL  = 1,  /* natural passive spawns */
+    LEVI_RS_DIMRULE_SPAWN_SPAWNER = 2,  /* spawns from mob spawners */
+    LEVI_RS_DIMRULE_EXPLODE_BLOCKS = 3, /* explosions damaging terrain */
+    LEVI_RS_DIMRULE_FIRE_SPREAD   = 4,  /* fire spreading to neighbours */
+    LEVI_RS_DIMRULE_MOB_GRIEFING  = 5,  /* mobs changing blocks */
+    LEVI_RS_DIMRULE_PROJECTILE    = 6,  /* projectile spawns */
+    /* ── 第二批（挂载点参考 LegacyScriptEngine 的同名事件） ── */
+    LEVI_RS_DIMRULE_PISTON_PUSH   = 7,  /* pistons moving blocks */
+    LEVI_RS_DIMRULE_LIQUID_FLOW   = 8,  /* water/lava spreading */
+    LEVI_RS_DIMRULE_FARMLAND_DECAY = 9, /* farmland trampled back to dirt */
+    LEVI_RS_DIMRULE_RIDE          = 10, /* mounting boats/minecarts/animals */
+};
+
 enum LeviRsSysInfoProp
 {
     LEVI_RS_SYS_OS_NAME = 0, /* sys_utils::getSystemName */
@@ -865,7 +1071,183 @@ typedef struct LeviRsApi
     void (*money_listen_after_event)(LLMoneyCallback callback);
     void (*money_ranking)(unsigned short num, void* ctx, LeviRsStrSink sink);
 
+    /* ═════════════════ ABI v5 Additive — API gap fill (struct_size-gated) ═════════════════
+     * All entries below are additive: older loaders (smaller struct_size)
+     * simply won't have these fields. The Rust __init_runtime check rejects
+     * mods built against a larger table than the loader provides. Unknown enum
+     * keys return false. SERVER THREAD ONLY unless noted.                    */
+
+    /* ── Player: equipment, cooldown, network (dedicated fns) ── */
+    bool (*player_get_carried_item)(LeviRsPlayerSel sel, void* ctx, LeviRsStrSink sink);
+    bool (*player_get_item)(LeviRsPlayerSel sel, int32_t slot, void* ctx, LeviRsStrSink sink);
+    bool (*player_set_item)(LeviRsPlayerSel sel, int32_t slot, LeviRsStr item_snbt);
+    /** All equipment as SNBT: [{slot, item_snbt}, …] slot: 0=mainhand 1=offhand 2-5=armor */
+    bool (*player_get_equipment)(LeviRsPlayerSel sel, void* ctx, LeviRsStrSink sink);
+    /** Ticks remaining for an item cooldown (-1 if not on cooldown / player offline). */
+    int32_t (*player_get_cooldown)(LeviRsPlayerSel sel, LeviRsStr item_name);
+    bool (*player_start_cooldown)(LeviRsPlayerSel sel, LeviRsStr item_name, int32_t ticks);
+    bool (*player_get_network_status)(LeviRsPlayerSel sel, void* ctx, LeviRsStrSink sink);
+
+    /* ── Actor: relationships, equipment, effects, geometry (dedicated fns) ── */
+    bool (*actor_get_vehicle)(LeviRsActorId id, LeviRsActorId* out);
+    bool (*actor_get_first_passenger)(LeviRsActorId id, LeviRsActorId* out);
+    bool (*actor_get_owner)(LeviRsActorId id, LeviRsActorId* out);
+    bool (*actor_get_target)(LeviRsActorId id, LeviRsActorId* out);
+    /** slot: 0=mainhand 1=offhand 2=helmet 3=chestplate 4=leggings 5=boots */
+    bool (*actor_get_equipped_item)(LeviRsActorId id, int32_t slot, void* ctx, LeviRsStrSink sink);
+    bool (*actor_set_equipped_item)(LeviRsActorId id, int32_t slot, LeviRsStr item_snbt);
+    /** SNBT [{id, ticks, amplifier, visible}, …] */
+    bool (*actor_get_effects)(LeviRsActorId id, void* ctx, LeviRsStrSink sink);
+    /** flag_index: ActorFlags enum value (0-based). */
+    bool (*actor_get_status_flag)(LeviRsActorId id, int32_t flag_index);
+    bool (*actor_set_status_flag)(LeviRsActorId id, int32_t flag_index, bool value);
+    /** SNBT {type:"entity"|"block"|"none", pos:[x,y,z], entity_id?, block_name?} */
+    bool (*actor_trace_ray)(LeviRsActorId id, float max_dist, bool include_actors, bool include_blocks, void* ctx, LeviRsStrSink sink);
+    bool (*actor_distance_to)(LeviRsActorId id, LeviRsActorId other, double* out);
+    /** SNBT {min:[x,y,z], max:[x,y,z]} */
+    bool (*actor_get_aabb)(LeviRsActorId id, void* ctx, LeviRsStrSink sink);
+    bool (*actor_clone)(LeviRsActorId id, int32_t dim, double x, double y, double z, LeviRsActorId* out);
+
+    /* ── Block: state get/set, collision shape (dedicated fns) ── */
+    bool (*block_get_state)(int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr state_name, void* ctx, LeviRsStrSink sink);
+    bool (*block_set_state)(int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr state_name, LeviRsStr value);
+    bool (*block_get_collision_shape)(int32_t dim, int32_t x, int32_t y, int32_t z, void* ctx, LeviRsStrSink sink);
+
+    /* ── Item: enchants, matching, NBT (dedicated fns) ── */
+    /** SNBT [{id, level}, …] */
+    bool (*item_get_enchants)(LeviRsStr item_snbt, void* ctx, LeviRsStrSink sink);
+    /** enchants_snbt = [{id, level}, …]; out = new item SNBT. */
+    bool (*item_set_enchants)(LeviRsStr item_snbt, LeviRsStr enchants_snbt, void* ctx, LeviRsStrSink out);
+    bool (*item_matches)(LeviRsStr a, LeviRsStr b);
+    bool (*item_get_user_data)(LeviRsStr item_snbt, void* ctx, LeviRsStrSink sink);
+
+    /* ── Level: biome, spawn, save, weather, path, sleep (dedicated fns) ── */
+    bool (*level_get_biome)(int32_t dim, int32_t x, int32_t y, int32_t z, void* ctx, LeviRsStrSink sink);
+    bool (*level_get_default_spawn)(int32_t* x, int32_t* y, int32_t* z);
+    bool (*level_set_default_spawn)(int32_t x, int32_t y, int32_t z);
+    bool (*level_save)();
+    /** SNBT {sleeping, total_players, active_sleeping} */
+    bool (*level_get_sleep_status)(void* ctx, LeviRsStrSink sink);
+    bool (*level_update_weather)(float rain_level, int32_t rain_time, float lightning_level, int32_t lightning_time);
+    /** SNBT {nodes:[{x,y,z}, …], reached:1b/0b} */
+    bool (*level_find_path)(LeviRsActorId id, int32_t x, int32_t y, int32_t z, void* ctx, LeviRsStrSink sink);
+
     /* Future additive fields: append here only. */
+
+    /* ═════════════════ Client-only function pointers (ABI v5 additive, client target) ═════════════════
+     * Present ONLY when the loader is built against the client target
+     * (LEVI_RS_TARGET_CLIENT). The server build's struct_size stops before
+     * this block, so a server mod never sees these slots (and vice-versa).
+     * The Rust levilamina-sys crate mirrors these under #[cfg(feature="client")].
+     * All callbacks run on the CLIENT THREAD. */
+#ifdef LEVI_RS_TARGET_CLIENT
+    /** Local player's name via ll::service::getClientInstance()->getLocalPlayer().
+     *  sink receives the name, or the call returns false if not in a level. */
+    bool (*client_get_local_player)(void* ctx, LeviRsStrSink sink);
+
+    /** True when the client is inside a level (a world is loaded). */
+    bool (*client_is_in_level)();
+
+    /** Current screen / UI name (e.g. "hud_screen", "pause_screen"). */
+    bool (*client_get_screen_name)(void* ctx, LeviRsStrSink sink);
+
+    /** Register a key binding via ll::input::KeyRegistry::getOrCreateKey.
+     *  Returns NULL on failure. The handle is owned by the caller; drop with
+     *  client_unregister_key. down_cb/up_cb fire on the client thread. */
+    LeviRsKeyHandle (*client_register_key)(
+        LeviRsModHandle mod,
+        LeviRsStr name,
+        int32_t const* key_codes,
+        int32_t key_count,
+        bool allow_remap,
+        LeviRsKeyCb down_cb,
+        LeviRsKeyCb up_cb,
+        void* user
+    );
+
+    /** Unregister a key binding (destroys the ll::input::KeyHandle). */
+    bool (*client_unregister_key)(LeviRsKeyHandle handle);
+
+    /** Currently assigned key codes (may differ from defaults if remapped).
+     *  sink receives a JSON-style array string "[1,2,3]". */
+    bool (*client_get_key_codes)(LeviRsKeyHandle handle, void* ctx, LeviRsStrSink sink);
+#endif
+
+    // ── MoreDimensions (feature-gated; server build only) ──
+    // Present when the loader is built with LEVI_RS_FEATURE_MORE_DIMENSIONS.
+    // The Rust side gates these behind the `more_dimensions` feature.
+#ifdef LEVI_RS_FEATURE_MORE_DIMENSIONS
+    /** Check whether MoreDimensions is available in this loader build. */
+    bool (*md_is_available)(void);
+
+    /** Add a SimpleCustomDimension.
+     *
+     *  generatorType is ::GeneratorType **verbatim** — 1=Overworld, 2=Flat,
+     *  3=Nether, 4=TheEnd, 5=Void. (This comment used to claim
+     *  "0=Overworld 1=Nether 2=TheEnd 3=Flat 4=Void", which is the numbering
+     *  bug that made "superflat" generate a nether. Values outside 1..5 are
+     *  rejected rather than silently building a void world.)
+     *
+     *  Returns dim id (>=3) or -1 on failure. */
+    int32_t (*md_add_simple_dimension)(LeviRsStr name, uint32_t seed, int32_t generatorType);
+
+    /** Per-dimension rules, consulted by the loader's own hooks.
+     *
+     *  Why this exists instead of gamerules: Bedrock gamerules are
+     *  server-wide. Setting `doMobSpawning=false` to quiet a creative plot
+     *  world also stops spawning in the survival world. These flags are
+     *  checked inside hooks on the actual call sites (Spawner::spawnMob,
+     *  Level::explode, ...), so they really are per-dimension.
+     *
+     *  `rule` is one of LeviRsDimRule. Setting a rule on a dimension the
+     *  loader doesn't know about is harmless — the tables are keyed by raw
+     *  dimension id and consulted only when that id shows up in a hook.
+     *
+     *  Dimensions with no entry are left completely alone: the hooks fall
+     *  through to origin(), so vanilla dimensions keep vanilla behaviour
+     *  without the caller having to opt out. */
+    void (*md_set_dimension_rule)(int32_t dimension, int32_t rule, bool allow);
+
+    /** Read back a rule. `outAllow` is only written when the dimension has an
+     *  explicit entry for that rule; returns false otherwise. */
+    bool (*md_get_dimension_rule)(int32_t dimension, int32_t rule, bool* outAllow);
+
+    /** Drop every rule for a dimension (used when a world is deleted). */
+    void (*md_clear_dimension_rules)(int32_t dimension);
+
+    /** Resolve a dimension name to its id. Returns -1 if not found.
+     *
+     *  Only returns an id for names that are ACTUALLY registered: unknown
+     *  names yield -1, never VanillaDimensions::Undefined() (whose numeric
+     *  value is mutated at runtime and looks like a valid id).
+     *
+     *  Note this is rarely what you want. `md_add_simple_dimension` and
+     *  `md_add_plot_dimension` are idempotent — re-registering the same name
+     *  on a later boot returns the same persisted id — so callers should
+     *  register unconditionally at startup instead of probing first. */
+    int32_t (*md_get_dimension_id)(LeviRsStr name);
+
+    /** Add a plot-world dimension: a custom dimension whose chunk generator
+     *  produces a plot grid (plots / roads / borders) at generation time,
+     *  instead of the caller painting blocks afterwards.
+     *
+     *  `layout_snbt` is a CompoundTag SNBT string:
+     *    {plotSize:64, roadWidth:7, borderWidth:1, floorY:64,
+     *     floorBlock:"minecraft:grass_block", fillBlock:"minecraft:dirt",
+     *     roadBlock:"minecraft:birch_planks",
+     *     borderBlock:"minecraft:stone_block_slab", biome:"minecraft:plains"}
+     *  Missing keys fall back to those defaults; all values are clamped to a
+     *  safe range on the C++ side. The layout is persisted with the dimension,
+     *  so it stays fixed across restarts even if the caller's config changes.
+     *
+     *  Grid convention (the Rust side MUST match): with cell = plotSize +
+     *  roadWidth, a column at world (x, z) is road when
+     *  mod(x,cell) >= plotSize || mod(z,cell) >= plotSize; otherwise it is
+     *  border when within borderWidth of the plot edge; otherwise plot.
+     *
+     *  Idempotent, like md_add_simple_dimension. Returns dim id (>=3) or -1. */
+    int32_t (*md_add_plot_dimension)(LeviRsStr name, uint32_t seed, LeviRsStr layout_snbt);
+#endif
 } LeviRsApi;
 
 /**

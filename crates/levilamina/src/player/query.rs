@@ -54,6 +54,15 @@ impl Player {
         self.get_num(sys::PPROP_GAME_TYPE).map(|v| v as i32)
     }
 
+    /// The dimension the player is currently in.
+    ///
+    /// Vanilla dimensions are 0 (overworld), 1 (nether) and 2 (the end);
+    /// dimensions registered through `more_dimensions` are >= 3, so do not
+    /// assume the value is one of the three vanilla ids.
+    pub fn dimension(&self) -> Result<i32> {
+        self.get_num(sys::PPROP_DIMENSION).map(|v| v as i32)
+    }
+
     pub fn level(&self) -> Result<i32> {
         self.get_num(sys::PPROP_LEVEL).map(|v| v as i32)
     }

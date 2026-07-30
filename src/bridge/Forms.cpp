@@ -6,21 +6,50 @@
  * weak_ptr<RustMod> plus a ticket into a per-loader pending table; if the mod
  * is gone or disabled by the time the player responds, the Rust callback is
  * silently dropped (muted), and unload clears every pending ticket.
+ *
+ * ── 结果编码（v5.1）────────────────────────────────────────────────────
+ * `ll::form::CustomFormElementResult` 是 variant<monostate, uint64, double,
+ * string>，而 **dropdown / step_slider 在不同 LL 版本上回传的东西不一样**：
+ * 有的版本给选中项的下标（uint64），有的给选中项的文本（string）。上层
+ * 只按下标解读，于是碰到字符串就静默回退成 0 —— 表现为「不管选哪一项，
+ * 拿到的永远是第一项」。
+ *
+ * 这里在 bridge 层把它收口：构表时记住每个选择型控件的 options，回传时
+ *   - 拿到整数 → 直接当下标；
+ *   - 拿到字符串 → 在 options 里查回下标（先精确匹配，再去掉 §x 颜色码
+ *     匹配一次）。
+ * 序列化出去的结果永远是 **下标（values）+ 文本（texts）两份**，上层不用
+ * 再猜 LL 这一版是哪种行为。
+ *
+ * 同时把「会让客户端整个表单渲染失败」的几种参数在这里钳住：空 options 的
+ * 下拉框、越界的默认下标、不在 [min,max] 内或没落在步进点上的滑块默认值。
+ *
+ * 调试：`LEVI_RS_TRACE_FORM=1` 打印每个表单的元素清单，以及回传时每个键的
+ * variant 类型和原始值 —— 表单类问题基本一眼就能定位。
  */
 #include "bridge/Api.h"
 #include "bridge/Common.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <unordered_set>
+#include <variant>
 #include <vector>
 
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/FormBase.h"
 #include "ll/api/form/ModalForm.h"
 #include "ll/api/form/SimpleForm.h"
+
+#include "ll/api/io/Logger.h"
 
 #include "mc/deps/nbt/CompoundTag.h"
 #include "mc/world/actor/player/Player.h"
@@ -42,6 +71,20 @@ namespace levi_rs::bridge
         std::unordered_map<uint64_t, PendingForm> gPendingForms;
         uint64_t gNextTicket = 1;
 
+        /** 选择型控件（dropdown / step_slider）的 name -> options 台账。 */
+        using ChoiceTable = std::unordered_map<std::string, std::vector<std::string>>;
+
+        /** LEVI_RS_TRACE_FORM=1 打开表单追踪。只读一次。 */
+        bool formTrace()
+        {
+            static bool const on = []
+            {
+                auto const* v = std::getenv("LEVI_RS_TRACE_FORM");
+                return v && v[0] && v[0] != '0';
+            }();
+            return on;
+        }
+
         uint64_t registerTicket(RustMod* mod, LeviRsFormResultCb cb, void* user)
         {
             std::lock_guard lock(gFormMutex);
@@ -57,6 +100,7 @@ namespace levi_rs::bridge
          */
         void completeTicket(std::weak_ptr<RustMod> weakMod, uint64_t ticket, std::string const& resultSnbt)
         {
+            if (formTrace()) bridgeLogger().info("[form] ticket={} -> {}", ticket, resultSnbt);
             PendingForm pending;
             {
                 std::lock_guard lock(gFormMutex);
@@ -90,6 +134,81 @@ namespace levi_rs::bridge
             return def;
         }
 
+        // ── 选择型控件的下标 / 文本互查 ────────────────────────────────────
+
+        /** 去掉 Minecraft 的 §x 颜色控制码，用于第二轮宽松匹配。 */
+        std::string stripFormatCodes(std::string_view s)
+        {
+            std::string out;
+            out.reserve(s.size());
+            for (size_t i = 0; i < s.size();)
+            {
+                // § 在 UTF-8 里是 0xC2 0xA7
+                if (i + 2 < s.size() && static_cast<unsigned char>(s[i]) == 0xC2
+                    && static_cast<unsigned char>(s[i + 1]) == 0xA7)
+                {
+                    i += 3; // 跳过 §、控制码本身
+                    continue;
+                }
+                out.push_back(s[i]);
+                ++i;
+            }
+            return out;
+        }
+
+        std::optional<size_t> findOption(std::vector<std::string> const& opts, std::string const& text)
+        {
+            for (size_t i = 0; i < opts.size(); ++i)
+                if (opts[i] == text) return i;
+            // 客户端可能把颜色码吃掉再回传，宽松再比一次
+            std::string bare = stripFormatCodes(text);
+            for (size_t i = 0; i < opts.size(); ++i)
+                if (stripFormatCodes(opts[i]) == bare) return i;
+            return std::nullopt;
+        }
+
+        // ── SNBT 拼装 ─────────────────────────────────────────────────────
+
+        struct SnbtObject
+        {
+            std::string body;
+
+            void put(std::string const& key, std::string const& rawValue)
+            {
+                if (!body.empty()) body += ',';
+                body += '"';
+                body += snbtEscape(key);
+                body += "\":";
+                body += rawValue;
+            }
+
+            void putString(std::string const& key, std::string const& text)
+            {
+                put(key, "\"" + snbtEscape(text) + "\"");
+            }
+
+            std::string wrap() const { return "{" + body + "}"; }
+        };
+
+        /** variant 的类型名，只给 trace 用。 */
+        char const* variantKind(ll::form::CustomFormElementResult const& v)
+        {
+            if (std::holds_alternative<uint64_t>(v)) return "uint64";
+            if (std::holds_alternative<double>(v)) return "double";
+            if (std::holds_alternative<std::string>(v)) return "string";
+            return "monostate";
+        }
+
+        std::string variantText(ll::form::CustomFormElementResult const& v)
+        {
+            if (std::holds_alternative<uint64_t>(v)) return std::to_string(std::get<uint64_t>(v));
+            if (std::holds_alternative<double>(v)) return std::to_string(std::get<double>(v));
+            if (std::holds_alternative<std::string>(v)) return std::get<std::string>(v);
+            return "<none>";
+        }
+
+        // ── SimpleForm ────────────────────────────────────────────────────
+
         bool sendSimple(
             Player& p,
             CompoundTag const& spec,
@@ -98,6 +217,7 @@ namespace levi_rs::bridge
         )
         {
             auto form = std::make_shared<ll::form::SimpleForm>(strField(spec, "title"), strField(spec, "content"));
+            int buttons = 0;
             if (spec.contains("elements") && spec.at("elements").is_array())
             {
                 for (auto const& ePtr : spec.at("elements").get<ListTag>())
@@ -116,6 +236,7 @@ namespace levi_rs::bridge
                         {
                             form->appendButton(strField(e, "text"), image, strField(e, "image_type", "path"));
                         }
+                        ++buttons;
                     }
                     else if (kind == "header")
                     {
@@ -131,6 +252,16 @@ namespace levi_rs::bridge
                     }
                 }
             }
+            if (buttons == 0)
+            {
+                // 没有按钮的 SimpleForm 客户端点不动，只能靠关闭退出 —— 上层
+                // 多半是列表拼空了，这属于逻辑错误，值得留一行。
+                bridgeLogger().warn("[form] SimpleForm \"{}\" 一个按钮都没有", strField(spec, "title"));
+            }
+            if (formTrace())
+            {
+                bridgeLogger().info("[form] simple ticket={} 按钮 {} 个", ticket, buttons);
+            }
             form->sendTo(p, [form, weakMod, ticket](Player&, int button, ll::form::FormCancelReason reason)
             {
                 if (button < 0)
@@ -145,6 +276,51 @@ namespace levi_rs::bridge
             return true;
         }
 
+        // ── CustomForm ────────────────────────────────────────────────────
+
+        /**
+         * 把滑块参数归一化到客户端能接受的形状。
+         *
+         * 基岩客户端对 slider 的容忍度很低：默认值越界、或者 (max-min) 不是
+         * step 的整数倍，整个表单可能直接不渲染（玩家看到的是「打开就没了」）。
+         * 上层配置是可以被人手改成任意值的，所以这个钳制必须在 bridge 做。
+         */
+        void normalizeSlider(double& mn, double& mx, double& step, double& def, std::string const& name)
+        {
+            if (!(mn <= mx)) std::swap(mn, mx);           // 顺手接住 NaN
+            if (!(step > 0.0)) step = 0.0;
+
+            if (step > 0.0)
+            {
+                double span = mx - mn;
+                if (span < step)
+                {
+                    // 步长比整个范围还大 —— 退化成只有一格，客户端会算出空刻度
+                    step = span > 0.0 ? span : 0.0;
+                }
+                else
+                {
+                    // 把 max 收到最后一个落在步进点上的值
+                    double steps = std::floor(span / step + 1e-9);
+                    mx = mn + steps * step;
+                }
+            }
+
+            double before = def;
+            def = std::clamp(def, mn, mx);
+            if (step > 0.0)
+            {
+                double k = std::round((def - mn) / step);
+                def = std::clamp(mn + k * step, mn, mx);
+            }
+            if (std::abs(before - def) > 1e-9)
+            {
+                bridgeLogger().warn(
+                    "[form] 滑块 \"{}\" 的默认值 {} 不在 [{}, {}] 的步进点上，已调整为 {}",
+                    name, before, mn, mx, def);
+            }
+        }
+
         bool sendCustom(
             Player& p,
             CompoundTag const& spec,
@@ -153,6 +329,9 @@ namespace levi_rs::bridge
         )
         {
             auto form = std::make_shared<ll::form::CustomForm>(strField(spec, "title"));
+            auto choices = std::make_shared<ChoiceTable>();
+            std::unordered_set<std::string> seenNames;
+
             if (spec.contains("submit")) form->setSubmitButton(strField(spec, "submit"));
             if (spec.contains("elements") && spec.at("elements").is_array())
             {
@@ -162,6 +341,23 @@ namespace levi_rs::bridge
                     auto const& e = static_cast<CompoundTag const&>(*ePtr);
                     std::string kind = strField(e, "kind");
                     std::string name = strField(e, "name");
+
+                    // 有值的控件必须有唯一的 name —— 结果是按 name 索引的
+                    // unordered_map，重名会互相覆盖，上层拿到的是「其中一个」。
+                    bool valued = (kind == "input" || kind == "toggle" || kind == "dropdown"
+                        || kind == "step_slider" || kind == "slider");
+                    if (valued)
+                    {
+                        if (name.empty())
+                        {
+                            bridgeLogger().warn("[form] {} 控件没有 name，结果里取不到它", kind);
+                        }
+                        else if (!seenNames.insert(name).second)
+                        {
+                            bridgeLogger().warn("[form] name \"{}\" 重复，后一个会覆盖前一个", name);
+                        }
+                    }
+
                     if (kind == "header")
                     {
                         form->appendHeader(strField(e, "text"));
@@ -201,7 +397,26 @@ namespace levi_rs::bridge
                                     static_cast<std::string const&>(static_cast<StringTag const&>(*oPtr)));
                             }
                         }
-                        auto defIdx = static_cast<size_t>(numField(e, "default", 0.0));
+                        if (options.empty())
+                        {
+                            // 空的下拉框会让客户端渲染整个表单失败，宁可少一个控件
+                            bridgeLogger().warn("[form] {} \"{}\" 没有任何选项，已跳过", kind, name);
+                            continue;
+                        }
+
+                        double rawDef = numField(e, "default", 0.0);
+                        size_t defIdx = 0;
+                        if (rawDef > 0.0) defIdx = static_cast<size_t>(rawDef + 0.5);
+                        if (defIdx >= options.size())
+                        {
+                            bridgeLogger().warn(
+                                "[form] {} \"{}\" 的默认下标 {} 越界（共 {} 项），已回到 0",
+                                kind, name, defIdx, options.size());
+                            defIdx = 0;
+                        }
+
+                        if (!name.empty()) (*choices)[name] = options;
+
                         if (kind == "dropdown")
                         {
                             form->appendDropdown(name, strField(e, "text"), options, defIdx, strField(e, "tooltip"));
@@ -213,57 +428,122 @@ namespace levi_rs::bridge
                     }
                     else if (kind == "slider")
                     {
-                        form->appendSlider(
-                            name,
-                            strField(e, "text"),
-                            numField(e, "min", 0.0),
-                            numField(e, "max", 100.0),
-                            numField(e, "step", 0.0),
-                            numField(e, "default", 0.0),
-                            strField(e, "tooltip")
-                        );
+                        double mn = numField(e, "min", 0.0);
+                        double mx = numField(e, "max", 100.0);
+                        double step = numField(e, "step", 0.0);
+                        double def = numField(e, "default", mn);
+                        normalizeSlider(mn, mx, step, def, name);
+                        form->appendSlider(name, strField(e, "text"), mn, mx, step, def, strField(e, "tooltip"));
                     }
                 }
             }
+
+            if (formTrace())
+            {
+                std::string names;
+                for (auto const& [k, v] : *choices)
+                {
+                    if (!names.empty()) names += ", ";
+                    names += k + "(" + std::to_string(v.size()) + ")";
+                }
+                bridgeLogger().info("[form] custom ticket={} 选择型控件: [{}]", ticket,
+                                    names.empty() ? std::string{"无"} : names);
+            }
+
             form->sendTo(
                 p,
-                [form, weakMod, ticket](Player&, ll::form::CustomFormResult const& result,
-                                        ll::form::FormCancelReason reason)
+                [form, choices, weakMod, ticket](Player&, ll::form::CustomFormResult const& result,
+                                                 ll::form::FormCancelReason reason)
                 {
                     if (!result)
                     {
                         completeTicket(weakMod, ticket, cancelledSnbt(reason));
                         return;
                     }
-                    std::string snbt = "{values:{";
+
+                    SnbtObject values;
+                    SnbtObject texts;
+
                     for (auto const& [key, value] : *result)
                     {
-                        snbt += "\"" + snbtEscape(key) + "\":";
+                        if (formTrace())
+                        {
+                            bridgeLogger().info("[form]   {} = <{}> {}", key, variantKind(value),
+                                                variantText(value));
+                        }
+
+                        auto choiceIt = choices->find(key);
+                        if (choiceIt != choices->end())
+                        {
+                            // 选择型：无论 LL 这一版给的是下标还是文本，出去的都是下标 + 文本
+                            auto const& options = choiceIt->second;
+                            std::optional<size_t> idx;
+                            std::string text;
+
+                            if (std::holds_alternative<uint64_t>(value))
+                            {
+                                idx = static_cast<size_t>(std::get<uint64_t>(value));
+                            }
+                            else if (std::holds_alternative<double>(value))
+                            {
+                                double d = std::get<double>(value);
+                                if (d >= 0.0) idx = static_cast<size_t>(d + 0.5);
+                            }
+                            else if (std::holds_alternative<std::string>(value))
+                            {
+                                text = std::get<std::string>(value);
+                                idx = findOption(options, text);
+                                if (!idx)
+                                {
+                                    bridgeLogger().warn(
+                                        "[form] \"{}\" 回传的文本 \"{}\" 不在选项里，下标交给上层兜底",
+                                        key, text);
+                                }
+                            }
+
+                            if (idx && *idx < options.size())
+                            {
+                                text = options[*idx];
+                            }
+                            else if (idx)
+                            {
+                                bridgeLogger().warn("[form] \"{}\" 回传的下标 {} 越界（共 {} 项）",
+                                                    key, *idx, options.size());
+                                idx.reset();
+                            }
+
+                            if (idx) values.put(key, std::to_string(*idx) + "l");
+                            if (!text.empty()) texts.putString(key, text);
+                            continue;
+                        }
+
                         if (std::holds_alternative<uint64_t>(value))
                         {
-                            snbt += std::to_string(std::get<uint64_t>(value)) + "l";
+                            values.put(key, std::to_string(std::get<uint64_t>(value)) + "l");
                         }
                         else if (std::holds_alternative<double>(value))
                         {
-                            snbt += std::to_string(std::get<double>(value)) + "d";
+                            values.put(key, std::to_string(std::get<double>(value)) + "d");
                         }
                         else if (std::holds_alternative<std::string>(value))
                         {
-                            snbt += "\"" + snbtEscape(std::get<std::string>(value)) + "\"";
+                            auto const& s = std::get<std::string>(value);
+                            values.putString(key, s);
+                            texts.putString(key, s);
                         }
-                        else
-                        {
-                            snbt += "\"\"";
-                        }
-                        snbt += ",";
+                        // monostate（label / divider 这类没有值的元素）：整键略过，
+                        // 不要伪造成空字符串 —— 上层的 bool()/int() 会把它当成
+                        // 「玩家填了个空值」而不是「这里没有值」。
                     }
-                    if (snbt.back() == ',') snbt.pop_back();
-                    snbt += "}}";
-                    completeTicket(weakMod, ticket, snbt);
+
+                    completeTicket(weakMod, ticket,
+                                   "{values:" + values.wrap() + ",texts:" + texts.wrap() + "}");
                 }
             );
             return true;
         }
+
+        // ── ModalForm ─────────────────────────────────────────────────────
 
         bool sendModal(
             Player& p,
@@ -337,8 +617,14 @@ namespace levi_rs::bridge
                 break;
             }
         }
+        catch (std::exception const& e)
+        {
+            bridgeLogger().error("form_send: 构建表单时抛异常: {}", e.what());
+            ok = false;
+        }
         catch (...)
         {
+            bridgeLogger().error("form_send: 构建表单时抛了未知异常");
             ok = false;
         }
         if (!ok)

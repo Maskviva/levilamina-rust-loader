@@ -106,14 +106,30 @@ impl Player {
         }
     }
 
+    /// Teleport the player, across dimensions if needed.
+    ///
+    /// `dimension` accepts custom dimensions (MoreDimensions ids >= 3) as well
+    /// as the vanilla 0/1/2. The loader routes this through the engine's own
+    /// teleport path, so the dimension-change hooks that make the client accept
+    /// a custom dimension fire correctly.
+    ///
+    /// Fails when the player is offline, or when `dimension` isn't a
+    /// *registered* dimension id. Note the loader deliberately refuses unknown
+    /// ids instead of silently falling back to the overworld — dumping a player
+    /// into the main world because of a stale id is worse than an error.
     pub fn teleport(&self, dimension: i32, x: f64, y: f64, z: f64) -> Result<()> {
         let ok = unsafe { (rt().api.player_teleport)(self.ffi_sel(), dimension, x, y, z) };
         if ok {
             Ok(())
         } else {
-            Err(Error(
-                "teleport failed (player offline / bad dimension?)".into(),
-            ))
+            Err(Error(format!(
+                "teleport of '{}' to dimension {dimension} at ({x:.1}, {y:.1}, {z:.1}) failed. \
+                 Causes: the player is offline, or dimension {dimension} is not registered \
+                 (custom dimensions must be re-registered on every startup — \
+                 more_dimensions::add_simple_dimension / add_plot_dimension are idempotent, \
+                 call them unconditionally from on_enable).",
+                self.selector_hint()
+            )))
         }
     }
 

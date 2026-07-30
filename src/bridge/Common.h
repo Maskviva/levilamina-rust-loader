@@ -14,6 +14,8 @@
 
 #include "LeviRsAbi.h"
 
+namespace ll::io { class Logger; }
+
 class Actor;
 class BlockSource;
 class CompoundTag;
@@ -86,9 +88,30 @@ namespace levi_rs
          * dimension id, used to build `/execute in <dim> run …` commands.
          * Out-of-range ids fall back to "overworld".
          */
+        /**
+         * Vanilla dimension name for id 0/1/2.
+         *
+         * DEPRECATED for anything that can see a custom dimension: it returns
+         * "overworld" for every unrecognised id, so a custom dim silently
+         * targets the players' main world. Use dimensionSelector() instead.
+         */
         char const* dimensionName(int dim);
+
+        /**
+         * `/execute in <this>` selector for ANY registered dimension, vanilla
+         * or custom (MoreDimensions ids >= 3).
+         *
+         * Returns an EMPTY string when `dim` is not a registered dimension —
+         * callers must treat that as failure and must NOT fall back to
+         * overworld. Silently retargeting an unknown dimension at the main
+         * world is how block writes and teleports end up corrupting the
+         * survival world.
+         */
+        std::string dimensionSelector(int32_t dim);
 
         /** Serialize a player's identity + position line: {name,xuid,uuid,dim,x,y,z}. */
         std::string playerSummarySnbt(Player& p);
+
+        ll::io::Logger& bridgeLogger();
     } // namespace bridge
 } // namespace levi_rs

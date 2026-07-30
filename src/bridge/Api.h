@@ -254,5 +254,77 @@ namespace levi_rs
         bool api_sys_get_env(LeviRsStr name, void* ctx, LeviRsStrSink sink);
         bool api_sys_set_env(LeviRsStr name, LeviRsStr value);
         bool api_sys_is_wine();
+
+        /* ── GapFill.cpp — ABI v5 additive gap-fill (struct_size-gated) ── */
+
+        /* Player: equipment, cooldown, network */
+        bool api_player_get_carried_item(LeviRsPlayerSel sel, void* ctx, LeviRsStrSink sink);
+        bool api_player_get_item(LeviRsPlayerSel sel, int32_t slot, void* ctx, LeviRsStrSink sink);
+        bool api_player_set_item(LeviRsPlayerSel sel, int32_t slot, LeviRsStr item_snbt);
+        bool api_player_get_equipment(LeviRsPlayerSel sel, void* ctx, LeviRsStrSink sink);
+        int32_t api_player_get_cooldown(LeviRsPlayerSel sel, LeviRsStr item_name);
+        bool api_player_start_cooldown(LeviRsPlayerSel sel, LeviRsStr item_name, int32_t ticks);
+        bool api_player_get_network_status(LeviRsPlayerSel sel, void* ctx, LeviRsStrSink sink);
+
+        /* Actor: relationships, equipment, effects, geometry */
+        bool api_actor_get_vehicle(LeviRsActorId id, LeviRsActorId* out);
+        bool api_actor_get_first_passenger(LeviRsActorId id, LeviRsActorId* out);
+        bool api_actor_get_owner(LeviRsActorId id, LeviRsActorId* out);
+        bool api_actor_get_target(LeviRsActorId id, LeviRsActorId* out);
+        bool api_actor_get_equipped_item(LeviRsActorId id, int32_t slot, void* ctx, LeviRsStrSink sink);
+        bool api_actor_set_equipped_item(LeviRsActorId id, int32_t slot, LeviRsStr item_snbt);
+        bool api_actor_get_effects(LeviRsActorId id, void* ctx, LeviRsStrSink sink);
+        bool api_actor_get_status_flag(LeviRsActorId id, int32_t flag_index);
+        bool api_actor_set_status_flag(LeviRsActorId id, int32_t flag_index, bool value);
+        bool api_actor_trace_ray(
+            LeviRsActorId id, float max_dist, bool include_actors, bool include_blocks,
+            void* ctx, LeviRsStrSink sink);
+        bool api_actor_distance_to(LeviRsActorId id, LeviRsActorId other, double* out);
+        bool api_actor_get_aabb(LeviRsActorId id, void* ctx, LeviRsStrSink sink);
+        bool api_actor_clone(LeviRsActorId id, int32_t dim, double x, double y, double z, LeviRsActorId* out);
+
+        /* Block: state get/set, collision shape */
+        bool api_block_get_state(
+            int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr state_name,
+            void* ctx, LeviRsStrSink sink);
+        bool api_block_set_state(
+            int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr state_name, LeviRsStr value);
+        bool api_block_get_collision_shape(
+            int32_t dim, int32_t x, int32_t y, int32_t z, void* ctx, LeviRsStrSink sink);
+
+        /* Item: enchants, matching, NBT */
+        bool api_item_get_enchants(LeviRsStr item_snbt, void* ctx, LeviRsStrSink sink);
+        bool api_item_set_enchants(
+            LeviRsStr item_snbt, LeviRsStr enchants_snbt, void* ctx, LeviRsStrSink out);
+        bool api_item_matches(LeviRsStr a, LeviRsStr b);
+        bool api_item_get_user_data(LeviRsStr item_snbt, void* ctx, LeviRsStrSink sink);
+
+        /* Level: biome, spawn, save, weather, path, sleep */
+        bool api_level_get_biome(int32_t dim, int32_t x, int32_t y, int32_t z, void* ctx, LeviRsStrSink sink);
+        bool api_level_get_default_spawn(int32_t* x, int32_t* y, int32_t* z);
+        bool api_level_set_default_spawn(int32_t x, int32_t y, int32_t z);
+        bool api_level_save();
+        bool api_level_get_sleep_status(void* ctx, LeviRsStrSink sink);
+        bool api_level_update_weather(float rain_level, int32_t rain_time, float lightning_level, int32_t lightning_time);
+        bool api_level_find_path(LeviRsActorId id, int32_t x, int32_t y, int32_t z, void* ctx, LeviRsStrSink sink);
+
+        /* ── Client.cpp — client-only bridge (LEVI_RS_TARGET_CLIENT) ── */
+#ifdef LEVI_RS_TARGET_CLIENT
+        bool api_client_get_local_player(void* ctx, LeviRsStrSink sink);
+        bool api_client_is_in_level();
+        bool api_client_get_screen_name(void* ctx, LeviRsStrSink sink);
+        LeviRsKeyHandle api_client_register_key(
+            LeviRsModHandle mod,
+            LeviRsStr name,
+            int32_t const* key_codes,
+            int32_t key_count,
+            bool allow_remap,
+            LeviRsKeyCb down_cb,
+            LeviRsKeyCb up_cb,
+            void* user
+        );
+        bool api_client_unregister_key(LeviRsKeyHandle handle);
+        bool api_client_get_key_codes(LeviRsKeyHandle handle, void* ctx, LeviRsStrSink sink);
+#endif
     } // namespace bridge
 } // namespace levi_rs

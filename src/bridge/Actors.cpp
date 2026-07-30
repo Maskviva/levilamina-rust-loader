@@ -109,6 +109,97 @@ namespace levi_rs::bridge
         case LEVI_RS_APROP_SPEED:
             *out = static_cast<double>(actor->getSpeedInMetersPerSecond());
             return true;
+        /* ── v5 additive: actor gap fill ── */
+        case LEVI_RS_APROP_VIEW_X:
+            *out = actor->getViewVector().x;
+            return true;
+        case LEVI_RS_APROP_VIEW_Y:
+            *out = actor->getViewVector().y;
+            return true;
+        case LEVI_RS_APROP_VIEW_Z:
+            *out = actor->getViewVector().z;
+            return true;
+        case LEVI_RS_APROP_VEL_X:
+            *out = actor->getVelocity().x;
+            return true;
+        case LEVI_RS_APROP_VEL_Y:
+            *out = actor->getVelocity().y;
+            return true;
+        case LEVI_RS_APROP_VEL_Z:
+            *out = actor->getVelocity().z;
+            return true;
+        case LEVI_RS_APROP_HEAD_X:
+            *out = actor->getHeadPos().x;
+            return true;
+        case LEVI_RS_APROP_HEAD_Y:
+            *out = actor->getHeadPos().y;
+            return true;
+        case LEVI_RS_APROP_HEAD_Z:
+            *out = actor->getHeadPos().z;
+            return true;
+        case LEVI_RS_APROP_FEET_X:
+            *out = actor->getFeetPos().x;
+            return true;
+        case LEVI_RS_APROP_FEET_Y:
+            *out = actor->getFeetPos().y;
+            return true;
+        case LEVI_RS_APROP_FEET_Z:
+            *out = actor->getFeetPos().z;
+            return true;
+        case LEVI_RS_APROP_FALL_DISTANCE:
+            *out = static_cast<double>(actor->getFallDistance());
+            return true;
+        case LEVI_RS_APROP_IS_PERSISTENT:
+            *out = actor->isPersistent() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_APROP_IS_LEASHED:
+            *out = actor->isLeashed() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_APROP_IS_INVULNERABLE:
+            // Actor has only isInvulnerableTo(ActorDamageSource const&), no no-arg
+            // form, and ActorFlags::Invulnerable doesn't exist. Report unsupported.
+            return false;
+        case LEVI_RS_APROP_VARIANT:
+            *out = static_cast<double>(actor->getVariant());
+            return true;
+        case LEVI_RS_APROP_MARK_VARIANT:
+            *out = static_cast<double>(actor->getMarkVariant());
+            return true;
+        case LEVI_RS_APROP_SCALE:
+            // getScaleFactor(float) is behind #ifdef LL_PLAT_C — unavailable.
+            return false;
+        case LEVI_RS_APROP_BRIGHTNESS:
+            *out = static_cast<double>(actor->getBrightness());
+            return true;
+        case LEVI_RS_APROP_RADIUS:
+            *out = static_cast<double>(actor->getRadius());
+            return true;
+        case LEVI_RS_APROP_HAS_TOTEM:
+            *out = actor->hasTotemEquipped() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_APROP_IS_IN_RAIN:
+            *out = actor->isInRain() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_APROP_IS_IN_SNOW:
+            *out = actor->isInSnow() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_APROP_IS_IN_THUNDERSTORM:
+            *out = actor->isInThunderstorm() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_APROP_IS_FROZEN:
+            // No isFrozen() on Actor; ActorFlags::Frozen doesn't exist either.
+            // isImmobile() covers a broader set of immobility causes, so we
+            // don't use it here to avoid false positives. Report unsupported.
+            return false;
+        case LEVI_RS_APROP_IS_IN_LOVE:
+            *out = actor->isInLove() ? 1.0 : 0.0;
+            return true;
+        case LEVI_RS_APROP_DEATH_TIME:
+            *out = static_cast<double>(actor->getDeathTime());
+            return true;
+        case LEVI_RS_APROP_HAS_PASSENGER:
+            *out = actor->hasPassenger() ? 1.0 : 0.0;
+            return true;
         default:
             return false;
         }
@@ -126,6 +217,22 @@ namespace levi_rs::bridge
         case LEVI_RS_ASTR_NAME_TAG:
             sink(ctx, actor->getNameTag());
             return true;
+        /* ── v5 additive ── */
+        case LEVI_RS_ASTR_SCORE_TAG:
+            // getScoreTag() is behind #ifdef LL_PLAT_C — unavailable on server.
+            // setScoreTag() exists, but the getter is client-only.
+            return false;
+        case LEVI_RS_ASTR_FILTERED_NAME:
+            // getFilteredNameTag() is behind #ifdef LL_PLAT_C; read the public
+            // mFilteredNameTag member (TypedStorage<string>) directly. Bind to
+            // a std::string const& first so string_view construction sees a
+            // real std::string (TypedStorage -> string -> string_view needs an
+            // explicit hop; two implicit UDCs aren't allowed).
+            {
+                std::string const& name = actor->mFilteredNameTag;
+                sink(ctx, name);
+                return true;
+            }
         default:
             return false;
         }
@@ -237,6 +344,66 @@ namespace levi_rs::bridge
             }
         case LEVI_RS_AACT_ATTRIBUTE_GET:
             return false; // reserved: generic attribute-by-name (post-v1.0.0)
+        /* ── v5 additive ── */
+        case LEVI_RS_AACT_SET_VARIANT:
+            actor->setVariant(static_cast<int>(a));
+            return true;
+        case LEVI_RS_AACT_SET_MARK_VARIANT:
+            actor->setMarkVariant(static_cast<int>(a));
+            return true;
+        case LEVI_RS_AACT_SET_PERSISTENT:
+            actor->setPersistent();
+            return true;
+        case LEVI_RS_AACT_SET_LEASH_HOLDER:
+            actor->setLeashHolder(ActorUniqueID{static_cast<int64_t>(a)});
+            return true;
+        case LEVI_RS_AACT_SET_INVISIBLE:
+            actor->setInvisible(a != 0.0);
+            return true;
+        case LEVI_RS_AACT_SET_SNEAKING:
+            actor->setSneaking(a != 0.0);
+            return true;
+        case LEVI_RS_AACT_SET_NAME_TAG_VISIBLE:
+            actor->setNameTagVisible(a != 0.0);
+            return true;
+        case LEVI_RS_AACT_SET_TARGET:
+            {
+                auto* target = resolveActor(static_cast<LeviRsActorId>(a));
+                if (!target) return false;
+                actor->setTarget(target);
+                return true;
+            }
+        case LEVI_RS_AACT_SET_OWNER:
+            actor->setOwner(ActorUniqueID{static_cast<int64_t>(a)});
+            return true;
+        case LEVI_RS_AACT_BURN:
+            // burn(int damage, bool inFire) — inFire=true means the source is
+            // a fire block (vs. a flame enchant / lava tick).
+            actor->burn(static_cast<int>(a), true);
+            return true;
+        case LEVI_RS_AACT_STOP_FIRE:
+            // Actor has no extinguishFire(); stopFire() is the LL-exposed API.
+            actor->stopFire();
+            return true;
+        case LEVI_RS_AACT_SET_VELOCITY:
+            actor->setVelocity(Vec3{static_cast<float>(a), static_cast<float>(b), static_cast<float>(c)});
+            return true;
+        case LEVI_RS_AACT_APPLY_IMPULSE:
+            actor->applyImpulse(Vec3{static_cast<float>(a), static_cast<float>(b), static_cast<float>(c)});
+            return true;
+        case LEVI_RS_AACT_SET_SCORE_TAG:
+            actor->setScoreTag(std::string{sarg});
+            return true;
+        case LEVI_RS_AACT_SET_SKIN_ID:
+            actor->setSkinID(static_cast<int>(a));
+            return true;
+        case LEVI_RS_AACT_SET_STRENGTH:
+            actor->setStrength(static_cast<int>(a));
+            return true;
+        case LEVI_RS_AACT_REMOVE_ALL_PASSENGERS:
+            // removeAllPassengers(bool actorIsBeingDestroyed, bool exitFromPassenger)
+            actor->removeAllPassengers(false, true);
+            return true;
         default:
             return false;
         }

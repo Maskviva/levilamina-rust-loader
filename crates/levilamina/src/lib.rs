@@ -1,14 +1,23 @@
 //! # levilamina
 //!
 //! Write [LeviLamina](https://github.com/LiteLDev/LeviLamina) mods for
-//! Minecraft Bedrock Dedicated Server in safe Rust.
+//! Minecraft Bedrock (server **or** client) in safe Rust.
 //!
 //! Requires the `levilamina-rust-loader` mod (the C++ bridge from this
-//! repository) to be installed on the server. Your mod is a plain `cdylib`:
+//! repository) to be installed. Your mod is a plain `cdylib`:
 //!
 //! ```toml
 //! [lib]
 //! crate-type = ["cdylib"]
+//! ```
+//!
+//! Pick a side via cargo features (mutually exclusive — default is `server`):
+//!
+//! ```toml
+//! [dependencies]
+//! levilamina = { version = "26.20.4", default-features = false, features = ["server"] }
+//! # …or for a client mod:
+//! # levilamina = { version = "26.20.4", default-features = false, features = ["client"] }
 //! ```
 //!
 //! ```no_run
@@ -39,7 +48,8 @@
 //! ## Threading model
 //!
 //! Every callback (lifecycle, events, commands, forms, scheduled tasks) runs
-//! on the **server thread**. [`Server::schedule`] / [`Server::schedule_after`]
+//! on the **game thread** (server thread or client thread, depending on the
+//! selected feature). [`Server::schedule`] / [`Server::schedule_after`]
 //! are the main thread-safe entry points and are how background threads
 //! (Tokio tasks, AI agents, …) marshal work back into the game. The
 //! [`KvDb`] and [`system`] families are also thread-safe.
@@ -52,249 +62,126 @@
 //! [`ItemStack`] is a pure SNBT value object. Nothing you hold can dangle;
 //! at worst a call returns `Err` because the target is gone.
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::{Mutex, OnceLock};
+// The `server` and `client` features are mutually exclusive — exactly one
+// must be enabled. Enforced at compile time so a misconfigured mod fails
+// fast instead of producing a mixed-up ABI.
+#[cfg(all(feature = "server", feature = "client"))]
+compile_error!(
+    "The `server` and `client` features are mutually exclusive. \
+     Enable exactly one of them."
+);
+#[cfg(not(any(feature = "server", feature = "client")))]
+compile_error!(
+    "You must enable exactly one of the `server` or `client` features \
+     (default is `server`)."
+);
 
 pub use levilamina_sys as sys;
 
+// Shared API (both server and client).
 pub mod block;
-pub mod command;
 pub mod container;
 pub mod entity;
 mod error;
 pub mod event;
 mod ffi;
-pub mod gui;
 pub mod item;
 pub mod kvdb;
 mod logger;
-pub mod money;
 pub mod nbt;
 pub mod player;
-pub mod scoreboard;
-pub mod server;
-pub mod sim;
+mod registration;
+mod runtime;
 pub mod system;
 pub mod types;
 pub mod world;
 
+// ── Server-only API ───────────────────────────────────────────────────
+#[cfg(feature = "server")]
+pub mod command;
+#[cfg(feature = "server")]
+pub mod gui;
+#[cfg(feature = "server")]
+pub mod money;
+#[cfg(feature = "server")]
+pub mod scoreboard;
+#[cfg(feature = "server")]
+pub mod server;
+#[cfg(feature = "server")]
+pub mod sim;
+
+// Custom dimensions (reimplements LiteLDev/MoreDimensions). The C++ loader
+// always compiles this in for server builds; this cargo feature only gates
+// whether the Rust safe-layer is available. Server build only.
+#[cfg(all(feature = "server", feature = "more_dimensions"))]
+pub mod more_dimensions;
+
+// ── Client-only API ───────────────────────────────────────────────────
+#[cfg(feature = "client")]
+pub mod client;
+
 pub use block::Block;
-pub use command::{
-    CommandBuilder, CommandInvocation, CommandInvocationEx, CommandOrigin, CommandPermission,
-    CommandResult, OverloadBuilder, ParamType,
-};
 pub use container::Container;
 pub use entity::{Entity, EntityId};
 pub use error::{Error, Result};
 pub use event::{EventPriority, EventRef, Listener, PlayerIdentity};
-pub use gui::{CustomFormBuilder, FormResponse, FormValue, ModalFormBuilder, SimpleFormBuilder};
 pub use item::ItemStack;
 pub use kvdb::KvDb;
 pub use logger::{LogLevel, Logger};
 pub use nbt::NbtValue;
 pub use player::{Ability, GameMode, MessageType, Player, PlayerInfo};
-pub use scoreboard::{DisplaySlot, Objective, Scoreboard};
-pub use server::{GamingStatus, Server, SoftEnumOp, Weather};
-pub use sim::SimPlayer;
+pub use registration::{__init_runtime, __lifecycle, __load, LeviMod, ModSlot};
+pub use runtime::ModContext;
 pub use world::{
     BlockInfo, Bounds, Cell, EntityInfo, PlayerPos, Scan, ScanLayer, StructureInfo, VillageInfo,
 };
 
+// ── Server-only re-exports ────────────────────────────────────────────
+#[cfg(feature = "server")]
+pub use command::{
+    CommandBuilder, CommandInvocation, CommandInvocationEx, CommandOrigin, CommandPermission,
+    CommandResult, OverloadBuilder, ParamType,
+};
+#[cfg(feature = "server")]
+pub use gui::{CustomFormBuilder, FormResponse, FormValue, ModalFormBuilder, SimpleFormBuilder};
+#[cfg(feature = "server")]
+pub use money::{MoneyEvent, MoneyEventKind};
+#[cfg(feature = "server")]
+pub use scoreboard::{DisplaySlot, Objective, Scoreboard};
+#[cfg(feature = "server")]
+pub use server::{GamingStatus, Server, SoftEnumOp, Weather};
+#[cfg(feature = "server")]
+pub use sim::SimPlayer;
+
+// ── Client-only re-exports ────────────────────────────────────────────
+#[cfg(feature = "client")]
+pub use client::{Client, ClientInstance, GamingStatus};
+
+// Re-exported so every `use crate::{rt, sys}` in sibling modules keeps
+// resolving after the runtime split.
+pub(crate) use runtime::rt;
+
 pub mod prelude {
     //! Everything most mods need, in one `use`.
     pub use crate::{
-        register_mod, Ability, Block, BlockInfo, Cell, CommandBuilder, CommandInvocation,
-        CommandInvocationEx, CommandPermission, Container, DisplaySlot, Entity, EntityInfo,
-        EventPriority, EventRef, FormResponse, FormValue, GameMode, GamingStatus, ItemStack, KvDb,
-        LeviMod, Listener, LogLevel, Logger, ModContext, NbtValue, ParamType, Player, PlayerInfo,
-        PlayerPos, Result, Scan, ScanLayer, Scoreboard, Server, SimPlayer, SoftEnumOp, Weather,
+        register_mod, Ability, Block, BlockInfo, Cell, Entity, EntityInfo, EventPriority, EventRef,
+        GameMode, ItemStack, KvDb, LeviMod, Listener, LogLevel, Logger, MessageType, ModContext,
+        NbtValue, Player, PlayerInfo, PlayerPos, Result, Scan, ScanLayer,
     };
-}
 
-// ───────────────────────── runtime plumbing ─────────────────────────
-
-pub(crate) struct Runtime {
-    pub(crate) api: &'static sys::LeviRsApi,
-    pub(crate) handle: sys::LeviRsModHandle,
-}
-// The handle is only ever dereferenced by the bridge on the server thread.
-unsafe impl Send for Runtime {}
-unsafe impl Sync for Runtime {}
-
-static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-
-pub(crate) fn rt() -> &'static Runtime {
-    RUNTIME
-        .get()
-        .expect("levilamina runtime not initialized (register_mod! missing?)")
-}
-
-/// Everything a mod needs, passed to lifecycle hooks.
-pub struct ModContext(());
-
-impl ModContext {
-    pub fn logger(&self) -> Logger {
-        Logger::get()
-    }
-    pub fn server(&self) -> Server {
-        Server::get()
-    }
-}
-
-// ───────────────────────── mod trait + registration ─────────────────────────
-
-/// Implement this and call [`register_mod!`] once.
-///
-/// All hooks run on the server thread, and the mod instance is only ever
-/// touched from the server thread — so it may freely hold `!Send` resources
-/// such as [`Listener`].
-pub trait LeviMod: Sized + 'static {
-    /// Called while the mod is loading. Return `Err` to abort loading.
-    fn on_load(ctx: &ModContext) -> Result<Self>;
-    fn on_enable(&mut self, _ctx: &ModContext) -> Result<()> {
-        Ok(())
-    }
-    fn on_disable(&mut self, _ctx: &ModContext) -> Result<()> {
-        Ok(())
-    }
-    fn on_unload(&mut self, _ctx: &ModContext) -> Result<()> {
-        Ok(())
-    }
-}
-
-#[doc(hidden)]
-pub struct ModSlot<T: LeviMod>(pub Mutex<Option<T>>);
-
-// SAFETY: the slot is only ever locked and accessed on the server thread, via
-// the bridge-invoked entry points (__load / __lifecycle). The instance never
-// migrates between threads at runtime, so a `!Send` mod (e.g. one holding a
-// `Listener`) is sound here even though `Mutex<Option<T>>` is not auto-Sync.
-unsafe impl<T: LeviMod> Sync for ModSlot<T> {}
-
-#[doc(hidden)]
-pub unsafe fn __init_runtime(api: *const sys::LeviRsApi, handle: sys::LeviRsModHandle) -> bool {
-    if api.is_null() {
-        return false;
-    }
-    // SAFETY: the bridge guarantees the api table outlives the mod.
-    let api: &'static sys::LeviRsApi = &*api;
-
-    // ABI compatibility is a RANGE (mirrors the loader's RustModManager check).
-    // The loader's `abi_version` must be >= the one we compiled against: a
-    // newer loader exposes an additive superset of our table, so every slot we
-    // know about is present and byte-identical. A loader OLDER than us may be
-    // missing trailing slots we'd call — refuse it.
-    //
-    // (Historically some additive bumps advanced `abi_version` too, not just
-    // `struct_size`, so this must be `<`, not `!=` — otherwise a v4-built mod
-    // rejects a perfectly compatible v5 loader.)
-    if api.abi_version < sys::LEVI_RS_ABI_VERSION {
-        return false;
-    }
-    // The precise gate regardless of how the version was bumped: the loader's
-    // actual table must be at least as large as the `LeviRsApi` this crate was
-    // compiled against, or a trailing field access would read past what the
-    // loader allocated.
-    if (api.struct_size as usize) < core::mem::size_of::<sys::LeviRsApi>() {
-        return false;
-    }
-    RUNTIME.set(Runtime { api, handle }).is_ok()
-}
-
-#[doc(hidden)]
-pub fn __lifecycle<T: LeviMod>(
-    slot: &'static ModSlot<T>,
-    stage: u8, // 1=enable, 2=disable, 3=unload
-) -> bool {
-    let ctx = ModContext(());
-    let run = || -> Result<()> {
-        let mut guard = slot
-            .0
-            .lock()
-            .map_err(|_| Error("mod state poisoned".into()))?;
-        let Some(instance) = guard.as_mut() else {
-            return Err(Error("mod instance missing".into()));
-        };
-        match stage {
-            1 => instance.on_enable(&ctx),
-            2 => instance.on_disable(&ctx),
-            3 => {
-                instance.on_unload(&ctx)?;
-                *guard = None; // drop the instance before the dylib unloads
-                Ok(())
-            }
-            _ => Ok(()),
-        }
+    // Server-only prelude items.
+    #[cfg(feature = "server")]
+    pub use crate::{
+        CommandBuilder, CommandInvocation, CommandInvocationEx, CommandPermission, Container,
+        DisplaySlot, FormResponse, FormValue, GamingStatus, Objective, ParamType, Scoreboard,
+        Server, SimPlayer, SoftEnumOp, Weather,
     };
-    match catch_unwind(AssertUnwindSafe(run)) {
-        Ok(Ok(())) => true,
-        Ok(Err(e)) => {
-            Logger::get().error(&format!("lifecycle error: {e}"));
-            false
-        }
-        Err(_) => {
-            Logger::get().error("panic in lifecycle hook");
-            false
-        }
-    }
-}
 
-#[doc(hidden)]
-pub fn __load<T: LeviMod>(slot: &'static ModSlot<T>) -> bool {
-    let ctx = ModContext(());
-    match catch_unwind(AssertUnwindSafe(|| T::on_load(&ctx))) {
-        Ok(Ok(instance)) => {
-            *slot.0.lock().unwrap() = Some(instance);
-            true
-        }
-        Ok(Err(e)) => {
-            Logger::get().error(&format!("on_load failed: {e}"));
-            false
-        }
-        Err(_) => {
-            Logger::get().error("panic in on_load");
-            false
-        }
-    }
-}
+    // Opt-in: only when `more_dimensions` is enabled (implies server).
+    #[cfg(feature = "more_dimensions")]
+    pub use crate::more_dimensions::GeneratorType;
 
-/// Export the `levi_rs_main` entry point for a [`LeviMod`] implementation.
-#[macro_export]
-macro_rules! register_mod {
-    ($ty:ty) => {
-        #[doc(hidden)]
-        static __LEVI_RS_SLOT: $crate::ModSlot<$ty> =
-            $crate::ModSlot(::std::sync::Mutex::new(None));
-
-        #[no_mangle]
-        pub unsafe extern "C" fn levi_rs_main(
-            api: *const $crate::sys::LeviRsApi,
-            handle: $crate::sys::LeviRsModHandle,
-            out: *mut $crate::sys::LeviRsModVTable,
-        ) -> bool {
-            if out.is_null() || !$crate::__init_runtime(api, handle) {
-                return false;
-            }
-            if !$crate::__load::<$ty>(&__LEVI_RS_SLOT) {
-                return false;
-            }
-            unsafe extern "C" fn on_enable(_: *mut ::core::ffi::c_void) -> bool {
-                $crate::__lifecycle::<$ty>(&__LEVI_RS_SLOT, 1)
-            }
-            unsafe extern "C" fn on_disable(_: *mut ::core::ffi::c_void) -> bool {
-                $crate::__lifecycle::<$ty>(&__LEVI_RS_SLOT, 2)
-            }
-            unsafe extern "C" fn on_unload(_: *mut ::core::ffi::c_void) -> bool {
-                $crate::__lifecycle::<$ty>(&__LEVI_RS_SLOT, 3)
-            }
-            (*out) = $crate::sys::LeviRsModVTable {
-                abi_version: $crate::sys::LEVI_RS_ABI_VERSION,
-                instance: ::core::ptr::null_mut(),
-                on_enable: Some(on_enable),
-                on_disable: Some(on_disable),
-                on_unload: Some(on_unload),
-            };
-            true
-        }
-    };
+    // Client-only prelude items.
+    #[cfg(feature = "client")]
+    pub use crate::{client::KeyAction, Client, ClientInstance, Container};
 }

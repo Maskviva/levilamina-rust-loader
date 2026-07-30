@@ -2,6 +2,7 @@
 #include "bridge/Api.h"
 #include "bridge/Common.h"
 
+#include <cctype>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -9,11 +10,15 @@
 #include "ll/api/event/DynamicListener.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/Listener.h"
+
+// Command events (ExecutingCommandEvent / ExecutedCommandEvent) are server-only.
+#ifndef LEVI_RS_TARGET_CLIENT
 #include "ll/api/event/command/ExecuteCommandEvent.h"
+#include "mc/server/commands/CommandOrigin.h"
+#endif
 
 #include "mc/deps/nbt/CompoundTag.h"
 #include "mc/platform/UUID.h"
-#include "mc/server/commands/CommandOrigin.h"
 #include "mc/world/actor/Actor.h"
 #include "mc/world/actor/player/Player.h"
 
@@ -23,7 +28,25 @@ namespace levi_rs::bridge
 {
     namespace
     {
-        /** Resolve an event id, allowing a unique suffix match for ergonomics. */
+        /**
+         * Resolve an event id, allowing a unique suffix match for ergonomics.
+         *
+         * # Why this dedupes by name
+         *
+         * `bus.events()` yields **(mod, id) pairs**, not distinct ids: every mod
+         * that has registered an emitter for an event contributes its own entry.
+         * The previous version counted entries, so as soon as a second mod on the
+         * server touched the same event, a perfectly unambiguous name resolved to
+         * "ambiguous" and subscription failed.
+         *
+         * That failure mode was silent in the worst possible way: the caller sees
+         * one `Err`, and a mod that registers its listeners with `?` loses every
+         * listener after that point. A land-protection mod ends up with exactly
+         * one guard armed and no idea why.
+         *
+         * Two entries with the *same* name are not ambiguous. Only genuinely
+         * different names are.
+         */
         std::optional<ll::event::EventId> resolveEventId(std::string_view wanted)
         {
             auto& bus = ll::event::EventBus::getInstance();
@@ -40,11 +63,45 @@ namespace levi_rs::bridge
                     && (name[name.size() - wanted.size() - 1] == ':' || name[name.size() - wanted.size() - 1] == '.');
                 if (match || name == wanted)
                 {
-                    if (hit) return std::nullopt; // ambiguous
-                    hit.emplace(ll::event::EventId{name});
+                    // Same name from another mod's registration — not ambiguity.
+                    if (hit && std::string_view(hit->name) != name) return std::nullopt;
+                    if (!hit) hit.emplace(ll::event::EventId{name});
                 }
             }
             return hit;
+        }
+
+        /**
+         * Log every registered id that looks related to `wanted`, so a failed
+         * subscription says what the engine actually calls the event instead of
+         * just "unknown". One line, only on the failure path.
+         */
+        void reportSimilarEvents(RustMod* mod, std::string_view wanted)
+        {
+            // Take the longest trailing CamelCase word as the needle: for
+            // "PlayerPlacingBlockEvent" that is "Block", which is loose enough to
+            // catch a rename and tight enough not to dump the whole registry.
+            std::string needle;
+            for (size_t i = 0; i < wanted.size(); ++i)
+            {
+                if (i && std::isupper(static_cast<unsigned char>(wanted[i]))) needle.clear();
+                needle.push_back(wanted[i]);
+            }
+            if (needle.size() < 3) needle = std::string(wanted.substr(0, 6));
+
+            std::string found;
+            size_t n = 0;
+            for (auto&& [modName, id] : ll::event::EventBus::getInstance().events())
+            {
+                std::string_view name = id.name;
+                if (name.find(needle) == std::string_view::npos) continue;
+                if (found.find(name) != std::string::npos) continue; // dedupe
+                if (n++) found += ", ";
+                found += name;
+                if (n >= 12) break;
+            }
+            if (found.empty()) found = "(registry has nothing containing '" + needle + "')";
+            mod->getLogger().error("subscribe_event: ids containing '{}': {}", needle, found);
         }
     } // namespace
 
@@ -86,6 +143,9 @@ namespace levi_rs::bridge
         // fed a hand-built SNBT so the Rust-facing shape matches the dynamic path.
         // (Both events are final — required for the emplaceListener template param;
         // their shared base ExecuteCommandEvent isn't final and won't compile.)
+        //
+        // SERVER-ONLY: command events don't exist on the client build.
+#ifndef LEVI_RS_TARGET_CLIENT
         bool isExecuting = wanted.find("ExecutingCommandEvent") != std::string_view::npos;
         bool isExecuted = wanted.find("ExecutedCommandEvent") != std::string_view::npos;
         if (isExecuting || isExecuted)
@@ -210,6 +270,7 @@ namespace levi_rs::bridge
             mod->listeners.push_back(typedListener);
             return static_cast<LeviRsListenerHandle>(typedListener.get());
         }
+#endif // !LEVI_RS_TARGET_CLIENT
 
         // --- Bridge-hook events: synthetic ids backed by native detours ---
         // (hooks/ owns the detours; matched by name like the command
@@ -224,6 +285,7 @@ namespace levi_rs::bridge
         if (!resolved)
         {
             mod->getLogger().error("subscribe_event: unknown or ambiguous event id '{}'", eventId);
+            reportSimilarEvents(mod, wanted);
             return nullptr;
         }
 

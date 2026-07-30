@@ -1,0 +1,78 @@
+//! Player property/action constants — LeviRsPlayerNumProp, LeviRsPlayerStrProp,
+//! LeviRsPlayerAction. Append-only; never renumber.
+
+// LeviRsPlayerNumProp
+pub const PPROP_GAME_TYPE: i32 = 0;
+pub const PPROP_LEVEL: i32 = 1;
+pub const PPROP_EXPERIENCE: i32 = 2;
+pub const PPROP_HUNGER: i32 = 3;
+pub const PPROP_SATURATION: i32 = 4;
+pub const PPROP_EXHAUSTION: i32 = 5;
+pub const PPROP_XP_NEEDED_NEXT_LEVEL: i32 = 6;
+pub const PPROP_LUCK: i32 = 7;
+pub const PPROP_SELECTED_SLOT: i32 = 8;
+pub const PPROP_IS_OPERATOR: i32 = 9;
+pub const PPROP_CAN_USE_OPERATOR_BLOCKS: i32 = 10;
+pub const PPROP_IS_FLYING: i32 = 11;
+pub const PPROP_CAN_JUMP: i32 = 12;
+pub const PPROP_IS_EMOTING: i32 = 13;
+pub const PPROP_IS_IN_RAID: i32 = 14;
+pub const PPROP_IS_HURT: i32 = 15;
+pub const PPROP_IS_SCOPING: i32 = 16;
+pub const PPROP_CAN_SLEEP: i32 = 17;
+pub const PPROP_HAS_RESPAWN_POSITION: i32 = 18;
+pub const PPROP_CLIENT_SUB_ID: i32 = 19;
+pub const PPROP_CAN_USE_ABILITY: i32 = 20;
+pub const PPROP_DIRECTION: i32 = 21;
+pub const PPROP_CHUNK_RADIUS: i32 = 22;
+pub const PPROP_NETWORK_RTT: i32 = 23;
+pub const PPROP_PLATFORM: i32 = 24;
+pub const PPROP_ENCHANTMENT_SEED: i32 = 25;
+pub const PPROP_IS_USING_ITEM: i32 = 26;
+pub const PPROP_IS_BLOCKING: i32 = 27;
+pub const PPROP_IS_GLIDING: i32 = 28;
+pub const PPROP_IS_SWIMMING: i32 = 29;
+pub const PPROP_PERMISSION_LEVEL: i32 = 30;
+pub const PPROP_SCORE: i32 = 31;
+pub const PPROP_FALL_DISTANCE: i32 = 32;
+pub const PPROP_IS_DEAD: i32 = 33;
+pub const PPROP_HAS_DIED_BEFORE: i32 = 34;
+pub const PPROP_DIMENSION: i32 = 35;
+
+// LeviRsPlayerStrProp
+pub const PSTR_REAL_NAME: i32 = 0;
+pub const PSTR_UUID: i32 = 1;
+pub const PSTR_XUID: i32 = 2;
+pub const PSTR_IP_AND_PORT: i32 = 3;
+pub const PSTR_LOCALE_CODE: i32 = 4;
+pub const PSTR_NAME_TAG: i32 = 5;
+pub const PSTR_LAST_DEATH_POS: i32 = 6;
+pub const PSTR_LAST_DEATH_DIMENSION: i32 = 7;
+pub const PSTR_NETWORK_STATUS: i32 = 8;
+pub const PSTR_PLATFORM_ONLINE_ID: i32 = 9;
+
+// LeviRsPlayerAction
+pub const PACT_SET_ABILITY: i32 = 0;
+pub const PACT_CAN_USE_ABILITY: i32 = 1;
+pub const PACT_SET_SELECTED_SLOT: i32 = 2;
+pub const PACT_GIVE_ITEM: i32 = 3;
+pub const PACT_SET_SPAWN_POINT: i32 = 4;
+pub const PACT_CLEAR_TITLE: i32 = 5;
+pub const PACT_SET_TITLE: i32 = 6;
+pub const PACT_ADD_EXPERIENCE: i32 = 7;
+pub const PACT_ADD_LEVELS: i32 = 8;
+pub const PACT_START_COOLDOWN: i32 = 9;
+pub const PACT_START_RIDING: i32 = 10;
+pub const PACT_STOP_RIDING: i32 = 11;
+pub const PACT_ATTACK: i32 = 12;
+pub const PACT_DROP: i32 = 13;
+pub const PACT_INTERACT: i32 = 14;
+pub const PACT_START_USING_ITEM: i32 = 15;
+pub const PACT_STOP_USING_ITEM: i32 = 16;
+pub const PACT_SET_CHUNK_RADIUS: i32 = 17;
+pub const PACT_SET_ENCHANTMENT_SEED: i32 = 18;
+pub const PACT_REGISTER_TRACKED_BOSS: i32 = 19;
+pub const PACT_UNREGISTER_TRACKED_BOSS: i32 = 20;
+pub const PACT_PLAY_EMOTE: i32 = 21;
+pub const PACT_RESEND_ALL_CHUNKS: i32 = 22;
+pub const PACT_OPEN_INVENTORY: i32 = 23;

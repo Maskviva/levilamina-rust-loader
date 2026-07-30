@@ -1,5 +1,194 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`PlayerUseItemOnEvent`** (`bridge/hooks/UseItemOnEvent.cpp`) — a
+  **cancellable** hook on `GameMode::useItemOn`, fired when a player is about to
+  use the held item on a block.
+
+  This is the funnel `PlayerInteractBlockEvent` is often mistaken for: spawn
+  eggs, buckets, flint & steel, ender pearls and item-driven block placement all
+  reach the world through `useItemOn`, so a land-protection mod that watches only
+  interact/place events lets every one of them through. Cancelling returns an
+  `InteractionResult` with both flags clear — nothing is placed or spawned and
+  the item is not consumed.
+
+  Payload: `{x, y, z, dim, face, item, isFirstEvent, _player}`. `x/y/z` are flat
+  integers, matching the other hook events here. `isFirstEvent` is passed through
+  because holding right-click re-fires this call many times per second on Windows
+  clients, and subscribers that want to act once per click need to tell the first
+  from the repeats.
+
+### Changed
+
+- **`enrichEventData` now puts the player's position into `_player`** as
+  `{x, y, z}` named integers, alongside the existing name/xuid/uuid.
+
+  Every event that carries a player now has a position that is readable without
+  knowing the event's own field layout. That matters more than it sounds:
+  `ll::reflection` serialises `BlockPos` / `Vec3` through the `IsVectorBase`
+  overload, which builds a JSON **array**, so consumers that only understand
+  `{x,y,z}` silently read nothing out of an event's own position field and —
+  if they treat "no position" as "don't check" — fail open.
+
+## 26.20.4
+
+### Added (additive enum constants — ABI stays v5; no new function-pointer slots)
+
+- **API surface parity with the C++ LL/MC headers.** The existing generic
+  getters/setters/actions (`player_get_num`, `player_action`, `actor_get_str`,
+  `block_get_num`, `item_transform`, `scoreboard_op`, …) now cover the full
+  property set exposed by the C++ `LeviLamina` + Bedrock headers, by extending
+  the ABI enum constants that select which property an call targets. No new
+  `LeviRsApi` function-pointer slots were added — the new capabilities ride on
+  the pre-existing generic dispatch, so **ABI stays v5** and older mods keep
+  loading unchanged. New constants are append-only (existing values never
+  renumbered), grouped by domain for browseability:
+    - **[header/sys]** `LeviRsPlayerNumProp` / `LeviRsPlayerStrProp` /
+      `LeviRsPlayerAction` — 69 constants covering game type, level, experience,
+      abilities, inventory, coords, OP level, IP, device, skin, etc.
+    - **[header/sys]** `LeviRsActorNumProp` / `LeviRsActorStrProp` /
+      `LeviRsActorAction` — 83 constants covering position, health, attributes,
+      family, name tag, NBT, kill/despawn/teleport/addEffect/rayTrace, etc.
+    - **[header/sys]** `LeviRsBlockNumProp` / `LeviRsItemNumProp` / `LeviRsItemOp` /
+      `LeviRsScoreboardOp` / `LeviRsSysProp` / `LeviRsServerProp` — 110 constants
+      covering block states, item metadata, item transforms, scoreboard ops,
+      system info, server info, etc.
+
+### Added (additive — ABI v5, struct_size-gated function pointers)
+
+- **34 dedicated gap-fill functions** appended to `LeviRsApi` as additive
+  fields (older loaders with smaller `struct_size` simply don't see them;
+  unknown enum keys return `false`). All implementations live in
+  `src/bridge/GapFill.cpp`; stubs return safe defaults where the BDS API
+  is not yet confirmed.
+    - **Player** (7): `player_get_carried_item`, `player_get_item`,
+      `player_set_item`, `player_get_equipment`, `player_get_cooldown`,
+      `player_start_cooldown`, `player_get_network_status`.
+    - **Actor** (13): `actor_get_vehicle`, `actor_get_first_passenger`,
+      `actor_get_owner`, `actor_get_target`, `actor_get_equipped_item`,
+      `actor_set_equipped_item`, `actor_get_effects`,
+      `actor_get_status_flag`, `actor_set_status_flag`, `actor_trace_ray`,
+      `actor_distance_to`, `actor_get_aabb`, `actor_clone`.
+    - **Block** (3): `block_get_state`, `block_set_state`,
+      `block_get_collision_shape`.
+    - **Item** (4): `item_get_enchants`, `item_set_enchants`,
+      `item_matches`, `item_get_user_data`.
+    - **Level** (7): `level_get_biome`, `level_get_default_spawn`,
+      `level_set_default_spawn`, `level_save`, `level_get_sleep_status`,
+      `level_update_weather`, `level_find_path`.
+- **Rust safe wrappers** for all 34 gap-fill functions, in 5 new files
+  (each ≤200 lines): `player/gap_fill.rs`, `entity/gap_fill.rs`,
+      `block/gap_fill.rs`, `item/gap_fill.rs`, `server/world/gap_fill.rs`.
+- **NBT binary codec safe wrappers** (`nbt/binary.rs`): `NbtValue::to_binary`
+      and `NbtValue::from_binary` now expose the engine's `CompoundTag`
+      binary/network NBT codec to Rust mods (previously the FFI functions
+      `nbt_snbt_to_binary` / `nbt_binary_to_snbt` had no safe wrapper).
+      New `NbtBinaryFormat` enum (`Disk` / `Network`).
+- **C++ bridge fixes**: corrected function signatures for `Actor::burn`,
+      `Actor::stopFire` (replaces non-existent `extinguishFire`),
+      `Actor::removeAllPassengers`, `Player::getNetworkStatus` (handles
+      `std::optional<NetworkPeer::NetworkStatus>`), `Block::getCollisionShape`,
+      `BlockSource::tryGetBiome`, and `PlayerSleepStatus` field access.
+
+### Changed (internal — no API/ABI impact)
+
+- **[sys crate] `levilamina-sys` split into per-domain files (≤200 lines each).**
+  The crate was a single 744-line `lib.rs`; it is now organised so other
+  developers can find an API by browsing, not grepping:
+    - `lib.rs` (29 lines) — crate root, re-exports.
+    - `api.rs` (165 lines) — the `LeviRsApi` function-pointer table.
+    - `types.rs` (90 lines) — `#[repr(C)]` FFI types (`LeviRsStr`, `LeviRsPlayerSel`, …).
+    - `vtable.rs` / `money.rs` — mod vtable + LLMoney callback types.
+    - `consts/{player,actor,world}.rs` — enum constants split by domain.
+  Also removed a stale `LLMoneyEvent` import from `api.rs` (unused warning).
+- **[safe crate] `levilamina` source files split to ≤200 lines each.** Same
+  findability goal; no public API changed (all re-exports at the crate root and
+  in `prelude` are byte-identical):
+    - `lib.rs` (279→112) — extracted `runtime.rs` (Runtime/ModContext) and
+      `registration.rs` (LeviMod/ModSlot/__init_runtime/register_mod!).
+    - `nbt/mod.rs` (270→62) — extracted `accessors.rs` (get/path/as_*),
+      `serde.rs` (SNBT writer + tests), and split `parser.rs` (267) into
+      `parser/{mod,containers,scalars}.rs`.
+    - `server/world.rs` (214→7+75+115+52) — split into
+      `server/world/{mod,particles,blocks,entities}.rs`.
+
+### Added (client dual-target support — ABI stays v5)
+
+- **Dual-endpoint build: server + client.** The loader now builds in two
+  flavours via `xmake f --target_type=client|server` (default `server`):
+    - **Server** (`levilamina-rust-loader.dll`): unchanged — targets BDS,
+      links `legacymoney`, includes all server-only bridge files
+      (Commands, Server, Money, SimPlayer, ScoreboardApi, Forms,
+      WorldInfo, Packets, GapFill, hooks/*).
+    - **Client** (`levilamina-rust-loader-client.dll`): targets the MC
+      Bedrock client via LeviLamina's `src-client` API (`target_type=client`
+      levilamina package). Server-only source files are excluded; their
+      `api_*` slots are filled by `src/bridge/ClientStubs.cpp` (no-op
+      stubs returning `false`/`0`/`nullptr` — the Rust safe layer maps
+      these to `Err("unsupported on client")`).
+- **Client-only FFI types and function pointers** (6 slots, appended after
+  the gap-fill block in `LeviRsApi`, `#ifdef LEVI_RS_TARGET_CLIENT`):
+  `client_get_local_player`, `client_is_in_level`,
+  `client_get_screen_name`, `client_register_key`,
+  `client_unregister_key`, `client_get_key_codes`. Implemented in
+  `src/bridge/Client.cpp` via `ll::input::KeyRegistry` and
+  `ll::service::getClientInstance()`. All callbacks run on the **client
+  thread**. The server build's `struct_size` stops before this block, so
+  a server mod never sees these slots.
+- **Rust SDK dual-feature gates.** `levilamina` and `levilamina-sys` crates
+  now have mutually exclusive `server` / `client` features (default
+  `server`). The `client` feature compiles the client FFI types
+  (`LeviRsKeyHandle`, `LeviRsKeyCb`, …) and the safe `client` module
+  (`Client`, `ClientInstance`, `KeyBinding`, `KeyAction`, client event
+  constants). Server-only modules (`command`, `gui`, `money`,
+  `scoreboard`, `server`, `sim`) are `#[cfg(feature = "server")]`-gated.
+  A `compile_error!` enforces exactly-one-feature selection.
+- **Thread executor adaptation.** `LogScheduler.cpp` uses
+  `ClientThreadExecutor` on client builds (via `LEVI_RS_THREAD_EXEC`
+  macro) instead of `ServerThreadExecutor`. `Common.cpp` uses
+  `ll::service::getMultiPlayerLevel()` on client instead of `getLevel()`.
+  `Events.cpp` skips server-only command events
+  (`ExecutingCommandEvent` / `ExecutedCommandEvent`). `Entry.cpp` skips
+  the `/levirs` debug command registration on client.
+
+### Added (MoreDimensions — always on for server builds; ABI stays v5)
+
+- **Custom dimensions reimplemented inline** (a Rust port of
+  [LiteLDev/MoreDimensions](https://github.com/LiteLDev/MoreDimensions)),
+  compiled into every server build unconditionally — no `xmake` flag is
+  required (or accepted). Client builds never include it. Gated on the
+  C++ side by `LEVI_RS_FEATURE_MORE_DIMENSIONS` (always defined for
+  `target_type=server`) and on the Rust side by the `more_dimensions`
+  cargo feature; the loader always exposes the API, and the Rust mod
+  decides at runtime whether to call it.
+    - **C++ side** (`src/more_dimensions/`): `SimpleCustomDimension`
+      (a `Dimension` subclass supporting 5 generator types — Overworld,
+      Nether, TheEnd, Flat, Void), `CustomDimensionManager` (registration +
+      id assignment, persisted to `configs/levilamina-rust-loader/dimensions.json`
+      for stable ids across restarts), `FakeDimensionId` / `FakeDimensionHooks`
+      (rewrites the dimension id in `ChangeDimensionPacket` and related packets
+      to a fake vanilla id on the wire, so the Bedrock client — which only knows
+      ids 0/1/2 — renders the custom world without errors), and `MoreDimensionsBridge`
+      (3 FFI functions exposing the feature to Rust).
+    - **ABI** (additive, struct_size-gated, `#ifdef LEVI_RS_FEATURE_MORE_DIMENSIONS`):
+      3 new `LeviRsApi` slots — `md_is_available`, `md_add_simple_dimension`,
+      `md_get_dimension_id`. Appended after the client block; a loader built
+      without the feature has a smaller `struct_size`, so a mod that references
+      them simply gets `Err` instead of crashing.
+    - **Rust safe layer** (`crates/levilamina/src/more_dimensions.rs`): a
+      `more_dimensions` module gated by `#[cfg(all(feature = "server",
+      feature = "more_dimensions"))]`, exposing `GeneratorType` (enum, repr i32),
+      `is_available()`, `add_simple_dimension(name, seed, generator) -> Result<i32>`
+      (returns the assigned id ≥ 3), and `get_dimension_id(name) -> Option<i32>`.
+      `GeneratorType` is re-exported in `prelude` when the feature is on.
+    - **Feature guard**: `levilamina-sys` emits a `compile_error!` if
+      `more_dimensions` is combined with `client`, since the C++ macro is
+      never defined for client builds (would cause a `LeviRsApi` struct_size
+      / ABI mismatch).
+
 ## 26.20.1
 
 ### Changed

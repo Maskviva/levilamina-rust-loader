@@ -11,6 +11,8 @@ use crate::sys;
 enum Target {
     PlayerInventory(Player),
     PlayerEnderChest(Player),
+    PlayerArmor(Player),
+    PlayerHands(Player),
     Block { dim: i32, x: i32, y: i32, z: i32 },
 }
 
@@ -35,6 +37,18 @@ impl Container {
         }
     }
 
+    pub(crate) fn player_armor(player: Player) -> Container {
+        Container {
+            target: Target::PlayerArmor(player),
+        }
+    }
+
+    pub(crate) fn player_hands(player: Player) -> Container {
+        Container {
+            target: Target::PlayerHands(player),
+        }
+    }
+
     fn ffi_ref(&self) -> sys::LeviRsContainerRef {
         // An unused player slot still needs a well-formed (empty) selector.
         let empty = sys::LeviRsPlayerSel {
@@ -52,6 +66,22 @@ impl Container {
             },
             Target::PlayerEnderChest(p) => sys::LeviRsContainerRef {
                 which: 1,
+                player: p.ffi_sel(),
+                dim: 0,
+                x: 0,
+                y: 0,
+                z: 0,
+            },
+            Target::PlayerArmor(p) => sys::LeviRsContainerRef {
+                which: 2,
+                player: p.ffi_sel(),
+                dim: 0,
+                x: 0,
+                y: 0,
+                z: 0,
+            },
+            Target::PlayerHands(p) => sys::LeviRsContainerRef {
+                which: 3,
                 player: p.ffi_sel(),
                 dim: 0,
                 x: 0,

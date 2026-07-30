@@ -1,6 +1,6 @@
 [package]
 name = "levilamina-sys"
-version = "26.20.2"
+version = "26.20.4"
 edition = "2021"
 license = "Apache-2.0"
 description = "Raw FFI declarations for the levilamina-rs ABI (src/LeviRsAbi.h)."
@@ -10,3 +10,14 @@ keywords = ["levilamina", "minecraft", "bedrock", "ffi"]
 categories = ["external-ffi-bindings", "game-development"]
 
 [dependencies]
+
+# Mirror the levilamina crate's dual-target feature gates. The `client`
+# feature pulls in client-only FFI function pointers (appended after the
+# gap-fill block); `server` pulls in server-only ones. Both append to the
+# same #[repr(C)] LeviRsApi struct in an order-stable, struct_size-gated
+# fashion, so the ABI stays v5.
+[features]
+default = ["server"]
+server = []
+client = []
+more_dimensions = []

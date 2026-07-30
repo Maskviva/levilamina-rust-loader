@@ -20,6 +20,7 @@ pub struct Entity {
 }
 
 mod actions;
+mod gap_fill;
 mod query;
 
 impl Entity {

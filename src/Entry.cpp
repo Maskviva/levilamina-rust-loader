@@ -1,18 +1,21 @@
 #include <memory>
 #include <string>
 
-#include "ll/api/command/CommandHandle.h"
-#include "ll/api/command/CommandRegistrar.h"
-#include "ll/api/command/runtime/ParamKind.h"
-#include "ll/api/command/runtime/RuntimeCommand.h"
-#include "ll/api/command/runtime/RuntimeOverload.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/mod/ModManagerRegistry.h"
 #include "ll/api/mod/NativeMod.h"
 #include "ll/api/mod/RegisterHelper.h"
 
+// The debug /levirs command uses the command registrar (server-only).
+#ifndef LEVI_RS_TARGET_CLIENT
+#include "ll/api/command/CommandHandle.h"
+#include "ll/api/command/CommandRegistrar.h"
+#include "ll/api/command/runtime/ParamKind.h"
+#include "ll/api/command/runtime/RuntimeCommand.h"
+#include "ll/api/command/runtime/RuntimeOverload.h"
 #include "mc/server/commands/CommandOutput.h"
 #include "mc/server/commands/CommandPermissionLevel.h"
+#endif
 
 #include "LeviRsAbi.h"
 #include "RustModManager.h"
@@ -54,12 +57,15 @@ namespace levi_rs
 
         bool enable()
         {
+#ifndef LEVI_RS_TARGET_CLIENT
             registerDebugCommand();
+#endif
             return true;
         }
 
         bool disable() { return true; }
 
+#ifndef LEVI_RS_TARGET_CLIENT
     private:
         void registerDebugCommand()
         {
@@ -98,6 +104,7 @@ namespace levi_rs
                 }
             );
         }
+#endif // !LEVI_RS_TARGET_CLIENT
     };
 } // namespace levi_rs
 

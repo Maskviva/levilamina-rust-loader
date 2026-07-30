@@ -16,6 +16,7 @@ pub struct ItemStack {
     snbt: String,
 }
 
+mod gap_fill;
 mod query;
 
 impl ItemStack {

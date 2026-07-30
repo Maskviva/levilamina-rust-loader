@@ -14,6 +14,19 @@
 
 #include "RustMod.h"
 
+#ifdef LEVI_RS_FEATURE_MORE_DIMENSIONS
+namespace more_dimensions::bridge
+{
+    int32_t api_md_add_simple_dimension(LeviRsStr name, uint32_t seed, int32_t generatorTypeInt);
+    void    api_md_set_dimension_rule(int32_t dimension, int32_t rule, bool allow);
+    bool    api_md_get_dimension_rule(int32_t dimension, int32_t rule, bool* outAllow);
+    void    api_md_clear_dimension_rules(int32_t dimension);
+    int32_t api_md_get_dimension_id(LeviRsStr name);
+    int32_t api_md_add_plot_dimension(LeviRsStr name, uint32_t seed, LeviRsStr layoutSnbt);
+    bool    api_md_is_available();
+} // namespace more_dimensions::bridge
+#endif
+
 namespace levi_rs
 {
     namespace
@@ -150,6 +163,72 @@ namespace levi_rs
             /* money_listen_after_event  */ api_money_listen_after_event,
             /* money_ranking             */ api_money_ranking,
 
+            /* ═════════════════ ABI v5 Additive — API gap fill (struct_size-gated) ═════════════════ */
+
+            /* ── Player: equipment, cooldown, network ── */
+            /* player_get_carried_item    */ api_player_get_carried_item,
+            /* player_get_item            */ api_player_get_item,
+            /* player_set_item            */ api_player_set_item,
+            /* player_get_equipment       */ api_player_get_equipment,
+            /* player_get_cooldown        */ api_player_get_cooldown,
+            /* player_start_cooldown      */ api_player_start_cooldown,
+            /* player_get_network_status  */ api_player_get_network_status,
+
+            /* ── Actor: relationships, equipment, effects, geometry ── */
+            /* actor_get_vehicle          */ api_actor_get_vehicle,
+            /* actor_get_first_passenger  */ api_actor_get_first_passenger,
+            /* actor_get_owner            */ api_actor_get_owner,
+            /* actor_get_target           */ api_actor_get_target,
+            /* actor_get_equipped_item    */ api_actor_get_equipped_item,
+            /* actor_set_equipped_item    */ api_actor_set_equipped_item,
+            /* actor_get_effects          */ api_actor_get_effects,
+            /* actor_get_status_flag      */ api_actor_get_status_flag,
+            /* actor_set_status_flag      */ api_actor_set_status_flag,
+            /* actor_trace_ray            */ api_actor_trace_ray,
+            /* actor_distance_to          */ api_actor_distance_to,
+            /* actor_get_aabb             */ api_actor_get_aabb,
+            /* actor_clone                */ api_actor_clone,
+
+            /* ── Block: state get/set, collision shape ── */
+            /* block_get_state            */ api_block_get_state,
+            /* block_set_state            */ api_block_set_state,
+            /* block_get_collision_shape  */ api_block_get_collision_shape,
+
+            /* ── Item: enchants, matching, NBT ── */
+            /* item_get_enchants          */ api_item_get_enchants,
+            /* item_set_enchants          */ api_item_set_enchants,
+            /* item_matches               */ api_item_matches,
+            /* item_get_user_data         */ api_item_get_user_data,
+
+            /* ── Level: biome, spawn, save, weather, path, sleep ── */
+            /* level_get_biome            */ api_level_get_biome,
+            /* level_get_default_spawn    */ api_level_get_default_spawn,
+            /* level_set_default_spawn    */ api_level_set_default_spawn,
+            /* level_save                 */ api_level_save,
+            /* level_get_sleep_status     */ api_level_get_sleep_status,
+            /* level_update_weather       */ api_level_update_weather,
+            /* level_find_path            */ api_level_find_path,
+
+#ifdef LEVI_RS_TARGET_CLIENT
+            /* client_get_local_player    */ api_client_get_local_player,
+            /* client_is_in_level         */ api_client_is_in_level,
+            /* client_get_screen_name     */ api_client_get_screen_name,
+            /* client_register_key        */ api_client_register_key,
+            /* client_unregister_key      */ api_client_unregister_key,
+            /* client_get_key_codes       */ api_client_get_key_codes,
+#endif
+
+#ifdef LEVI_RS_FEATURE_MORE_DIMENSIONS
+            /* md_is_available            */ more_dimensions::bridge::api_md_is_available,
+            /* md_add_simple_dimension    */ more_dimensions::bridge::api_md_add_simple_dimension,
+            // 顺序必须和 LeviRsAbi.h 里的声明顺序**逐字**一致 —— 这张表是位置
+            // 对应的，插错位置会让 Rust 侧调到相邻的另一个函数，而且不会报错。
+            /* md_set_dimension_rule      */ more_dimensions::bridge::api_md_set_dimension_rule,
+            /* md_get_dimension_rule      */ more_dimensions::bridge::api_md_get_dimension_rule,
+            /* md_clear_dimension_rules   */ more_dimensions::bridge::api_md_clear_dimension_rules,
+            /* md_get_dimension_id        */ more_dimensions::bridge::api_md_get_dimension_id,
+            /* md_add_plot_dimension      */ more_dimensions::bridge::api_md_add_plot_dimension,
+#endif
         };
     } // namespace
 

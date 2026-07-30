@@ -3,12 +3,12 @@
     "entry": "levilamina-rust-loader.dll",
     "type": "native",
     "platform": "server",
-    "version": "26.20.2",
+    "version": "26.20.4",
     "author": "levilamina-rs contributors",
     "description": "Loads LeviLamina mods written in Rust (manifest type: rust).",
     "minecraft": {
         "bds_version": "1.26.20",
-        "levilamina_version": "26.20.0",
+        "levilamina_version": "26.20.4",
         "abi_version": 5
     }
 }

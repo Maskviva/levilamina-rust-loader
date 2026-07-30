@@ -18,6 +18,8 @@
 #include <unordered_map>
 
 #include "ll/api/data/KeyValueDB.h"
+#include "ll/api/io/LoggerRegistry.h"
+#include "ll/api/utils/ErrorUtils.h"
 
 #include "RustMod.h"
 
@@ -80,6 +82,8 @@ namespace levi_rs::bridge
         catch (...)
         {
             mod->getLogger().error("kvdb_open: failed to open '{}'", std::string_view{path});
+            static auto logger = ll::io::LoggerRegistry::getInstance().getOrCreate("levi_rs::bridge");
+            ll::error_utils::printCurrentException(*logger);
             return nullptr;
         }
     }

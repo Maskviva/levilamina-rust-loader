@@ -7,6 +7,7 @@ use crate::nbt::NbtValue;
 use crate::{rt, sys};
 
 mod actions;
+mod gap_fill;
 mod inventory;
 mod query;
 mod types;
@@ -86,6 +87,13 @@ impl Player {
     /// `sendMessage` to every online player.
     pub fn broadcast(msg: &str) {
         unsafe { (rt().api.broadcast_message)(s(msg)) }
+    }
+
+    /// The selector value as text — for error messages only, never for logic.
+    pub(crate) fn selector_hint(&self) -> &str {
+        match &self.sel {
+            Selector::Name(v) | Selector::Xuid(v) | Selector::Uuid(v) => v.as_str(),
+        }
     }
 
     pub(crate) fn ffi_sel(&self) -> sys::LeviRsPlayerSel {

@@ -28,12 +28,19 @@ pub use simple::SimpleFormBuilder;
 /// One value from a CustomForm submission.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FormValue {
-    /// Toggle (0/1), dropdown index, or step-slider index.
+    /// Toggle (0/1).
     Int(i64),
     /// Slider value.
     Float(f64),
     /// Input text.
     Text(String),
+    /// Dropdown / step-slider: the selected index **and** its label.
+    ///
+    /// The bridge resolves this for us — LeviLamina hands back either the
+    /// index or the option text depending on version, and both arrive here
+    /// as the same thing. `as_i64` gives the index, `as_str` gives the label,
+    /// so callers never have to care which one the client sent.
+    Choice { index: i64, text: String },
 }
 
 impl FormValue {
@@ -41,14 +48,16 @@ impl FormValue {
         match self {
             FormValue::Int(v) => Some(*v),
             FormValue::Float(v) => Some(*v as i64),
-            _ => None,
+            FormValue::Choice { index, .. } => Some(*index),
+            FormValue::Text(_) => None,
         }
     }
     pub fn as_f64(&self) -> Option<f64> {
         match self {
             FormValue::Int(v) => Some(*v as f64),
             FormValue::Float(v) => Some(*v),
-            _ => None,
+            FormValue::Choice { index, .. } => Some(*index as f64),
+            FormValue::Text(_) => None,
         }
     }
     pub fn as_bool(&self) -> Option<bool> {
@@ -57,6 +66,15 @@ impl FormValue {
     pub fn as_str(&self) -> Option<&str> {
         match self {
             FormValue::Text(v) => Some(v),
+            FormValue::Choice { text, .. } => Some(text),
+            _ => None,
+        }
+    }
+    /// Selected index for a dropdown / step-slider, `None` for anything else
+    /// (including a dropdown whose value never made it back).
+    pub fn as_index(&self) -> Option<usize> {
+        match self {
+            FormValue::Choice { index, .. } if *index >= 0 => Some(*index as usize),
             _ => None,
         }
     }
@@ -100,6 +118,17 @@ pub(super) fn parse_response(snbt: &str) -> FormResponse {
         };
     }
     if let Some(values) = v.get("values").and_then(|x| x.as_compound()) {
+        // `texts` carries the human-readable side of every value the bridge
+        // could produce one for: the label of the selected dropdown option,
+        // and input text. A key present in both is a choice.
+        let texts = v.get("texts").and_then(|x| x.as_compound());
+        let text_of = |key: &String| -> Option<String> {
+            texts.and_then(|t| t.get(key)).and_then(|x| match x {
+                NbtValue::String(s) => Some(s.clone()),
+                _ => None,
+            })
+        };
+
         let mut out = HashMap::new();
         for (key, value) in values {
             let fv = match value {
@@ -107,11 +136,27 @@ pub(super) fn parse_response(snbt: &str) -> FormResponse {
                 NbtValue::Double(f) => FormValue::Float(*f),
                 NbtValue::String(t) => FormValue::Text(t.clone()),
                 other => match other.as_i64() {
-                    Some(i) => FormValue::Int(i),
+                    Some(i) => match text_of(key) {
+                        Some(text) => FormValue::Choice { index: i, text },
+                        None => FormValue::Int(i),
+                    },
                     None => continue,
                 },
             };
             out.insert(key.clone(), fv);
+        }
+        // A choice the bridge could not resolve to an index still arrives as
+        // text only. Surface it rather than dropping it — the caller at least
+        // gets `as_str()`, and `as_i64()` correctly reports "no index".
+        if let Some(texts) = texts {
+            for (key, value) in texts {
+                if out.contains_key(key) {
+                    continue;
+                }
+                if let NbtValue::String(s) = value {
+                    out.insert(key.clone(), FormValue::Text(s.clone()));
+                }
+            }
         }
         return FormResponse::Custom(out);
     }

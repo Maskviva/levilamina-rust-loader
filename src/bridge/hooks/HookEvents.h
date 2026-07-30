@@ -49,6 +49,8 @@ namespace levi_rs
             void (*install)();
             bool installed = false;
             std::vector<std::unique_ptr<HookSub>> subs;
+            /// 正在派发。派发期间的退订只打墓碑，真正删除等派发结束。
+            bool dispatching = false;
 
             /** Hook bodies fast-path on this. */
             bool live() const { return !subs.empty(); }
@@ -73,5 +75,16 @@ namespace levi_rs
          * Hook events are observe-only; the write-back sink is a no-op.
          */
         void dispatchHookEvent(HookEventDef& def, std::string const& snbt);
+
+        /**
+         * Like dispatchHookEvent, but the write-back sink is live: returns true
+         * if any subscriber replied with SNBT containing `"cancelled":true`.
+         *
+         * Only for hook points whose origin can actually be skipped — don't use
+         * it where "cancelling" would leave the engine in a half-updated state.
+         * Every subscriber is still called even after one cancels, so behaviour
+         * doesn't depend on listener registration order.
+         */
+        bool dispatchHookEventCancellable(HookEventDef& def, std::string const& snbt);
     } // namespace bridge
 } // namespace levi_rs

@@ -1,0 +1,129 @@
+//! Block, Item, Scoreboard, System, Server constants. Append-only; never renumber.
+
+// LeviRsBlockNumProp
+pub const BPROP_IS_AIR: i32 = 0;
+pub const BPROP_DATA: i32 = 1;
+pub const BPROP_BLOCK_ITEM_ID: i32 = 2;
+pub const BPROP_IS_CRAFTING_BLOCK: i32 = 3;
+pub const BPROP_IS_INTERACTIVE_BLOCK: i32 = 4;
+pub const BPROP_HAS_BLOCK_ENTITY: i32 = 5;
+pub const BPROP_LIGHT: i32 = 6;
+pub const BPROP_LIGHT_EMISSION: i32 = 7;
+pub const BPROP_DESTROY_SPEED: i32 = 8;
+pub const BPROP_EXPLOSION_RESISTANCE: i32 = 9;
+pub const BPROP_FRICTION: i32 = 10;
+pub const BPROP_IS_CONTAINER: i32 = 11;
+pub const BPROP_IS_DOOR: i32 = 12;
+pub const BPROP_IS_FENCE: i32 = 13;
+pub const BPROP_IS_RAIL: i32 = 14;
+pub const BPROP_IS_SLAB: i32 = 15;
+pub const BPROP_IS_STAIR: i32 = 16;
+pub const BPROP_IS_WALL: i32 = 17;
+pub const BPROP_IS_CROP: i32 = 18;
+pub const BPROP_IS_UNBREAKABLE: i32 = 19;
+pub const BPROP_REDSTONE_SIGNAL: i32 = 20;
+pub const BPROP_COMPARATOR_SIGNAL: i32 = 21;
+pub const BPROP_IS_SIGNAL_SOURCE: i32 = 22;
+pub const BPROP_VARIANT: i32 = 23;
+pub const BPROP_BURN_ODDS: i32 = 24;
+pub const BPROP_FLAME_ODDS: i32 = 25;
+pub const BPROP_BOUNCINESS: i32 = 26;
+pub const BPROP_IS_SOLID: i32 = 27;
+pub const BPROP_REQUIRES_TOOL: i32 = 28;
+
+// LeviRsBlockStrProp
+pub const BSTR_TYPE_NAME: i32 = 0;
+pub const BSTR_SNBT: i32 = 1;
+pub const BSTR_DESCRIPTION_ID: i32 = 2;
+pub const BSTR_DEBUG_STRING: i32 = 3;
+pub const BSTR_TAGS: i32 = 4;
+pub const BSTR_STATE: i32 = 5;
+pub const BSTR_COLLISION_SHAPE: i32 = 6;
+pub const BSTR_OUTLINE_SHAPE: i32 = 7;
+pub const BSTR_DISPLAY_NAME: i32 = 8;
+
+// LeviRsBlockAction
+pub const BACT_HAS_TAG: i32 = 0;
+pub const BACT_GET_STATE: i32 = 1;
+pub const BACT_POP_RESOURCE: i32 = 2;
+pub const BACT_AS_ITEM: i32 = 3;
+
+// LeviRsItemNumProp
+pub const IPROP_COUNT: i32 = 0;
+pub const IPROP_MAX_STACK_SIZE: i32 = 1;
+pub const IPROP_AUX_VALUE: i32 = 2;
+pub const IPROP_ID: i32 = 3;
+pub const IPROP_DAMAGE: i32 = 4;
+pub const IPROP_IS_NULL: i32 = 5;
+pub const IPROP_IS_BLOCK: i32 = 6;
+pub const IPROP_IS_ENCHANTED: i32 = 7;
+pub const IPROP_IS_ARMOR: i32 = 8;
+pub const IPROP_IS_DAMAGEABLE: i32 = 9;
+pub const IPROP_IS_DAMAGED: i32 = 10;
+pub const IPROP_MAX_DAMAGE: i32 = 11;
+pub const IPROP_IS_UNBREAKABLE: i32 = 12;
+pub const IPROP_HAS_DURABILITY: i32 = 13;
+pub const IPROP_IS_POTION: i32 = 14;
+pub const IPROP_IS_THROWABLE: i32 = 15;
+pub const IPROP_IS_FIRE_RESISTANT: i32 = 16;
+pub const IPROP_ATTACK_DAMAGE: i32 = 17;
+pub const IPROP_REPAIR_COST: i32 = 18;
+pub const IPROP_ENCHANT_VALUE: i32 = 19;
+pub const IPROP_IS_STACKABLE: i32 = 20;
+pub const IPROP_IS_MUSIC_DISC: i32 = 21;
+pub const IPROP_IS_OFFHAND: i32 = 22;
+pub const IPROP_USE_DURATION: i32 = 23;
+pub const IPROP_IS_GLINT: i32 = 24;
+pub const IPROP_IS_BUNDLE: i32 = 25;
+pub const IPROP_HAS_USER_DATA: i32 = 26;
+pub const IPROP_HAS_CUSTOM_NAME: i32 = 27;
+
+// LeviRsItemStrProp
+pub const ISTR_TYPE_NAME: i32 = 0;
+pub const ISTR_NAME: i32 = 1;
+pub const ISTR_CUSTOM_NAME: i32 = 2;
+pub const ISTR_RAW_NAME_ID: i32 = 3;
+pub const ISTR_LORE: i32 = 4;
+pub const ISTR_CAN_DESTROY: i32 = 5;
+pub const ISTR_CAN_PLACE_ON: i32 = 6;
+pub const ISTR_USER_DATA: i32 = 7;
+pub const ISTR_HOVER_NAME: i32 = 8;
+pub const ISTR_EFFECT_NAME: i32 = 9;
+pub const ISTR_COLOR: i32 = 10;
+
+// LeviRsItemOp
+pub const IOP_SET_CUSTOM_NAME: i32 = 0;
+pub const IOP_SET_DAMAGE: i32 = 1;
+pub const IOP_SET_COUNT: i32 = 2;
+pub const IOP_SET_LORE: i32 = 3;
+pub const IOP_SET_UNBREAKABLE: i32 = 4;
+pub const IOP_HURT_AND_BREAK: i32 = 5;
+pub const IOP_SET_REPAIR_COST: i32 = 6;
+pub const IOP_ADD_ENCHANT: i32 = 7;
+pub const IOP_REMOVE_ENCHANTS: i32 = 8;
+pub const IOP_CLEAR_LORE: i32 = 9;
+pub const IOP_RESET_NAME: i32 = 10;
+pub const IOP_SET_CAN_DESTROY: i32 = 11;
+pub const IOP_SET_CAN_PLACE_ON: i32 = 12;
+
+// LeviRsScoreboardOp
+pub const SB_ADD_OBJECTIVE: i32 = 0;
+pub const SB_REMOVE_OBJECTIVE: i32 = 1;
+pub const SB_LIST_OBJECTIVES: i32 = 2;
+pub const SB_GET_SCORE: i32 = 3;
+pub const SB_SET_SCORE: i32 = 4;
+pub const SB_ADD_SCORE: i32 = 5;
+pub const SB_REDUCE_SCORE: i32 = 6;
+pub const SB_RESET_SCORE: i32 = 7;
+pub const SB_SET_DISPLAY: i32 = 8;
+pub const SB_CLEAR_DISPLAY: i32 = 9;
+
+// LeviRsSysInfoProp
+pub const SYS_OS_NAME: i32 = 0;
+pub const SYS_OS_VERSION: i32 = 1;
+pub const SYS_LOCALE: i32 = 2;
+pub const SYS_LOCAL_TIME: i32 = 3;
+
+// LeviRsServerInfoProp
+pub const SRV_BDS_VERSION: i32 = 0;
+pub const SRV_PROTOCOL_VERSION: i32 = 1;
