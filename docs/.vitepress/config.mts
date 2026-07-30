@@ -43,6 +43,7 @@ export default defineConfig({
                     text: '事件 Event',
                     items: [
                         {text: 'Event — 事件监听', link: '/api/event'},
+                        {text: 'Packet — 抓包/改包', link: '/api/packet'},
                     ],
                 },
                 {

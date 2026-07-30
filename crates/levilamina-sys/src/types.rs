@@ -104,6 +104,67 @@ pub type LeviRsFormResultCb = unsafe extern "C" fn(user: *mut c_void, result_snb
 /// Opaque handle to an open key-value database owned by the loader.
 pub type LeviRsKvDbHandle = *mut c_void;
 
+// ── Packet interception ───────────────────────────────────────────────
+// Mirrors the `LeviRsPacket*` block in `LeviRsAbi.h`.
+
+/// `LeviRsPacketEvent::direction`, and the bit positions used by `dir_mask`.
+pub const LEVI_RS_PKT_INBOUND: i32 = 0;
+pub const LEVI_RS_PKT_OUTBOUND: i32 = 1;
+
+pub const LEVI_RS_PKT_MASK_INBOUND: i32 = 1 << LEVI_RS_PKT_INBOUND;
+pub const LEVI_RS_PKT_MASK_OUTBOUND: i32 = 1 << LEVI_RS_PKT_OUTBOUND;
+
+/// `LeviRsPacketCb` return value. Anything else is treated as PASS.
+pub const LEVI_RS_PKT_PASS: i32 = 0;
+pub const LEVI_RS_PKT_REPLACE: i32 = 1;
+pub const LEVI_RS_PKT_DROP: i32 = 2;
+
+/// One intercepted packet. Every pointer is borrowed for the callback only.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct LeviRsPacketEvent {
+    pub struct_size: u32,
+    pub direction: i32,
+    /// `NetworkIdentifier::getHash()` — stable for the connection's lifetime
+    /// and available before a `Player` exists.
+    pub conn_id: u64,
+    /// "host:port".
+    pub address: LeviRsStr,
+    pub packet_id: i32,
+    pub sender_sub_id: u8,
+    pub target_sub_id: u8,
+    /// Packet body, header excluded. Null only when `body_len` is 0.
+    pub body: *const u8,
+    pub body_len: usize,
+}
+
+/// Mutable header fields, pre-filled from the event. Only applied on REPLACE.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct LeviRsPacketEdit {
+    pub struct_size: u32,
+    pub packet_id: i32,
+    pub sender_sub_id: u8,
+    pub target_sub_id: u8,
+}
+
+/// Drop via `packet_hook_unregister` / `packet_conn_hook_unregister`.
+pub type LeviRsPacketHookHandle = *mut c_void;
+
+/// Packet interceptor. Call `replace(replace_ctx, ptr, len)` with the new
+/// BODY and return `LEVI_RS_PKT_REPLACE` to rewrite.
+pub type LeviRsPacketCb = unsafe extern "C" fn(
+    user: *mut c_void,
+    ev: *const LeviRsPacketEvent,
+    edit: *mut LeviRsPacketEdit,
+    replace_ctx: *mut c_void,
+    replace: LeviRsBytesSink,
+) -> i32;
+
+/// Connection lifecycle: `opened` is true on accept, false on close.
+pub type LeviRsConnCb =
+    unsafe extern "C" fn(user: *mut c_void, conn_id: u64, address: LeviRsStr, opened: bool);
+
 // Client-only types (client feature).
 
 /// Drop via `client_unregister_key`.

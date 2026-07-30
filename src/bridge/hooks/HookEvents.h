@@ -49,8 +49,6 @@ namespace levi_rs
             void (*install)();
             bool installed = false;
             std::vector<std::unique_ptr<HookSub>> subs;
-            /// 正在派发。派发期间的退订只打墓碑，真正删除等派发结束。
-            bool dispatching = false;
 
             /** Hook bodies fast-path on this. */
             bool live() const { return !subs.empty(); }

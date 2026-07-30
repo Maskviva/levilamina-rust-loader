@@ -14,6 +14,8 @@
 
 #include "LeviRsAbi.h"
 
+#include "ll/api/io/Logger.h" 
+
 namespace ll::io { class Logger; }
 
 class Actor;

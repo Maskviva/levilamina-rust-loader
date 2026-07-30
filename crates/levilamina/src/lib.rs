@@ -89,6 +89,7 @@ pub mod item;
 pub mod kvdb;
 mod logger;
 pub mod nbt;
+pub mod packet;
 pub mod player;
 mod registration;
 mod runtime;
@@ -129,6 +130,10 @@ pub use item::ItemStack;
 pub use kvdb::KvDb;
 pub use logger::{LogLevel, Logger};
 pub use nbt::NbtValue;
+// `Direction` and `Verdict` stay behind `packet::` on purpose — both names are
+// generic enough that hoisting them to the crate root would collide with a
+// mod's own vocabulary.
+pub use packet::{ConnectionState, PacketCtx, PacketHook, Packets};
 pub use player::{Ability, GameMode, MessageType, Player, PlayerInfo};
 pub use registration::{__init_runtime, __lifecycle, __load, LeviMod, ModSlot};
 pub use runtime::ModContext;

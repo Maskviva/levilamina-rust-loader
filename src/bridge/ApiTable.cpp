@@ -209,6 +209,12 @@ namespace levi_rs
             /* level_update_weather       */ api_level_update_weather,
             /* level_find_path            */ api_level_find_path,
 
+            /* ── Packet interception (v5 additive) ── */
+            /* packet_hook_register       */ api_packet_hook_register,
+            /* packet_hook_unregister     */ api_packet_hook_unregister,
+            /* packet_conn_hook_register  */ api_packet_conn_hook_register,
+            /* packet_conn_hook_unregister*/ api_packet_conn_hook_unregister,
+
 #ifdef LEVI_RS_TARGET_CLIENT
             /* client_get_local_player    */ api_client_get_local_player,
             /* client_is_in_level         */ api_client_is_in_level,
@@ -241,7 +247,8 @@ namespace levi_rs
             bridge::commandsOnRustModGone(mod);
             bridge::formsOnRustModGone(mod);
             bridge::kvdbOnRustModGone(mod);
-            bridge::hookEventDropMod(mod); // detach bridge-hook event subscribers
+            bridge::hookEventDropMod(mod);       // detach bridge-hook event subscribers
+            bridge::packetHooksOnRustModGone(mod); // detach raw packet interceptors
         }
     } // namespace detail
 } // namespace levi_rs

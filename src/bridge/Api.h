@@ -72,6 +72,15 @@ namespace levi_rs
             LeviRsPlayerSel sel, int32_t dimension, LeviRsStr effectName, double x, double y, double z);
         bool api_send_packet(LeviRsPlayerSel sel, int32_t packetId, uint8_t const* body, size_t bodyLen);
 
+        /* ── PacketHooks.cpp — raw wire-format interception ── */
+        LeviRsPacketHookHandle
+        api_packet_hook_register(LeviRsModHandle mod, int32_t dirMask, LeviRsPacketCb cb, void* user);
+        bool api_packet_hook_unregister(LeviRsModHandle mod, LeviRsPacketHookHandle handle);
+        LeviRsPacketHookHandle api_packet_conn_hook_register(LeviRsModHandle mod, LeviRsConnCb cb, void* user);
+        bool api_packet_conn_hook_unregister(LeviRsModHandle mod, LeviRsPacketHookHandle handle);
+        /** Drop every interceptor owned by a mod that is going away. */
+        void packetHooksOnRustModGone(RustMod* mod);
+
         /* ── hooks/TickControl.cpp ── */
         bool api_tick_freeze(bool on);
         bool api_tick_step(uint32_t n);

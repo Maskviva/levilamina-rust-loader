@@ -2,9 +2,12 @@
 //! [LiteLDev/MoreDimensions](https://github.com/LiteLDev/MoreDimensions),
 //! built into every server build of the loader unconditionally (no xmake
 //! flag required) and exposed through the `more_dimensions` cargo feature
-//! (server only). The loader always compiles the C++ side in; this module
-//! simply decides whether the Rust side calls into it. Use [`is_available`]
-//! to probe at runtime.
+//! (server only). The C++ side self-initializes at loader startup — its
+//! hooks and dimension config are live whether or not Rust ever calls in.
+//! The `more_dimensions` feature is only the *entry point* that surfaces
+//! these FFI calls to Rust mods; it does NOT switch the C++ feature on or
+//! off. Use [`is_available`] only as a defensive probe, never as an enable
+//! gate.
 //!
 //! A custom dimension is a `Dimension` subclass registered past the vanilla
 //! ids (overworld=0, nether=1, the_end=2), so new ids start at 3. Because the

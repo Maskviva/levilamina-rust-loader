@@ -465,6 +465,26 @@ pub struct LeviRsApi {
         ctx: *mut c_void,
         sink: LeviRsStrSink,
     ) -> bool,
+    // ── Packet interception (v5 additive, struct_size-gated) ──
+    // Raw wire-format hooks in both directions. Delivery unit is one packet;
+    // the loader decodes/re-encodes the varint header, so callbacks see and
+    // return a bare BODY. See `LeviRsAbi.h` for the full contract, and
+    // `levilamina::packet` for the safe wrapper.
+    pub packet_hook_register: unsafe extern "C" fn(
+        mod_: LeviRsModHandle,
+        dir_mask: i32,
+        cb: LeviRsPacketCb,
+        user: *mut c_void,
+    ) -> LeviRsPacketHookHandle,
+    pub packet_hook_unregister:
+        unsafe extern "C" fn(mod_: LeviRsModHandle, handle: LeviRsPacketHookHandle) -> bool,
+    pub packet_conn_hook_register: unsafe extern "C" fn(
+        mod_: LeviRsModHandle,
+        cb: LeviRsConnCb,
+        user: *mut c_void,
+    ) -> LeviRsPacketHookHandle,
+    pub packet_conn_hook_unregister:
+        unsafe extern "C" fn(mod_: LeviRsModHandle, handle: LeviRsPacketHookHandle) -> bool,
     // Future additive fields: append here only.
 
     // Client-only (client feature). Server struct_size stops before this block.

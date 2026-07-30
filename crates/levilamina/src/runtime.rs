@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 #[cfg(feature = "client")]
 use crate::client::Client;
 use crate::logger::Logger;
+use crate::packet::Packets;
 #[cfg(feature = "server")]
 use crate::server::Server;
 use crate::sys;
@@ -57,6 +58,16 @@ impl ModContext {
 
     pub fn logger(&self) -> Logger {
         Logger::get()
+    }
+
+    /// Raw packet interception. Available on both targets: the ABI slots sit
+    /// before the client-only block, so a server and a client loader both
+    /// provide them.
+    ///
+    /// Read [`crate::packet`] before using this — the callbacks are the one
+    /// place in this crate that does not promise the game thread.
+    pub fn packets(&self) -> Packets {
+        Packets::get()
     }
 
     /// Access the server-side API surface. Only available with the `server`

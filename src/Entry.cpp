@@ -20,6 +20,12 @@
 #include "LeviRsAbi.h"
 #include "RustModManager.h"
 
+// MoreDimensions 自初始化需要。只在服务器构建里包含（客户端构建不定义
+// LEVI_RS_FEATURE_MORE_DIMENSIONS，这段代码会被整体剔除）。
+#ifdef LEVI_RS_FEATURE_MORE_DIMENSIONS
+#include "more_dimensions/CustomDimensionManager.h"
+#endif
+
 namespace levi_rs
 {
     class LoaderMod
@@ -59,6 +65,15 @@ namespace levi_rs
         {
 #ifndef LEVI_RS_TARGET_CLIENT
             registerDebugCommand();
+#endif
+#ifdef LEVI_RS_FEATURE_MORE_DIMENSIONS
+            // MoreDimensions 在 C++ 侧于加载期自初始化：建好所有 hook、读好维度
+            // 配置，全程不依赖 Rust SDK 是否调用任何 md_* 接口。Rust 的
+            // `more_dimensions` cargo feature 只是「入口」——它把这组 FFI 暴露给
+            // Rust mod 用，而不是 C++ 部分的开关。服务器构建永远启用，客户端构建
+            // 永远不包含。这里主动触发一次 getInstance()，确保即使没有 Rust mod
+            // 调用维度 API，C++ 的钩子也始终在线。
+            (void)more_dimensions::CustomDimensionManager::getInstance();
 #endif
             return true;
         }

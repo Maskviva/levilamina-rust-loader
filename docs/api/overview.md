@@ -17,6 +17,7 @@
 | 类别 | 负责 | 状态 | 页面 |
 | --- | --- | :---: | --- |
 | `Event` | 事件订阅（`subscribe_event` + `EventRef`） | ✅ | [Event](/api/event) |
+| `Packet` | 原始字节层收发包拦截 / 改写（双向） | ✅ | [Packet](/api/packet) |
 | `Player` | 玩家对象 | ✅ | [Player](/api/player) |
 | `Entity` | 实体对象 | ✅ | [Entity](/api/entity) |
 | `Block` | 方块对象 | ✅ | [Block](/api/block) |

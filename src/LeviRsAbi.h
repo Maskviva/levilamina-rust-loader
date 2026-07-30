@@ -205,6 +205,80 @@ typedef void (*LeviRsFormResultCb)(void* user, LeviRsStr result_snbt);
 /** Opaque handle to an open key-value database owned by the loader. */
 typedef void* LeviRsKvDbHandle;
 
+/* ═════════════════ Packet interception FFI types ═════════════════
+ * Used by packet_hook_register / packet_conn_hook_register. See the block
+ * comment on those fields in LeviRsApi for the full contract. */
+
+/** LeviRsPacketEvent::direction, and the bit positions used by dir_mask. */
+#define LEVI_RS_PKT_INBOUND 0  /* client -> server */
+#define LEVI_RS_PKT_OUTBOUND 1 /* server -> client */
+
+#define LEVI_RS_PKT_MASK_INBOUND (1 << LEVI_RS_PKT_INBOUND)
+#define LEVI_RS_PKT_MASK_OUTBOUND (1 << LEVI_RS_PKT_OUTBOUND)
+
+/** LeviRsPacketCb return value. Anything else is treated as PASS. */
+#define LEVI_RS_PKT_PASS 0    /* forward unchanged; `replace` output ignored */
+#define LEVI_RS_PKT_REPLACE 1 /* forward the body handed to `replace` */
+#define LEVI_RS_PKT_DROP 2    /* swallow the packet entirely */
+
+/**
+ * One intercepted packet. Every pointer inside is borrowed and valid only for
+ * the duration of the callback — copy anything you keep.
+ */
+typedef struct LeviRsPacketEvent
+{
+    /** sizeof(LeviRsPacketEvent) as the LOADER knows it. Check before reading
+     *  trailing fields, same discipline as LeviRsApi::struct_size. */
+    uint32_t struct_size;
+    /** LEVI_RS_PKT_INBOUND / LEVI_RS_PKT_OUTBOUND. */
+    int32_t direction;
+    /** NetworkIdentifier::getHash() — stable for the connection's lifetime and
+     *  available before the player exists, which is exactly when a login-phase
+     *  rewrite needs to key its state. */
+    uint64_t conn_id;
+    /** "host:port" (NetworkIdentifier::getIPAndPort). */
+    LeviRsStr address;
+    /** MinecraftPacketIds value decoded from the header. */
+    int32_t packet_id;
+    uint8_t sender_sub_id;
+    uint8_t target_sub_id;
+    /** Packet body, header excluded. NULL only when body_len is 0. */
+    uint8_t const* body;
+    size_t body_len;
+} LeviRsPacketEvent;
+
+/**
+ * Mutable header fields, pre-filled from the event. Assignments here only take
+ * effect when the callback returns LEVI_RS_PKT_REPLACE.
+ */
+typedef struct LeviRsPacketEdit
+{
+    uint32_t struct_size;
+    int32_t packet_id;
+    uint8_t sender_sub_id;
+    uint8_t target_sub_id;
+} LeviRsPacketEdit;
+
+/** Drop via packet_hook_unregister / packet_conn_hook_unregister. */
+typedef void* LeviRsPacketHookHandle;
+
+/**
+ * Packet interceptor. To rewrite, call `replace(replace_ctx, bytes, len)` with
+ * the NEW BODY (header excluded) and return LEVI_RS_PKT_REPLACE. Calling
+ * `replace` more than once keeps the last body; returning REPLACE without ever
+ * calling it means "empty body".
+ */
+typedef int32_t (*LeviRsPacketCb)(
+    void* user,
+    LeviRsPacketEvent const* ev,
+    LeviRsPacketEdit* edit,
+    void* replace_ctx,
+    LeviRsBytesSink replace
+);
+
+/** Connection lifecycle: `opened` is true on accept, false on close. */
+typedef void (*LeviRsConnCb)(void* user, uint64_t conn_id, LeviRsStr address, bool opened);
+
 /* ═════════════════ Client-only FFI types ═════════════════
  * Compiled only when building the loader against the CLIENT target
  * (LEVI_RS_TARGET_CLIENT defined by xmake when target_type=client).
@@ -1132,6 +1206,66 @@ typedef struct LeviRsApi
     /** SNBT {nodes:[{x,y,z}, …], reached:1b/0b} */
     bool (*level_find_path)(LeviRsActorId id, int32_t x, int32_t y, int32_t z, void* ctx, LeviRsStrSink sink);
 
+    /* ═════════════════ Packet interception (ABI v5 additive, struct_size-gated) ═════════════════
+     * Raw wire-format interception in both directions. This is the primitive
+     * `send_packet` could not provide: it observes and rewrites bytes that
+     * already exist, instead of manufacturing new ones.
+     *
+     * Delivery unit is exactly ONE packet — the leading unsigned-varint
+     * header followed by the packet body. Batching and compression live
+     * further down the peer chain (BatchedNetworkPeer splits inbound batches
+     * and re-batches outbound ones), so a callback never sees a batch and
+     * never has to produce a length prefix.
+     *
+     * The bridge decodes the header: `packet_id` is its low 10 bits,
+     * `sender_sub_id` / `target_sub_id` the two 2-bit fields above it, and
+     * `body`/`body_len` point PAST the header. A REPLACE verdict supplies a
+     * new BODY only; the bridge re-encodes the header from `edit`, so a
+     * rewrite never reproduces varint framing and packet-id remapping is a
+     * field assignment rather than a byte-surgery exercise.
+     *
+     * Dispatch chains: with several subscribers, each one sees the output of
+     * the previous, in registration order. The first DROP wins and the rest
+     * are skipped. Subscriber lists are snapshotted before dispatch, so a
+     * callback may register or unregister (including itself) safely.
+     *
+     * Threading — read this before touching game state. Inbound callbacks run
+     * wherever the connection is pumped and outbound ones wherever the send
+     * originates. In practice that is the server thread, but async flush
+     * means it is not guaranteed. Treat these as "not necessarily the game
+     * thread": keep them short, guard your own state, and route anything that
+     * touches the world through `schedule`.
+     *
+     * Detours install lazily on the first subscriber and are never unpatched
+     * (an unsubscribe can arrive from inside the hooked function). With no
+     * subscribers the hook bodies fast-path straight to origin. */
+
+    /**
+     * Register a raw packet interceptor.
+     * `dir_mask` is LEVI_RS_PKT_MASK_INBOUND | LEVI_RS_PKT_MASK_OUTBOUND (a
+     * zero mask registers nothing and returns NULL). Returns NULL on failure.
+     */
+    LeviRsPacketHookHandle (*packet_hook_register)(
+        LeviRsModHandle mod,
+        int32_t dir_mask,
+        LeviRsPacketCb cb,
+        void* user
+    );
+
+    /** Unregister. Safe to call from inside the callback. */
+    bool (*packet_hook_unregister)(LeviRsModHandle mod, LeviRsPacketHookHandle handle);
+
+    /**
+     * Register a connection open/close observer. Returns NULL on failure.
+     * The close notification is the only reliable signal for dropping
+     * per-connection state: a connection that never finishes the login
+     * handshake never becomes a Player, so no player event covers it.
+     */
+    LeviRsPacketHookHandle (*packet_conn_hook_register)(LeviRsModHandle mod, LeviRsConnCb cb, void* user);
+
+    /** Unregister. Safe to call from inside the callback. */
+    bool (*packet_conn_hook_unregister)(LeviRsModHandle mod, LeviRsPacketHookHandle handle);
+
     /* Future additive fields: append here only. */
 
     /* ═════════════════ Client-only function pointers (ABI v5 additive, client target) ═════════════════
@@ -1173,9 +1307,13 @@ typedef struct LeviRsApi
     bool (*client_get_key_codes)(LeviRsKeyHandle handle, void* ctx, LeviRsStrSink sink);
 #endif
 
-    // ── MoreDimensions (feature-gated; server build only) ──
-    // Present when the loader is built with LEVI_RS_FEATURE_MORE_DIMENSIONS.
-    // The Rust side gates these behind the `more_dimensions` feature.
+    // ── MoreDimensions (always live for server builds; see below) ──
+    // Present when the loader is built with LEVI_RS_FEATURE_MORE_DIMENSIONS
+    // (always defined for target_type=server, never for client). The C++ side
+    // self-initializes at loader startup — its hooks and dimension config are
+    // active whether or not Rust ever calls in. The Rust `more_dimensions`
+    // feature is therefore only the *entry point* that surfaces these FFI
+    // functions to Rust mods; it is NOT a switch for the C++ feature.
 #ifdef LEVI_RS_FEATURE_MORE_DIMENSIONS
     /** Check whether MoreDimensions is available in this loader build. */
     bool (*md_is_available)(void);

@@ -21,22 +21,12 @@ namespace levi_rs::bridge
             static std::vector<HookEventDef*> t;
             return t;
         }
-
-        /// 派发期间退订：只把 cb 置空，条目留在原位。dispatch 循环跳过空 cb，
-        /// 结束时再统一清理。这样 user 指向的 Rust Box 在整轮派发内保持存活。
-        void compact(HookEventDef& def)
-        {
-            std::erase_if(def.subs, [](auto& s) { return s->cb == nullptr; });
-        }
     } // namespace
 
     HookEventRegistrar::HookEventRegistrar(HookEventDef& def) { table().push_back(&def); }
 
     void dispatchHookEvent(HookEventDef& def, std::string const& snbt)
     {
-        bool const outermost = !def.dispatching;
-        def.dispatching = true;
-
         // Snapshot first: a callback may (un)subscribe during dispatch,
         // mutating def.subs — iterating it directly would be UB.
         std::vector<std::pair<LeviRsEventCb, void*>> snap;
@@ -49,16 +39,7 @@ namespace levi_rs::bridge
         } w; // observe-only: write-back is a no-op
         for (auto& [cb, user] : snap)
         {
-            if (!cb) continue; // 本轮内被退订了
-            cb(user, id, snbt, &w, [](void*, LeviRsStr)
-            {
-            });
-        }
-
-        if (outermost)
-        {
-            def.dispatching = false;
-            compact(def);
+            cb(user, id, snbt, &w, [](void*, LeviRsStr) {});
         }
     }
 
@@ -83,8 +64,7 @@ namespace levi_rs::bridge
         for (auto& [cb, user] : snap)
         {
             std::string reply;
-            cb(user, id, snbt, &reply, [](void* ctx, LeviRsStr v)
-            {
+            cb(user, id, snbt, &reply, [](void* ctx, LeviRsStr v) {
                 if (ctx) *static_cast<std::string*>(ctx) = std::string{v};
             });
             if (reply.find("cancelled:1b") != std::string::npos
@@ -104,7 +84,7 @@ namespace levi_rs::bridge
     {
         for (auto* def : table())
         {
-            if (eventId != def->name) continue;
+            if (eventId.find(def->name) == std::string_view::npos) continue;
             if (!def->installed)
             {
                 def->install();
@@ -122,17 +102,11 @@ namespace levi_rs::bridge
         {
             for (auto it = def->subs.begin(); it != def->subs.end(); ++it)
             {
-                if (static_cast<LeviRsListenerHandle>(it->get()) != handle) continue;
-                if ((*it)->mod != mod) continue;
-                if (def->dispatching)
-                {
-                    (*it)->cb = nullptr; // 打墓碑，等派发结束再删
-                }
-                else
+                if (static_cast<LeviRsListenerHandle>(it->get()) == handle && (*it)->mod == mod)
                 {
                     def->subs.erase(it);
+                    return true;
                 }
-                return true;
             }
         }
         return false;
@@ -142,17 +116,7 @@ namespace levi_rs::bridge
     {
         for (auto* def : table())
         {
-            if (def->dispatching)
-            {
-                for (auto& s : def->subs)
-                {
-                    if (s->mod == mod) s->cb = nullptr;
-                }
-            }
-            else
-            {
-                std::erase_if(def->subs, [&](auto& s) { return s->mod == mod; });
-            }
+            std::erase_if(def->subs, [&](auto& s) { return s->mod == mod; });
         }
     }
 

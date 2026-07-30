@@ -12,8 +12,10 @@
  *     format crosses the FFI) and reuses the same delivery helper.
  *
  * Deliberately NOT exposed: broadcast variants (Level already broadcasts;
- * mods can loop players when they truly mean "everyone"), and receiving /
- * intercepting packets (that is hook territory — see ROADMAP §12).
+ * mods can loop players when they truly mean "everyone").
+ *
+ * Reading or rewriting packets that already exist is the other half of the
+ * story and lives in PacketHooks.cpp — this file only manufactures new ones.
  */
 #include "bridge/Api.h"
 #include "bridge/Common.h"

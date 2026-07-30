@@ -47,7 +47,6 @@
 
 #include <string>
 
-#include "ll/api/io/Logger.h"
 #include "ll/api/memory/Hook.h"
 
 #include "mc/deps/core/math/Vec3.h"
