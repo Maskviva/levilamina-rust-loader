@@ -73,6 +73,7 @@ local server_only_sources = {
     "src/bridge/Forms.cpp",
     "src/bridge/WorldInfo.cpp",
     "src/bridge/Packets.cpp",
+    "src/bridge/PacketHooks.cpp",
     "src/bridge/GapFill.cpp",
     "src/bridge/hooks/DestroyEvents.cpp",
     "src/bridge/hooks/ContainerEvents.cpp",

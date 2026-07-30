@@ -96,4 +96,10 @@ namespace levi_rs::bridge
     bool api_level_get_sleep_status(void*, LeviRsStrSink) { return false; }
     bool api_level_update_weather(float, int32_t, float, int32_t) { return false; }
     bool api_level_find_path(LeviRsActorId, int32_t, int32_t, int32_t, void*, LeviRsStrSink) { return false; }
+
+    LeviRsPacketHookHandle api_packet_hook_register(LeviRsModHandle, int32_t, LeviRsPacketCb, void*) { return nullptr; }
+    bool api_packet_hook_unregister(LeviRsModHandle, LeviRsPacketHookHandle) { return false; }
+    LeviRsPacketHookHandle api_packet_conn_hook_register(LeviRsModHandle, LeviRsConnCb, void*) { return nullptr; }
+    bool api_packet_conn_hook_unregister(LeviRsModHandle, LeviRsPacketHookHandle) { return false; }
+    void packetHooksOnRustModGone(RustMod*) {}
 } // namespace levi_rs::bridge
