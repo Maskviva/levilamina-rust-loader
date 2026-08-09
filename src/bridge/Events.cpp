@@ -171,14 +171,28 @@ namespace levi_rs::bridge
             }
             std::string idName = resolvedCmd->name;
 
+            // Returns true when a subscriber asked for the command to be refused.
+            //
+            // The write-back used to be discarded here with a
+            // `/* write-back ignored */`. That silently made
+            // ExecutingCommandEvent **observe-only** even though the LL event is
+            // `Cancellable<ExecuteCommandEvent>`: a subscriber could call
+            // `ev.cancel()`, see no error anywhere, and watch the command run.
+            // Any guard built on it — a command whitelist, say — reported itself
+            // as armed and did nothing, which is the worst failure shape a
+            // security check has.
             auto dispatchCommand = [cb, user, idName](
                 std::string const& playerName,
                 std::string const& xuid,
                 std::string const& uuid,
                 std::string const& command
-            )
+            ) -> bool
             {
-                if (playerName.empty()) return; // console or other non-player origin
+                // Console, command blocks, and every other non-player origin are
+                // not reported at all. That is deliberate and load-bearing for
+                // callers that gate commands: refusing the console would lock a
+                // server owner out of their own server with no way back in.
+                if (playerName.empty()) return false;
 
                 std::string snbt = "{\"eventId\":\"" + idName
                     + "\",\"name\":\"" + snbtEscape(playerName)
@@ -187,17 +201,30 @@ namespace levi_rs::bridge
                     + "\",\"xuid\":\"" + snbtEscape(xuid)
                     + "\",\"uuid\":\"" + snbtEscape(uuid) + "\"}}";
 
-                CompoundTag dummy;
                 struct WriteCtx
                 {
-                    CompoundTag* data;
-                    bool written = false;
-                } wctx{&dummy};
+                    bool cancelled = false;
+                } wctx{};
                 cb(user, idName, snbt, &wctx,
-                   [](void*, LeviRsStr)
+                   [](void* c, LeviRsStr newSnbt)
                    {
-                       /* write-back ignored */
+                       // The Rust side writes the whole event back with
+                       // `cancelled` flipped (EventRef::cancel), same as the
+                       // dynamic path. Only that one field is read here — there
+                       // is nothing else on a command event worth writing, and
+                       // rebuilding the CommandContext from SNBT is not a thing.
+                       auto* w = static_cast<WriteCtx*>(c);
+                       auto tag = CompoundTag::fromSnbt(newSnbt);
+                       if (!tag || !tag->contains("cancelled")) return;
+                       try
+                       {
+                           if (static_cast<uchar>(tag->at("cancelled")) != 0) w->cancelled = true;
+                       }
+                       catch (...)
+                       {
+                       }
                    });
+                return wctx.cancelled;
             };
 
             std::shared_ptr<ll::event::ListenerBase> typedListener;
@@ -220,7 +247,10 @@ namespace levi_rs::bridge
                                 uuid = p->getUuid().asString();
                             }
                         }
-                        dispatchCommand(playerName, xuid, uuid, ctx.mCommand);
+                        if (dispatchCommand(playerName, xuid, uuid, ctx.mCommand))
+                        {
+                            ev.cancel();
+                        }
                     },
                     prio,
                     mod->shared_from_this()
@@ -248,7 +278,12 @@ namespace levi_rs::bridge
                                 uuid = p->getUuid().asString();
                             }
                         }
-                        dispatchCommand(playerName, xuid, uuid, ctx.mCommand);
+                        // ExecutedCommandEvent is not cancellable — the command
+                        // has already run. The veto bit is discarded rather than
+                        // logged: a subscriber that cancels here is asking for
+                        // something the event cannot express, and one log line
+                        // per command is a log flood, not a diagnostic.
+                        (void)dispatchCommand(playerName, xuid, uuid, ctx.mCommand);
                     },
                     prio,
                     mod->shared_from_this()

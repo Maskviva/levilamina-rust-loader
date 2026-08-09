@@ -22,6 +22,8 @@
  */
 #include "more_dimensions/DimensionRules.h"
 
+#include "more_dimensions/PlotConfine.h"
+
 #include <mutex>
 #include <unordered_map>
 
@@ -414,6 +416,23 @@ namespace more_dimensions
          *
          * 这一条对应 PlotSquared 的 `DisablePhysics` —— 防的是"用活塞把方块
          * 推过地皮边界"这种越界建造。
+         *
+         * ── PistonCrossPlot：同一个 hook 点，另一个问题 ──
+         *
+         * `PistonPush` 是整维度一刀切。「不出地皮」要的是按边界判：地皮内部照常
+         * 推，跨界才拦。两者挂的是同一个函数，所以合在一个 hook 里而不是再装一个
+         * detour —— 同一个符号上叠两层补丁没有任何好处，只是多一次间接跳转和一处
+         * 「谁先跑」的不确定性。
+         *
+         * **必须先 `origin(region)`。** 要移动哪些方块是这个函数**算出来**的
+         * （`_attachedBlockWalker` 往 `mAttachedBlocks` 里填），不跑就没有清单可查。
+         * 跑完拿到 true 之后再逐块检查「现在这一格」和「落点那一格」是不是都和
+         * 活塞自己在同一片区域，任何一块出界就整次拒绝 —— 部分放行会把一台飞行器
+         * 撕成两半，那比推过去还糟。
+         *
+         * 拒绝时**不清 `mAttachedBlocks`**：返回 false 正是引擎自己「推不动」的
+         * 出口（撞到基岩、超过 12 块都走这条），清单留在那里是它本来就有的状态，
+         * 下一拍 walker 会重填。为了「看起来干净」去动引擎的成员，风险大于收益。
          */
         LL_TYPE_INSTANCE_HOOK(
             DimRulePistonHook,
@@ -425,11 +444,48 @@ namespace more_dimensions
         )
         {
             int const dim = dimOf(region);
-            if (dim >= 0 && anyRuleFor(dim) && !allowed(dim, DimRule::PistonPush))
+            bool const managed = dim >= 0 && anyRuleFor(dim);
+            if (managed && !allowed(dim, DimRule::PistonPush))
             {
                 return false;
             }
-            return origin(region);
+            if (!origin(region))
+            {
+                return false;
+            }
+            // 允许跨界（或这个维度没被管、没有网格）时到此为止，一格坐标都不算。
+            if (!managed || allowed(dim, DimRule::PistonCrossPlot)
+                || !more_dimensions::hasPlotGrid(dim))
+            {
+                return true;
+            }
+
+            try
+            {
+                // 位置和清单走**成员**而不是 `getPosition()` / `getAttachedBlocks()`：
+                // 那两个都是 MCFOLD，要在运行时解析符号，多一个会因版本漂移而失败的
+                // 环节，而它们只是把这两个成员读出来。`getFacingDir` 不同 ——
+                // 它要从方块状态算朝向，只能调。
+                auto const& self = this->mPosition.get();
+                auto const& facing = this->getFacingDir(region);
+                for (auto const& b : this->mAttachedBlocks.get())
+                {
+                    // 起点和落点都要查。只查落点的话，把方块从别人地里**拉出来**
+                    // （粘性活塞回缩）会被放行，而那和推进去是同一类越界。
+                    if (!more_dimensions::sameArea(dim, self.x, self.z, b.x, b.z)
+                        || !more_dimensions::sameArea(
+                            dim, self.x, self.z, b.x + facing.x, b.z + facing.z))
+                    {
+                        return false;
+                    }
+                }
+            }
+            catch (...)
+            {
+                // 读不到清单就保守拒绝。这是安全判定，不知道的时候放行等于没装。
+                return false;
+            }
+            return true;
         }
 
         // ───────────────────── 乘坐载具 ─────────────────────
@@ -483,7 +539,9 @@ namespace more_dimensions
         if (gInstalled) return;
         DimRuleHookReg::hook();
         gInstalled = true;
-        logger().info("按维度生效的行为规则已启用（生成 / 弹射物 / 爆炸 / 火焰 / 液体 / 耕地 / 活塞 / 载具）");
+        logger().info(
+            "按维度生效的行为规则已启用（生成 / 弹射物 / 爆炸 / 火焰 / 液体 / 耕地 / 活塞 / "
+            "载具 / 活塞跨地皮）");
     }
 
     void unregisterDimensionRuleHooks()

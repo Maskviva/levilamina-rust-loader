@@ -91,4 +91,29 @@ impl Container {
             Err(self.gone())
         }
     }
+
+    /// Resend this container to its owning player.
+    ///
+    /// Container writes mutate the server's copy and send nothing, so after a
+    /// bulk rewrite the client keeps rendering the old items until the player
+    /// clicks a slot. Call this once when a batch of writes is done — most
+    /// visibly, after swapping a player's inventory on a dimension change.
+    ///
+    /// Returns `Ok(false)` for block containers: a chest has no single owner
+    /// to resend to, and the engine's own transaction path already keeps its
+    /// viewers in sync.
+    ///
+    /// This pushes the whole container, so call it once after the batch rather
+    /// than once per slot.
+    pub fn refresh(&self) -> Result<bool> {
+        if matches!(self.target, Target::Block { .. }) {
+            return Ok(false);
+        }
+        let ok = unsafe { (rt().api.container_refresh)(self.ffi_ref()) };
+        if ok {
+            Ok(true)
+        } else {
+            Err(self.gone())
+        }
+    }
 }

@@ -20,6 +20,10 @@
 #include "LeviRsAbi.h"
 #include "RustModManager.h"
 
+#ifndef LEVI_RS_TARGET_CLIENT
+#include "ModControl.h"
+#endif
+
 // MoreDimensions 自初始化需要。只在服务器构建里包含（客户端构建不定义
 // LEVI_RS_FEATURE_MORE_DIMENSIONS，这段代码会被整体剔除）。
 #ifdef LEVI_RS_FEATURE_MORE_DIMENSIONS
@@ -65,6 +69,10 @@ namespace levi_rs
         {
 #ifndef LEVI_RS_TARGET_CLIENT
             registerDebugCommand();
+            // /llr — runtime load/unload/reload of rust mods. Registered here
+            // rather than in load() because CommandRegistrar needs the server
+            // command system to be up.
+            mod_control::registerCommand();
 #endif
 #ifdef LEVI_RS_FEATURE_MORE_DIMENSIONS
             // MoreDimensions 在 C++ 侧于加载期自初始化：建好所有 hook、读好维度

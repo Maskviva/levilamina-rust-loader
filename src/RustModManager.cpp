@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "ll/api/mod/NativeMod.h"
 #include "ll/api/utils/StringUtils.h"
@@ -15,11 +16,19 @@ namespace levi_rs
 {
     using ll::mod::Manifest;
 
-    RustModManager::RustModManager() : ModManager(RustModManagerName)
+    namespace
     {
+        RustModManager* gInstance = nullptr;
     }
 
-    RustModManager::~RustModManager() = default;
+    RustModManager::RustModManager() : ModManager(RustModManagerName)
+    {
+        gInstance = this;
+    }
+
+    RustModManager::~RustModManager() { gInstance = nullptr; }
+
+    RustModManager* RustModManager::instance() { return gInstance; }
 
     ll::Expected<> RustModManager::load(Manifest manifest)
     {
@@ -149,5 +158,63 @@ namespace levi_rs
         }
         eraseMod(name);
         return {};
+    }
+
+    /* ───────────────────── runtime mod control ───────────────────── */
+
+    ll::Expected<> RustModManager::controlLoad(Manifest manifest)
+    {
+        const std::string name = manifest.name;
+        if (auto e = load(std::move(manifest)); !e)
+        {
+            return e;
+        }
+        // LeviLamina's own flow is load → enable; ModManager::load only brings
+        // the dylib up and runs levi_rs_main. Without this the mod sits loaded
+        // but disabled, its commands muted and on_enable never fired.
+        if (auto e = enable(name); !e)
+        {
+            // Roll back rather than leaving a half-live mod behind: a loaded
+            // but never-enabled mod still owns its dylib and its listeners.
+            (void)unload(name);
+            return e;
+        }
+        return {};
+    }
+
+    ll::Expected<> RustModManager::controlUnload(std::string_view name)
+    {
+        const auto mod = std::static_pointer_cast<RustMod>(getMod(name));
+        if (!mod)
+        {
+            return ll::makeStringError("'" + std::string(name) + "' is not loaded");
+        }
+        // disable() first so on_disable actually runs; unload() alone only
+        // calls on_unload and the mod would never see its disable stage.
+        if (mod->isEnabled())
+        {
+            if (auto e = disable(name); !e)
+            {
+                return e;
+            }
+        }
+        return unload(name);
+    }
+
+    void const* RustModManager::moduleBase(std::string_view name) const
+    {
+        const auto mod = std::static_pointer_cast<RustMod>(getMod(name));
+        if (!mod) return nullptr;
+        return mod->lib.handle(); // HandleT is void*; qualification conversion only
+    }
+
+    std::vector<std::string> RustModManager::loadedNames() const
+    {
+        std::vector<std::string> out;
+        for (auto& mod : mods())
+        {
+            out.push_back(mod.getName());
+        }
+        return out;
     }
 } // namespace levi_rs

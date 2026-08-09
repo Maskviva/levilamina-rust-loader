@@ -4,6 +4,7 @@ use super::*;
 use crate::error::{Error, Result};
 use crate::ffi::s;
 use crate::item::ItemStack;
+use crate::Logger;
 use crate::{rt, sys};
 
 impl Player {
@@ -133,28 +134,43 @@ impl Player {
         }
     }
 
-    pub fn set_ability(&self, ability: Ability, value: bool) -> Result<()> {
-        self.action(
-            sys::PACT_SET_ABILITY,
-            "",
-            ability as i32 as f64,
-            if value { 1.0 } else { 0.0 },
-            0.0,
-        )
-        .map(|_| ())
+    /// Set a player ability.
+    ///
+    /// `value` may be a `bool` (boolean slots such as `MayFly`) or a number
+    /// (float slots: `FlySpeed`, `WalkSpeed`, `VerticalFlySpeed`). The
+    /// engine's `AbilitiesIndex` stores those three as floats and everything
+    /// else as bools; [`Ability::is_float`] says which is which.
+    ///
+    /// Mixing them up used to be silent — this now warns instead, because the
+    /// FFI boundary is a bare `f64` and nothing downstream can tell a
+    /// mis-typed value from an intentional one.
+    pub fn set_ability<V: AbilityValue>(&self, ability: Ability, value: V) -> Result<()> {
+        if ability.is_float() && V::IS_BOOL {
+            Logger::get().warn(&format!(
+                "set_ability({ability:?}, <bool>): 这是一个 float 槽位，\
+                 传 bool 会把速度设成 0 或 1，八成不是你想要的"
+            ));
+        } else if !ability.is_float() && !V::IS_BOOL {
+            let v = value.as_f64();
+            if v != 0.0 && v != 1.0 {
+                Logger::get().warn(&format!(
+                    "set_ability({ability:?}, {v}): 这是一个 bool 槽位，\
+                     非 0 的值一律当作 true"
+                ));
+            }
+        }
+        self.set_ability_raw(ability as i32, value)
     }
 
     /// Set an ability by raw `AbilitiesIndex` value (for slots not covered
-    /// by the [`Ability`] enum).
-    pub fn set_ability_raw(&self, index: i32, value: bool) -> Result<()> {
-        self.action(
-            sys::PACT_SET_ABILITY,
-            "",
-            index as f64,
-            if value { 1.0 } else { 0.0 },
-            0.0,
-        )
-        .map(|_| ())
+    /// by the [`Ability`] enum). `value` may be a `bool` (boolean slots) or a
+    /// `f64`/`f32`/`i32` (float slots such as `FlySpeed`).
+    ///
+    /// No slot-kind checking here — the whole point of the raw form is that
+    /// the caller knows something this crate's enum does not.
+    pub fn set_ability_raw<V: AbilityValue>(&self, index: i32, value: V) -> Result<()> {
+        self.action(sys::PACT_SET_ABILITY, "", index as f64, value.as_f64(), 0.0)
+            .map(|_| ())
     }
 
     pub fn can_use_ability(&self, ability: Ability) -> Result<bool> {
@@ -190,23 +206,87 @@ impl Player {
         .map(|_| ())
     }
 
+    /// Send one `SetTitlePacket`. The general form behind [`set_title`],
+    /// [`set_subtitle`], [`set_actionbar`] and [`clear_title`].
+    ///
+    /// `times` of `None` leaves the client's stored timing alone; `Some(t)`
+    /// sends a `Times` packet first so the result does not depend on what some
+    /// other plugin last set for this player.
+    ///
+    /// # Why this is a packet and not `/title`
+    ///
+    /// Until this method existed, every title went out as a console command:
+    /// `title "<name>" title <text>`. The text was pasted in unquoted, so any
+    /// `"` in it truncated the command; and `/title`'s text parameter is a
+    /// `message`, which expands selectors — a plot named `@e` was command
+    /// injection rather than a name. Neither failure was visible from the
+    /// calling side, because `runConsoleCommand` reported success.
+    ///
+    /// [`set_title`]: Self::set_title
+    /// [`set_subtitle`]: Self::set_subtitle
+    /// [`set_actionbar`]: Self::set_actionbar
+    /// [`clear_title`]: Self::clear_title
+    ///
+    /// ```no_run
+    /// # use levilamina::player::{Player, TitleKind, TitleTimes};
+    /// # let p = Player::by_name("Steve");
+    /// p.send_title(TitleKind::Title, "§b海边小屋", Some(TitleTimes::new(5, 40, 10)))?;
+    /// p.send_title(TitleKind::Subtitle, "§7欢迎光临", None)?;
+    /// # Ok::<(), levilamina::Error>(())
+    /// ```
+    pub fn send_title(&self, kind: TitleKind, text: &str, times: Option<TitleTimes>) -> Result<()> {
+        let t = times.unwrap_or(TitleTimes::new(-1, -1, -1));
+        let ok = unsafe {
+            (rt().api.player_send_title)(
+                self.ffi_sel(),
+                kind as i32,
+                s(text),
+                t.fade_in,
+                t.stay,
+                t.fade_out,
+            )
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(self.gone())
+        }
+    }
+
+    /// Set fade-in / stay / fade-out for this player's *subsequent* titles.
+    ///
+    /// Rarely needed on its own: [`send_title`](Self::send_title) with
+    /// `Some(times)` already sends this ahead of the content packet.
+    pub fn set_title_times(&self, times: TitleTimes) -> Result<()> {
+        self.send_title(TitleKind::Times, "", Some(times))
+    }
+
+    /// Hide the title/subtitle currently on screen. Timings are kept; use
+    /// [`TitleKind::Reset`] via [`send_title`](Self::send_title) to restore the
+    /// client's defaults as well.
     pub fn clear_title(&self) -> Result<()> {
-        self.action(sys::PACT_CLEAR_TITLE, "", 0.0, 0.0, 0.0)
-            .map(|_| ())
+        self.send_title(TitleKind::Clear, "", None)
     }
 
+    /// Big text at screen centre, with the client's current timings.
+    ///
+    /// Use [`send_title`](Self::send_title) when the timing matters — "current"
+    /// here means whatever the last `/title … times` on this player set, which
+    /// is not something a caller can rely on.
     pub fn set_title(&self, text: &str) -> Result<()> {
-        self.action(sys::PACT_SET_TITLE, text, 0.0, 0.0, 0.0)
-            .map(|_| ())
+        self.send_title(TitleKind::Title, text, None)
     }
 
+    /// Second line under the title. Only visible while a title is showing, so
+    /// send this *before* the title (or accept that it will wait for the next
+    /// one).
     pub fn set_subtitle(&self, text: &str) -> Result<()> {
-        self.action(sys::PACT_SET_TITLE, text, 1.0, 0.0, 0.0)
-            .map(|_| ())
+        self.send_title(TitleKind::Subtitle, text, None)
     }
 
+    /// Text above the hotbar. Independent of the title/subtitle pair — this is
+    /// the cheap one for status lines that update often.
     pub fn set_actionbar(&self, text: &str) -> Result<()> {
-        self.action(sys::PACT_SET_TITLE, text, 2.0, 0.0, 0.0)
-            .map(|_| ())
+        self.send_title(TitleKind::Actionbar, text, None)
     }
 }

@@ -1,87 +1,158 @@
 # Command — 命令
 
-执行命令与注册自定义命令。**仅限服务器线程**。
+两件事：**执行**原版命令，**注册**自己的命令。
 
-> **接口来源**：当前 `Command::register` 对应 LeviLamina 的运行时命令系统（`ll::command::CommandRegistrar` / `CommandHandle` / `RuntimeOverload`，均在 `ll/api/command/`），桥接既支持把参数原样当作一整段 `RawText` 字符串的简单命令，也支持下方"参数化命令构建"所述的**多重载 + 类型化参数 + 自定义枚举**，两者均已可用。
+## 执行原版命令
 
-| API | 作用 | 状态 |
-| --- | --- | :---: |
-| `Command::execute(cmd)` | 以控制台（Owner）身份执行命令，返回成功与输出 | ✅ |
-| `Command::register(name, description, permission, handler)` | 注册自定义命令 `/name [args]`（`args` 是原样的整段文本） | ✅ |
-| `player.runcmd(cmd)` | 以某玩家身份执行命令 | 🧩 |
+```rust
+let r = ctx.server().execute_command("say hello")?;
+if r.success { println!("{}", r.output); }
+```
 
-## 说明
+```rust
+pub struct CommandResult {
+    pub success: bool,
+    pub output: String,
+}
+```
 
-- 自定义命令会**存活到服务器关闭**（Bedrock 无法注销命令）；应在 `on_enable` 中注册。模组禁用/卸载后其命令自动静音。
-- `handler` 收到 `CommandInvocation`（参数、调用者），可回写成功/错误输出。
+以控制台身份执行。这是很多"写操作"最省事的实现方式——`/setblock`、`/summon`、`/effect`、`/tp` 都比自己拼 API 稳。
 
-## 参数化命令构建（进阶）
+## 注册命令：CommandBuilder
 
-命令系统能表达"一个命令名 + 多套不同参数签名（重载）+ 每个参数带具体类型"，而不只是一整段文本。入口是 `Server::command(name, description, permission)`，返回一个 `CommandBuilder`。
+带类型的参数、多重载、枚举补全，客户端能看到 `/` 提示。
 
-### 参数类型
+```rust
+use levilamina::prelude::*;
 
-`ParamType` 定义了以下参数类型，注册命令时给每个参数指定其中一种：
+ctx.server()
+    .command("home", "回到你的家", CommandPermission::Any)
+    // 重载 0：/home
+    .overload(|o| o)
+    // 重载 1：/home set <名字>
+    .overload(|o| o
+        .required_enum("set", ParamType::Enum, "home_kw_set")
+        .required("name", ParamType::String))
+    // 重载 2：/home <名字>
+    .overload(|o| o.required("name", ParamType::String))
+    .register(|inv| {
+        match inv.overload {
+            0 => inv.success("传送中…"),
+            1 => {
+                let name = inv.arg("name").and_then(|v| v.as_str()).unwrap_or("");
+                inv.success(&format!("已保存：{name}"));
+            }
+            _ => inv.error("用法错误"),
+        }
+    })?;
+```
 
-| Kind | 说明 |
+### OverloadBuilder
+
+| 方法 | 说明 |
 | --- | --- |
-| `Int` / `Float` / `Bool` / `String` | 基础类型 |
-| `RelativeFloat` | 支持 `~` 相对坐标写法的浮点数 |
-| `Vec` | 三个浮点坐标（可各自使用 `~`） |
-| `BlockPos` | 三个整数坐标 |
+| `.required(name, kind)` | 必填参数 |
+| `.optional(name, kind)` | 可选参数 |
+| `.required_enum(name, kind, enum_name)` | 必填，取值来自已注册的枚举 |
+| `.optional_enum(name, kind, enum_name)` | 可选，同上 |
+
+::: warning 重载顺序就是 inv.overload 的编号
+`.overload()` 的调用顺序决定了 `inv.overload` 拿到的是 0、1 还是 2。中间插一个新重载会把后面全部错位——加重载请加在末尾，或者同步改 `match`。
+:::
+
+### CommandInvocationEx
+
+| 字段 / 方法 | 说明 |
+| --- | --- |
+| `inv.overload: usize` | 命中的是第几个重载 |
+| `inv.args: NbtValue` | 全部参数 |
+| `inv.arg(name) -> Option<&NbtValue>` | 按名字取一个参数 |
+| `inv.origin: CommandOrigin` | 谁执行的 |
+| `inv.success(msg)` | 成功输出 |
+| `inv.error(msg)` | 失败输出（红色） |
+
+```rust
+pub struct CommandOrigin {
+    pub name: String,
+    pub origin_type: i32,
+    pub dimension: Option<i32>,
+    pub position: Option<(f64, f64, f64)>,
+}
+```
+
+`position` 和 `dimension` 在控制台执行时是 `None`——**别 unwrap**。
+
+### ParamType 全部取值
+
+| 取值 | 客户端表现 |
+| --- | --- |
+| `Int` `Float` `Bool` `String` | 基础类型 |
+| `RawText` `Message` `Json` | 文本三档，`Message` 支持 `@a` 展开 |
+| `Actor` `Player` | 目标选择器，客户端会提示 `@a @e @p @s` |
+| `BlockPos` `Vec3` | 坐标，支持 `~` 相对坐标 |
+| `RelativeFloat` | 单个支持 `~` 的浮点 |
+| `Item` `BlockName` `Effect` `ActorType` | 对应的原版补全列表 |
 | `Dimension` | 维度 |
-| `Actor` / `Player` | 目标选择器（如 `@a`、`@e[type=cow]`、玩家名），**解析结果是 0 个或多个匹配对象**，不是单个值 |
-| `RawText` | 剩余部分整段原样文本 |
-| `Message` | 聊天消息文本，选择器会被展开为实际名字（用于类似 `/say`、`/tell`） |
-| `Item` | 物品 id（可带数据值） |
-| `BlockName` | 方块 id |
-| `Effect` | 药水效果 id |
-| `ActorType` | 实体类型 id |
-| `Enum` | 预先注册的固定枚举（值集合注册后不再变） |
-| `SoftEnum` | 可在运行时动态增删值的枚举（如随时变化的候选列表，仍支持玩家自己输入不在列表里的值） |
+| `Command` | 一整条子命令 |
 | `FilePath` | 文件路径 |
-| `Json` | 一段 JSON |
-| `Command` | 嵌套的子命令解析器（进阶，用于命令套命令） |
+| `Enum` `SoftEnum` | 自定义枚举，见下 |
 
-### 构建一个命令
+### 枚举与 soft enum
 
-一个命令名可以注册**任意多个重载**（不同的参数签名），运行时按玩家实际输入匹配其中一个：
+**枚举**是编译期固定的取值集合，注册后不能改：
 
-> 命令相关操作实际都挂在 `Server` 句柄上（本页按 `Command` 归类只是文档组织方式）。
+```rust
+ctx.server().register_command_enum("home_action", &[
+    ("set", 0),
+    ("del", 1),
+    ("list", 2),
+])?;
+```
 
-| API | 作用 | 原生对应 |
-| --- | --- | --- |
-| `Server::command(name, description, permission)` | 开始构建一个命令，返回 `CommandBuilder` | `CommandRegistrar::getOrCreateCommand` |
-| `.overload(\|o\| o.required(...).optional(...))` | 追加一个参数重载；闭包里用 `OverloadBuilder` 逐个加参数 | `CommandHandle::runtimeOverload()` |
-| `OverloadBuilder::required(name, kind)` | 追加一个必填参数 | `RuntimeOverload::required` |
-| `OverloadBuilder::optional(name, kind)` | 追加一个可选参数 | `RuntimeOverload::optional` |
-| `OverloadBuilder::required_enum(name, kind, enum_name)` / `optional_enum(...)` | 追加一个枚举/软枚举参数，引用已注册的枚举名 | 同名的 `Enum`/`SoftEnum` 重载版本 |
-| `.register(handler)` | 完成并注册命令；`handler: FnMut(&CommandInvocationEx)`，对该命令的所有重载共用 | `RuntimeOverload::execute` |
+**soft enum** 可以在运行时更新——世界名、玩家自定义的传送点这类东西用它：
 
-读取参数：处理函数从 `CommandInvocationEx` 上按名字取值——`inv.arg("参数名") -> Option<&NbtValue>`，返回的 `NbtValue` 已按参数类型转好（整数 / 浮点 / 字符串 / 坐标 / 选择器结果等）。
+```rust
+ctx.server().register_command_soft_enum("home_names", &[])?;
 
-> 原生 `RuntimeOverload` 还有字面量分支（`.text`）、命令别名（`CommandHandle::alias`）、以及 `.modify(fn)` / `.postfix(text)` / `.option` / `.deoption` 等更底层的逃生舱口，暂未纳入简化层。
+// 之后随时更新
+ctx.server().update_command_soft_enum(
+    "home_names",
+    SoftEnumOp::Set,          // Set 整表替换 / Add 追加 / Remove 移除
+    &["家", "矿洞", "村庄"],
+)?;
+```
 
-### 自定义枚举 / 软枚举
+::: tip 为什么需要 soft enum
+基岩版的命令树在玩家进服时下发一次，之后不能重新注册命令。soft enum 是唯一能在运行时改变客户端补全内容的机制。新建一个世界之后不需要重启，刷新 soft enum 即可出现在补全里。
+:::
 
-原生其实有两套注册枚举的路径：`tryRegisterEnum`/`addEnumValues`（更底层，需要配一个 C++ 侧的类型解析函数指针，难以简单跨 FFI 暴露）和下表选用的 `tryRegisterRuntimeEnum`/`addRuntimeEnumValues`（只需要"名字 → 数值"这样的简单列表，是给模组用的实用版本）。
+## 权限档位
 
-| API | 作用 | 原生对应 |
-| --- | --- | --- |
-| `Server::register_command_enum(name, &[(name, value)])` | 注册一个固定枚举（名字 → `u64` 值），供 `ParamType::Enum` 参数引用 | `CommandRegistrar::tryRegisterRuntimeEnum` |
-| `Server::register_command_soft_enum(name, &[value])` | 注册一个软枚举（取值列表可后续动态增删） | `CommandRegistrar::tryRegisterSoftEnum` |
-| `Server::update_command_soft_enum(name, op, &[value])` | 用 `SoftEnumOp::Set` / `Add` / `Remove` 整体替换或增量增删软枚举取值 | `CommandRegistrar::setSoftEnumValues` / `addSoftEnumValues` / `removeSoftEnumValues` |
+```rust
+pub enum CommandPermission {
+    Any = 0,            // 所有人
+    GameDirectors = 1,
+    Admin = 2,
+    Host = 3,
+    Owner = 4,          // 仅控制台
+}
+```
 
-> 软枚举适合"候选列表会随游戏状态变化"的场景，比如把当前在线玩家、当前已定义的家的名字，做成一个会自动刷新提示的参数。
+这是引擎层的粗粒度门禁。更细的权限（比如"只有地皮主人能用"）在处理函数里自己判断。
 
-## 相关类型
+## 老接口：raw-text 命令
 
-| 类型 | 说明 |
-| --- | --- |
-| `CommandPermission` | `Any` / `GameDirectors` / `Admin` / `Host` / `Owner` |
-| `CommandResult` | `success: bool` 与 `output: String` |
-| `CommandInvocation` | `args`、`origin`，以及 `success()` / `error()` |
-| `ParamType` | 见上方参数类型表 |
-| `SoftEnumOp` | `Set` / `Add` / `Remove`（软枚举更新方式） |
-| `CommandInvocationEx` | 参数化命令的调用上下文：`arg(name)` 取参数、`success()` / `error()` 回写输出 |
+`register_command` 是 v0.x 时代的接口，处理函数拿到的是整行原文，没有参数解析和客户端补全：
 
+```rust
+ctx.server().register_command(
+    "ping", "测试", CommandPermission::Any,
+    |inv| inv.success("pong"),
+)?;
+```
+
+只有一条命令、没有参数的时候用它够了。有参数就用 `CommandBuilder`。
+
+## 拦截别人的命令
+
+订阅 `ExecutingCommandEvent`，见 [Event](/api/event)。注意它只报玩家发起的命令，控制台不上报。

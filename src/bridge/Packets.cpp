@@ -7,9 +7,13 @@
  *     wire-format body, deserialised into a real packet object and handed to
  *     ONE player's connection. This is the escape hatch that makes every
  *     "just send a packet" feature possible without further bridge work.
- *   - api_spawn_particle_for: a typed derivation of the same send path. It
- *     constructs SpawnParticleEffectPacket in C++ (version-safe: no wire
- *     format crosses the FFI) and reuses the same delivery helper.
+ *   - api_spawn_particle_for / api_player_send_title: typed derivations of the
+ *     same send path. They construct the packet in C++ (version-safe: no wire
+ *     format crosses the FFI) and reuse the same delivery helper.
+ *
+ * api_player_send_title exists because the old title route (player_action
+ * opcode PACT_SET_TITLE) shelled out to `/title "<name>" title <text>`, which
+ * breaks on quotes, expands selectors in the text, and cannot set timings.
  *
  * Deliberately NOT exposed: broadcast variants (Level already broadcasts;
  * mods can loop players when they truly mean "everyone").
@@ -29,6 +33,8 @@
 #include "mc/network/MinecraftPacketIds.h"
 #include "mc/network/MinecraftPackets.h"
 #include "mc/network/Packet.h"
+#include "mc/network/packet/SetTitlePacket.h"
+#include "mc/network/packet/SetTitlePacketPayload.h"
 #include "mc/network/packet/SpawnParticleEffectPacket.h"
 #include "mc/world/actor/player/Player.h"
 
@@ -65,6 +71,71 @@ namespace levi_rs::bridge
         if (!stream.ensureReadCompleted()) return false;
 
         return sendToPlayer(sel, *pkt);
+    }
+
+    bool api_player_send_title(
+        LeviRsPlayerSel sel, int32_t type, LeviRsStr text, int32_t fadeInTicks, int32_t stayTicks,
+        int32_t fadeOutTicks)
+    {
+        using TitleType = SetTitlePacketPayload::TitleType;
+
+        // 6..8 are the TextObject variants; their payload constructor needs a
+        // ResolvedTextObject, which has no meaning across this FFI boundary.
+        // Refuse rather than silently degrade to the plain-string variant —
+        // the caller asked for a different thing than it would have got.
+        if (type < 0 || type > 5) return false;
+        auto const kind = static_cast<TitleType>(type);
+
+        // Either all three durations are specified or none are. A mix has no
+        // defensible reading: "fade in over 5 ticks and stay for whatever the
+        // client happened to have" is a bug at the call site, not a request.
+        int const specified =
+            (fadeInTicks >= 0 ? 1 : 0) + (stayTicks >= 0 ? 1 : 0) + (fadeOutTicks >= 0 ? 1 : 0);
+        if (specified != 0 && specified != 3) return false;
+        bool const withTimes = (specified == 3);
+
+        Player* p = resolvePlayer(sel);
+        if (!p) return false;
+
+        // Times, when asked for, goes first and as its own packet — that is
+        // what `/title <who> times a b c` sends, and the client applies it to
+        // titles that arrive *after* it. Putting the durations only in the
+        // content packet works on some versions and not others; sending the
+        // Times packet is the behaviour vanilla itself relies on.
+        if (withTimes)
+        {
+            SetTitlePacket times;
+            times.mType        = TitleType::Times;
+            times.mFadeInTime  = fadeInTicks;
+            times.mStayTime    = stayTicks;
+            times.mFadeOutTime = fadeOutTicks;
+            p->sendNetworkPacket(times);
+            // `type == 5` means the caller wanted only the timing change.
+            if (kind == TitleType::Times) return true;
+        }
+        else if (kind == TitleType::Times)
+        {
+            // Times with no durations is a no-op request, not a valid packet.
+            return false;
+        }
+
+        // ll::PayloadPacket<T> derives from T (mc/network/Packet.h:204), so the
+        // payload fields live directly on the packet — same access pattern as
+        // SpawnParticleEffectPacket above. No wire format is involved.
+        SetTitlePacket pkt;
+        pkt.mType = kind;
+        if (kind == TitleType::Title || kind == TitleType::Subtitle
+            || kind == TitleType::Actionbar)
+        {
+            pkt.mTitleText = std::string{text};
+        }
+        if (withTimes)
+        {
+            pkt.mFadeInTime  = fadeInTicks;
+            pkt.mStayTime    = stayTicks;
+            pkt.mFadeOutTime = fadeOutTicks;
+        }
+        return sendToPlayer(sel, pkt);
     }
 
     bool api_spawn_particle_for(

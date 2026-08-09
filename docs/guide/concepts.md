@@ -1,85 +1,189 @@
 # 核心概念
 
-写模组之前需要建立五个概念：生命周期、句柄、线程、错误处理、ABI 版本。全部理解后，[API 参考](/api/overview)里的每一页都不会有意外。
+四件事：生命周期、句柄、线程、错误。
 
-## 模组生命周期
-
-一个模组实现 `LeviMod`，有四个钩子，全部在**服务器线程**上被调用：
-
-| 钩子 | 时机 | 典型用途 |
-| --- | --- | --- |
-| `on_load(ctx) -> Result<Self>` | 模组被加载（构造自身） | 读配置、初始化状态 |
-| `on_enable(&mut self, ctx)` | 模组被启用 | **注册命令、订阅事件** |
-| `on_disable(&mut self, ctx)` | 模组被禁用 | 释放外部资源 |
-| `on_unload(self, ctx)` | 模组被卸载（消费自身） | 收尾 |
-
-两条实践规则：
-
-- **命令在 `on_enable` 注册**。Bedrock 引擎无法注销命令，模组禁用后加载器会把命令"静音"（调用返回不可用错误），重新启用时自动重新绑定——这套机制建立在"注册发生在 enable 阶段"之上。
-- **事件监听不必手动清理**。`subscribe_event` 返回的 `Listener` 是 RAII 的：丢弃即退订，`.forget()` 则存活到模组卸载，卸载时加载器会在释放 DLL 之前强制解除本模组的全部监听。
-
-## 句柄：标识符，不是指针
-
-`Player`、`Entity`、`Block` 这类"游戏对象"在本 API 里都是**轻量标识符**（玩家名/uuid、实体的稳定 id、方块坐标），**不是**缓存的原生指针。每次调用方法，桥接内部都按标识符重新查一次当前活着的对象：查到就操作，查不到就返回失败。
-
-对你意味着：
-
-- 玩家离线、实体消失后再调用其句柄，得到的是一个干净的 `Err`/`None`，**不会崩溃**，更不会碰到悬垂内存。
-- 不要把句柄跨 tick 缓存来"省查找"——它本来就不缓存任何指针，长期保存没有性能收益。需要长期记住一个玩家，存它的名字/uuid，用时再取实时句柄。
-
-为什么这么设计（以及桥接内部如何防御事件数据里的裸指针），见高级开发的[内存安全与生命周期](/advanced/memory-safety)。
-
-## 线程模型（最重要的一节）
-
-**所有回调——生命周期钩子、事件、命令、调度任务——都在服务器线程上执行。**
-
-只有三样东西线程安全，可以从任意线程调用：
-
-- `Log::*`（日志）
-- `Scheduler::*`（`Server::schedule` / `schedule_after`）
-- `Server::gaming_status()`
-
-其余一切 API 都**只能在服务器线程**调用。这不是保守限制：BDS 的玩家列表、区块、方块源本身就不是线程安全的，从别的线程调用是未定义行为。
-
-后台线程（Tokio 任务、HTTP 回调、AI agent……）影响游戏世界的**唯一合法路径**：
+## 生命周期
 
 ```rust
-// 任意线程：
-Server::get().schedule(move || {
-// 这里已回到服务器线程，可以调用一切 API
+impl LeviMod for MyMod {
+    fn on_load(ctx: &ModContext) -> Result<Self> { /* 构造 */ Ok(MyMod) }
+    fn on_enable(&mut self, ctx: &ModContext) -> Result<()> { Ok(()) }
+    fn on_disable(&mut self, ctx: &ModContext) -> Result<()> { Ok(()) }
+    fn on_unload(&mut self, ctx: &ModContext) -> Result<()> { Ok(()) }
+}
+```
+
+| 钩子 | 此时可以做什么 |
+| --- | --- |
+| `on_load` | 读配置、开数据库、建目录。**关卡还没打开** |
+| `on_enable` | 注册命令 / 事件 / 维度，读世界数据 |
+| `on_disable` | 停掉自己的定时任务，保存状态 |
+| `on_unload` | 最后的清理 |
+
+::: danger on_load 里不能碰世界
+关卡（Level）在 `on_load` 阶段还是 null。注册维度会抛异常，读玩家列表拿到的是空的。**任何和世界有关的东西都放在 `on_enable`。**
+:::
+
+::: tip on_load 失败应该让模组加载失败
+配置读不了、数据库开不了，就直接 `return Err(...)`。静默用默认值硬跑，服主看到的现象是"改了配置没生效"，而日志里一个字都没有。
+:::
+
+## 句柄是标识符，不是指针
+
+这是整套设计的核心。
+
+| 类型 | 内部存的 |
+| --- | --- |
+| `Player` | 一个选择器（名字 / XUID / UUID） |
+| `Actor` / `Entity` | 一个 `ActorUniqueID` |
+| `Block` | `(维度, 坐标)` |
+| `ItemStack` | 一段 SNBT |
+| `Container` | `(归属者, 哪一个)` |
+
+每次调用方法时才去解析。带来三个结果：
+
+**1. 不可能悬垂。** 目标没了就返回 `Err`，不会崩服。这不是"小心写就没事"，是**架构上做不到**。
+
+**2. 每次调用有查找成本。** 热循环里别反复构造句柄：
+
+```rust
+// ❌ 每格查一次玩家
+for i in 0..1000 {
+    Player::by_name("Steve").send_message("...")?;
+}
+
+// ✅
+let p = Player::by_name("Steve");
+for i in 0..1000 { p.send_message("...")?; }
+```
+
+**3. 什么该存、什么不该存是有讲究的。**
+
+| 存这个 | 别存这个 | 为什么 |
+| --- | --- | --- |
+| `Player`（按 XUID） | `Actor` | 玩家重进后 ActorUniqueID 会变 |
+| `Player`（按 XUID） | `Player`（按名字） | 名字会改 |
+| 坐标 | `Block` | `Block` 本来就是坐标，存哪个都行 |
+
+```rust
+// 长期存储
+struct MyMod {
+    owners: HashMap<String, Player>,     // key 是 xuid
+}
+// 用的时候
+let actor = owners.get(&xuid).unwrap().get_actor()?;
+```
+
+## 线程规则
+
+**所有回调都在游戏线程。** 生命周期钩子、事件、命令、表单回调、调度任务——全部。
+
+所以模组实例可以放心持有 `!Send` 的东西（比如 `Listener`），不需要 `Arc<Mutex<>>` 包一层。
+
+### 两个例外
+
+**1. 包拦截器不在游戏线程。**
+
+```rust
+ctx.packets().intercept(Direction::Both, |p| {
+    // 这里不在游戏线程！
+    // 不能碰世界。共享状态要 Mutex / 原子类型。
+    Verdict::Forward
+})?.forget();
+```
+
+签名是 `Fn + Send + Sync`，编译器会逼你做对。要碰世界就 `Server::schedule` 弹回去。
+
+**2. 这几样是线程安全的**，后台线程可以直接用：
+
+- `Server::schedule` / `schedule_after` / `gaming_status`
+- `Client::schedule` / `schedule_after` / `gaming_status`
+- `KvDb` 全部方法
+- `system::*` 全部
+- `Logger` 全部
+
+### 后台线程的标准写法
+
+```rust
+std::thread::spawn(move || {
+    let result = 很慢的活();                  // 后台，随便慢
+
+    Server::get().schedule(move || {          // 回到游戏线程
+        Player::broadcast(&result);
+    });
 });
 ```
 
-详细的实战模式见[日志与调度](/guide/logging-scheduling)。
+::: danger 别在后台线程调用世界 API
+上面那张白名单之外的一切，在游戏线程之外调用都是未定义行为。可能崩，也可能更糟——静默的数据损坏。
+:::
 
-## 错误处理与命名
+## 错误处理
 
-- 可能失败的操作返回 `Result<T>`；可能不存在的对象返回 `Option<T>`。世界/维度未就绪时相关调用返回 `Err`，正常处理即可。
-- 回调里 panic 不会炸掉服务器：每个跨 FFI 的入口都包了 `catch_unwind`，panic 被记进日志、本次调用作废，仅此而已。当然，不该依赖这个兜底。
-- 命名全部是 Rust 惯用 **snake_case**：LSE 的 `pl.setGameMode()` 在这里是 `player.set_gamemode()`。分组写作 `类别::方法()`，对象方法写作 `对象.方法()`。
+```rust
+pub struct Error(pub String);
+pub type Result<T> = std::result::Result<T, Error>;
+```
 
-## 通用类型
+**`Err` 的含义几乎总是「目标不在了」**，不是"出错了"：
 
-| 类型 | 说明 |
+| 调用 | `Err` 意味着 |
 | --- | --- |
-| `IntPos` / `FloatPos` | 整数/浮点坐标 + 维度：`x` / `y` / `z` / `dim` |
-| `DirectionAngle` | 朝向：`pitch` / `yaw` |
-| `Dimension` | 维度编号：`0` 主世界、`1` 下界、`2` 末地 |
+| `player.xxx()` | 玩家下线了 |
+| `actor.xxx()` | 实体消失了 |
+| `block.xxx()` | 区块没加载 |
+| `service::call()` | 见 `CallError` |
 
-## ABI 版本
+所以这样写是正常的，不是在吞错误：
 
-加载器和模组之间隔着一张版本化的 C 函数表：
+```rust
+if let Ok(hp) = actor.health() {
+    // 实体还在
+}
 
-- **版本号按区间判断**：加载器接受不比自己新、且不低于支持下限的模组——**新加载器能跑旧模组**（旧模组只调用当前表的字节相同前缀）。反过来，模组会拒绝比自己旧的加载器（可能缺它要用的表尾能力）。看到"模组太新/太旧"这类错误时，按提示更新加载器或重编模组即可。
-- 同一大版本内只会**追加**新能力，配合上面的区间判断，旧模组在新加载器下继续工作。真正的精确闸门是表的字节大小（`struct_size`），与版本号如何递增无关。
+// 或者
+let _ = player.send_message("hi");     // 下线了就算了
+```
 
-这套契约的设计与演进规则属于高级内容，见 [ABI 契约与演进](/advanced/abi)。
+::: tip 什么时候该 ? 什么时候该忽略
+- 后续逻辑依赖这次调用的结果 → `?` 或 `if let Ok`
+- 只是"尽量做一下"（发个提示、放个粒子）→ `.ok()` / `let _ =`
+- 在 `on_enable` 里注册东西失败 → `?`，让模组加载失败比半个模组跑起来强
+:::
 
-## 参考文档怎么读
+### panic 不会拖垮服务器
 
-[API 参考](/api/overview)描述的是"以 LSE 分类为蓝本、适配到 Rust"的**目标 API 面**，每个条目都标注状态：
+每个 FFI 入口都套了 `catch_unwind`。模组里 panic 只在控制台打一条 error，服务器继续跑。
 
-- ✅ **已支持** —— 当前 ABI 已提供该能力。
-- 🧩 **规划** —— 按原生头文件核实过的目标设计，桥接扩展后提供。
+这不是让你放心 `unwrap` 的理由。这是让**别人的 bug** 不至于连累整台服务器。
 
-初级开发各页只讲 ✅ 的部分，且给出的都是当前 `levilamina` crate 里真实存在的调用写法。
+## RAII 句柄
+
+四种回调句柄，行为一致：
+
+```rust
+let l = ctx.server().subscribe_event(...)?;
+drop(l);          // 退订
+
+ctx.server().subscribe_event(...)?.forget();     // 活到模组卸载
+```
+
+| 类型 | 来自 |
+| --- | --- |
+| `Listener` | `subscribe_event` |
+| `Subscription` | `bus::subscribe` |
+| `Registration` | `service::register` |
+| `PacketHook` | `packets().intercept` |
+
+99% 的情况是 `on_enable` 里注册完直接 `.forget()`。
+
+## 版本与 ABI
+
+加载器的 ABI 大版本必须 **>=** 模组编译时的版本，加载时自动检查。
+
+- 新加载器 → 能跑旧模组 ✅
+- 旧加载器 → 拒绝新模组 ❌
+
+当前：`levilamina 26.20.4`，ABI `v5`，对应 BDS `1.26.20` / LeviLamina `26.20.4`。
+
+crate 版本和 Minecraft 版本是两回事：crate 走自己的 SemVer（ABI 在 1.0.0..26.20 之间一直是 v5），而 `[package.metadata.minecraft]` 记的才是"这一版在哪个游戏 / 加载器构建上验证过"。

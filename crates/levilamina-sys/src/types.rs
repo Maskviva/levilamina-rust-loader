@@ -101,6 +101,39 @@ pub type LeviRsActorSink =
 /// Form result callback: fires once, on the server thread, with result SNBT.
 pub type LeviRsFormResultCb = unsafe extern "C" fn(user: *mut c_void, result_snbt: LeviRsStr);
 
+/// 跨 mod 事件总线的订阅回调。
+///
+/// `topic` / `payload` 只在调用期间有效，要留就自己拷。返回值是**否决位**，
+/// 且只对 `bus_publish_vetoable` 有意义：`true` = 拒绝，`false` = 没意见。
+/// 没有「把拒绝翻回同意」的路径 —— 订阅者只能收紧不能放宽，否则谁最后跑谁说了算，
+/// 而订阅顺序不是任何一方控制得了的。
+pub type LeviRsBusCb =
+    unsafe extern "C" fn(user: *mut c_void, topic: LeviRsStr, payload: LeviRsStr) -> bool;
+
+/// 跨 mod **服务注册**的提供方回调（查询式调用，和总线的单向广播是两回事）。
+///
+/// 写一次 `reply(ctx, ..)` 并返回 `true`；返回 `false` 表示失败，先写进去的东西
+/// 会作为**错误文本**交给调用方 —— 这正是「没有这块地皮」和「数据库挂了」能在
+/// 调用点被分开的原因。
+///
+/// `name` / `request` 只在调用期间有效，要留就自己拷。同步执行在**调用方线程**上。
+pub type LeviRsServiceCb = unsafe extern "C" fn(
+    user: *mut c_void,
+    name: LeviRsStr,
+    request: LeviRsStr,
+    ctx: *mut c_void,
+    reply: LeviRsStrSink,
+) -> bool;
+
+/// `service_call` 的返回码。和 `LeviRsAbi.h` 的 `LEVI_RS_SERVICE_*` 逐值对应。
+pub const LEVI_RS_SERVICE_OK: i32 = 0;
+/// 没有人提供这个名字（或者提供方已卸载 / 被停用）。
+pub const LEVI_RS_SERVICE_NOT_FOUND: i32 = 1;
+/// 提供方返回了 false，应答里是它的错误信息。
+pub const LEVI_RS_SERVICE_ERROR: i32 = 2;
+/// 名字非法、调用了自己的服务、或者撞上调用深度上限。
+pub const LEVI_RS_SERVICE_REFUSED: i32 = 3;
+
 /// Opaque handle to an open key-value database owned by the loader.
 pub type LeviRsKvDbHandle = *mut c_void;
 

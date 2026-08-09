@@ -12,7 +12,7 @@ mod inventory;
 mod query;
 mod types;
 
-pub use types::{Ability, GameMode, MessageType, PlayerInfo};
+pub use types::{Ability, AbilityValue, GameMode, MessageType, PlayerInfo, TitleKind, TitleTimes};
 
 #[derive(Debug, Clone)]
 enum Selector {

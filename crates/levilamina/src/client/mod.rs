@@ -17,6 +17,8 @@ pub enum GamingStatus {
 
 pub(crate) type TaskOnce = Option<Box<dyn FnOnce() + Send>>;
 
+pub use crate::runtime::TaskId;
+
 pub(crate) unsafe extern "C" fn task_trampoline(user: *mut c_void) {
     let mut boxed: Box<TaskOnce> = Box::from_raw(user.cast());
     if let Some(f) = boxed.take() {

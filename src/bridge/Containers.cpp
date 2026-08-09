@@ -12,6 +12,7 @@
 
 #include "mc/deps/nbt/CompoundTag.h"
 #include "mc/world/Container.h"
+#include "mc/world/actor/player/Player.h"
 #include "mc/world/item/ItemStack.h"
 
 namespace levi_rs::bridge
@@ -80,6 +81,25 @@ namespace levi_rs::bridge
         {
             c->setItem(i, ItemStack::EMPTY_ITEM());
         }
+        return true;
+    }
+
+    bool api_container_refresh(LeviRsContainerRef ref)
+    {
+        // Block containers have no single owner to resend to. Their viewers
+        // are kept in sync by the engine's own container-transaction path, so
+        // there is nothing useful to do here — say so rather than pretending.
+        if (ref.which == 4) return false;
+
+        Player* p = resolvePlayer(ref.player);
+        if (!p) return false;
+
+        // Player::sendInventory rebuilds and sends InventoryContentPacket for
+        // the player's containers. `false` = do not also re-select the hotbar
+        // slot; forcing a slot change on every refresh would yank the item the
+        // player is holding, which is worse than the stale render we are here
+        // to fix.
+        p->sendInventory(false);
         return true;
     }
 } // namespace levi_rs::bridge

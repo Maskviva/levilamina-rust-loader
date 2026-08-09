@@ -1,93 +1,134 @@
 # 命令
 
-命令有两个方向：**执行**已有命令（含全部原版命令），和**注册**自己的命令。两者都已支持，且"执行原版命令"是当前实现各种写操作最通用的手段。
-
-## 执行命令
-
-`Server::execute_command` 以控制台（Owner 权限）身份执行任意命令，返回是否成功与输出文本：
+## 执行原版命令
 
 ```rust
-let r = server.execute_command("time set day")?;
-if r.success {
-    logger.info(&r.output);
-} else {
-    logger.warn(&format!("失败: {}", r.output));
-}
+let r = ctx.server().execute_command("gamerule doDaylightCycle false")?;
+if r.success { println!("{}", r.output); }
 ```
 
-这条路径的价值远超"跑一条命令"：**原版命令行几乎能做到一切写操作**——`/setblock`、`/tp`、`/gamemode`、`/give`、`/effect`、`/summon`……在对应的强类型 API 就绪之前，拼一条命令是完全正当的做法（桥接内部的若干 API 也是这么实现的，原因见[设计取舍记录](/advanced/decisions)第 3 条）。
+以控制台身份执行。
+
+::: tip 这是很多写操作最省事的实现
+`/fill`、`/clone`、`/setblock`、`/summon`、`/effect`、`/tp`——引擎内部的实现比逐格调用 API 快一个数量级，而且行为和管理员手打完全一致。
+
+大范围改方块尤其如此：一百万格的 `Block::set` 循环是一百万次 FFI，一条 `/fill` 是一次。
+:::
+
+## 注册命令
 
 ```rust
-// 例:把玩家传送到出生点并切换旅行者模式
-server.execute_command(&format!("tp \"{name}\" 0 100 0"))?;
-server.execute_command(&format!("gamemode adventure \"{name}\""))?;
-```
+use levilamina::prelude::*;
 
-> 拼命令时注意给玩家名加引号，防止名字带空格时被拆成多个参数。
-
-## 注册自定义命令
-
-`Server::register_command` 注册 `/<name> [args]` 形式的命令：
-
-```rust
-fn on_enable(&mut self, ctx: &ModContext) -> Result<()> {
-    ctx.server().register_command(
-        "greet",                      // 命令名 → /greet
-        "向某人问好",                  // 描述(命令列表里显示)
-        CommandPermission::Any,       // 权限门槛
-        |inv| {
-            // inv.args 是命令名后面的整段原样文本
-            let who = inv.args.trim();
-            if who.is_empty() {
-                inv.error("用法: /greet <名字>");
-            } else {
-                inv.success(&format!("你好, {who}! (来自 {})", inv.origin));
+ctx.server()
+    .command("kit", "领取礼包", CommandPermission::Any)
+    .overload(|o| o)                                              // /kit
+    .overload(|o| o.required("name", ParamType::String))          // /kit <名字>
+    .overload(|o| o                                               // /kit give <玩家> <名字>
+        .required_enum("give", ParamType::Enum, "kit_kw_give")
+        .required("target", ParamType::Player)
+        .required("name", ParamType::String))
+    .register(|inv| {
+        match inv.overload {
+            0 => inv.success("可用礼包：新手、建筑"),
+            1 => {
+                let name = inv.arg("name").and_then(|v| v.as_str()).unwrap_or("");
+                inv.success(&format!("已发放 {name}"));
             }
-        },
-    )?;
-    Ok(())
+            2 => { /* … */ }
+            _ => inv.error("用法错误"),
+        }
+    })?;
+```
+
+::: warning 重载编号 = 注册顺序
+`inv.overload` 是第几个 `.overload()`。中间插新的会把后面全部错位——加在末尾，或者同步改 `match`。
+:::
+
+## 参数
+
+按名字取，不是按下标：
+
+```rust
+let name = inv.arg("name").and_then(|v| v.as_str()).unwrap_or("");
+let n    = inv.arg("count").and_then(|v| v.as_i64()).unwrap_or(1);
+let on   = inv.arg("flag").and_then(|v| v.as_bool()).unwrap_or(false);
+```
+
+常用 `ParamType`：`String` `Int` `Float` `Bool` `Player` `Actor` `BlockPos` `Vec3` `Item` `BlockName` `Effect` `Message` `Enum` `SoftEnum`。全表见 [Command API](/api/command#paramtype-全部取值)。
+
+## 谁在执行
+
+```rust
+let who = &inv.origin;
+println!("{} type={}", who.name, who.origin_type);
+
+// 控制台执行时这两个是 None —— 别 unwrap
+if let (Some(dim), Some(pos)) = (who.dimension, who.position) {
+    // 有位置
 }
 ```
 
-处理函数收到 `CommandInvocation`：
+## 枚举与运行时补全
 
-| 字段/方法 | 说明 |
-| --- | --- |
-| `inv.args` | 命令名之后的整段原样文本（当前版本参数不做类型解析） |
-| `inv.origin` | 调用者名字（控制台或玩家名） |
-| `inv.success(msg)` / `inv.error(msg)` | 回写执行结果，会显示给调用者 |
-
-权限级别 `CommandPermission`：`Any` / `GameDirectors` / `Admin` / `Host` / `Owner`。
-
-### 自己解析子命令
-
-当前所有参数都是一整段文本，子命令自己 `split` 即可（`region-scan` 示例就是这么做的）：
+固定取值用**枚举**：
 
 ```rust
-|inv| {
-    let mut it = inv.args.split_whitespace();
-    match it.next() {
-        Some("list") => { /* … */ inv.success("…"); }
-        Some("add")  => { let name = it.next().unwrap_or(""); /* … */ }
-        _ => inv.error("用法: /mymod <list|add>"),
+ctx.server().register_command_enum("kit_action", &[("give", 0), ("list", 1)])?;
+```
+
+运行时会变的用 **soft enum**：
+
+```rust
+// 先注册成空的
+ctx.server().register_command_soft_enum("kit_names", &[])?;
+
+// 之后随时刷新
+ctx.server().update_command_soft_enum("kit_names", SoftEnumOp::Set, &["新手", "建筑"])?;
+```
+
+::: tip 为什么必须有 soft enum
+基岩版的命令树在玩家进服时下发一次，之后**不能重新注册命令**。soft enum 是唯一能在运行时改变客户端补全内容的机制。
+
+所以模式是：命令一次注册定死，变化的部分放进 soft enum。新建一个世界不需要重启服务器，刷新 soft enum 就出现在补全里了。
+:::
+
+## 权限
+
+```rust
+pub enum CommandPermission { Any = 0, GameDirectors = 1, Admin = 2, Host = 3, Owner = 4 }
+```
+
+引擎层的粗粒度门禁。细的自己在处理函数里判：
+
+```rust
+.register(|inv| {
+    if !是管理员(&inv.origin.name) {
+        inv.error("§c权限不足");
+        return;
     }
-}
-```
-
-> ✅ 进阶：类型化参数（坐标、目标选择器、枚举等参数类型）与多重载注册已可用——`/mymod add <玩家> <数量>` 这类签名可以直接声明、由引擎解析并给出补全提示。用法见 [Command 参考的"参数化命令构建"](/api/command)。
-
-## 注册时机与生命周期
-
-- **在 `on_enable` 里注册**。Bedrock 无法注销命令，因此命令本体会存活到服务器关闭；模组禁用/卸载后，加载器把该命令"静音"（执行时返回不可用错误），重新启用时自动重绑。
-- 同名命令重复注册会失败，返回 `Err` 正常处理即可。
-
-## 拦截别人的命令
-
-想在**任意**命令执行前后做点什么（审计、拦截），不用注册命令，订阅命令事件即可：
-
-```rust
-server.subscribe_event("ExecutingCommandEvent", EventPriority::Normal, move |ev| {
-    logger.info(&format!("即将执行: {}", ev.snbt()));
-    // 需要拦截时: ev.cancel();
+    // …
 })?;
 ```
+
+::: tip 控制台专属命令怎么做
+把权限设成 `Owner`，或者在处理函数里检查 `origin` 是不是控制台。
+
+授权类命令建议**只允许控制台执行**：如果管理员能给别人授权，那任何一个被误授权的账号都能把权限扩散出去，而且没有回滚点。控制台是唯一不依赖数据库状态就能拿到的入口，把它当信任根，最坏情况下权限表整个写坏也能恢复。
+:::
+
+## 老接口
+
+没有参数的单条命令，用 `register_command` 就够：
+
+```rust
+ctx.server().register_command("ping", "测试", CommandPermission::Any, |inv| {
+    inv.success("pong");
+})?;
+```
+
+拿到的是整行原文，没有客户端补全。有参数就换 `CommandBuilder`。
+
+## 拦别人的命令
+
+订 `ExecutingCommandEvent`，见 [事件](/guide/events)。注意它只报玩家发起的命令。

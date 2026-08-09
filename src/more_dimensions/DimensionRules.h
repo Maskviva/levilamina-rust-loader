@@ -27,9 +27,22 @@ namespace more_dimensions
         LiquidFlow    = 8,
         FarmlandDecay = 9,
         Ride          = 10,
+        /**
+         * 活塞把方块推**过地皮边界**。
+         *
+         * 和 `PistonPush` 是两件事，别混：`PistonPush=false` 是整个维度里活塞
+         * 搬不动任何方块；`PistonCrossPlot=false` 是地皮内部照常推、跨界才拦。
+         * 两条都设时任意一条禁止就推不动。
+         *
+         * 需要 `PlotConfine::setPlotGrid` 注册过网格才有意义；没有网格的维度
+         * 这一条恒等于放行。
+         */
+        PistonCrossPlot = 11,
+        /** 实体越过地皮边界（玩家和载人的载具不受此限，见 PlotConfine.cpp）。 */
+        EntityCrossPlot = 12,
     };
 
-    inline constexpr int kDimRuleCount = 11;
+    inline constexpr int kDimRuleCount = 13;
 
     void setDimensionRule(int dimension, int rule, bool allow);
     bool getDimensionRule(int dimension, int rule, bool* outAllow);

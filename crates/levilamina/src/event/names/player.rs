@@ -7,6 +7,18 @@
 
 pub const PLAYER_JOIN: &str = "PlayerJoinEvent";
 pub const PLAYER_CONNECT: &str = "PlayerConnectEvent";
+/// 玩家发言，**可取消**。
+///
+/// # 这个常量以前不存在
+///
+/// 本文件顶上的模块注释拿 `names::PLAYER_CHAT` 当例子，crate 顶层 `lib.rs`
+/// 的示例代码订的也是聊天事件 —— 但常量本身一直没写。也就是说照着文档写
+/// `names::PLAYER_CHAT` 的人会撞上一个编译错误，只能自己回去翻源码，
+/// 或者改用裸字符串。文档承诺过的名字必须存在，所以补上。
+///
+/// 载荷：`{name, message, _player}`。改 `message` 字段即可改写发言内容
+/// （见 [`crate::event::EventRef::set_value`]），`cancel()` 则整条拦下。
+pub const PLAYER_CHAT: &str = "PlayerChatEvent";
 pub const PLAYER_DISCONNECT: &str = "PlayerDisconnectEvent"; // NOT cancellable
 pub const PLAYER_DIE: &str = "PlayerDieEvent";
 pub const PLAYER_RESPAWN: &str = "PlayerRespawnEvent"; // NOT cancellable
@@ -37,8 +49,38 @@ pub const PLAYER_PICK_UP_ITEM: &str = "PlayerPickUpItemEvent";
 pub const PLAYER_DROP_ITEM: &str = "PlayerDropItemEvent";
 pub const PLAYER_USE_ITEM: &str = "PlayerUseItemEvent";
 pub const PLAYER_INTERACT_BLOCK: &str = "PlayerInteractBlockEvent";
-pub const PLAYER_DESTROYING_BLOCK: &str = "PlayerDestroyingBlockEvent";
+/// 玩家破坏方块，**可取消**。
+///
+/// # 没有 `PlayerDestroyingBlockEvent`
+///
+/// 这里以前还有一个 `PLAYER_DESTROYING_BLOCK = "PlayerDestroyingBlockEvent"`，
+/// 摆在这份「已对着固定版本的 LeviLamina 头文件核实过」的列表里。它不存在 ——
+/// 不是拼错，是 LeviLamina 从来没有这个事件。`subscribe_event` 对它永远返回
+/// 「unknown or ambiguous event id」。
+///
+/// 直觉来自放置那一对：`PlayerPlacingBlockEvent`（前置、可取消）和
+/// `PlayerPlacedBlockEvent`（后置）确实都存在，于是「破坏也该有 -ing 版本」
+/// 看起来理所当然。破坏不按这个规律：只有一个
+/// `PlayerDestroyBlockEvent final : Cancellable<PlayerLeftClickEvent>`
+/// （`ll/api/event/player/PlayerDestroyBlockEvent.h`），过去式的名字，
+/// 但它就是那个可取消的前置事件。
+///
+/// 所以：**破坏保护订这一个就够了，而且它真的能拦住。**
 pub const PLAYER_DESTROY_BLOCK: &str = "PlayerDestroyBlockEvent";
+/// **桥接 hook 事件，不是 LL 总线事件。不可取消。**
+///
+/// 玩家**开始**挖一个方块时触发（`GameMode::startDestroyBlock`），比
+/// [`PLAYER_DESTROY_BLOCK`]（挖完才发）早一步。
+///
+/// 这一步的时机是留给「自动换工具」这类需求的：回调是同步派发、且发生在
+/// 原函数之前，所以在回调里切快捷栏槽位，破坏逻辑读到的就是换好的那把工具。
+/// 想拦破坏请订 [`PLAYER_DESTROY_BLOCK`]，那个才可取消。
+///
+/// C++ 侧早就实现并在发这个事件了（`hooks/DestroyEvents.cpp`），只是 Rust
+/// 这边一直没给常量 —— 写好了没人知道，等于没写。
+///
+/// 载荷：`{x, y, z, face, _player}`。
+pub const PLAYER_START_DESTROY_BLOCK: &str = "PlayerStartDestroyBlockEvent";
 /// Pre-event (cancellable); the post-event is [`PLAYER_PLACED_BLOCK`].
 pub const PLAYER_PLACING_BLOCK: &str = "PlayerPlacingBlockEvent";
 pub const PLAYER_PLACED_BLOCK: &str = "PlayerPlacedBlockEvent";
@@ -180,3 +222,36 @@ pub const PLAYER_STEP_ON_PRESSURE_PLATE: &str = "PlayerStepOnPressurePlateEvent"
 /// Payload: `{x, y, z, dim, target, _player}` — `x/y/z` is the **pushed
 /// entity's** position, because that is where the permission question applies.
 pub const PLAYER_PUSH_ENTITY: &str = "PlayerPushEntityEvent";
+
+/// **Bridge-hook event, not an LL bus event.** A player's game mode is about
+/// to change, and it **can be cancelled** (reply `{"cancelled":true}`).
+///
+/// Backed by `hooks/GameModeEvent.cpp`, which hooks
+/// `Player::$setPlayerGameType` — the funnel every mode change goes through:
+/// `/gamemode`, the default-gametype catch-up, the post-death restore, and any
+/// plugin's own call.
+///
+/// # Why applying a mode on world entry is not enforcement
+///
+/// Setting the mode when a player enters a world covers exactly that instant.
+/// A `/gamemode creative` typed one second later is never questioned. An
+/// enforcement that only holds at the entrance is a suggestion.
+///
+/// # Cancelling does not fight itself
+///
+/// A subscriber that refuses a change will usually set the mode itself
+/// afterwards. That call comes back through the same hook, but its target is by
+/// construction an allowed mode, so the subscriber lets it through. The loader
+/// also guards against re-entering the dispatch from inside a callback: a
+/// nested change is passed straight through, since the subscriber is the one
+/// that asked for it.
+///
+/// Payload: `{x, y, z, dim, from, to, _player}`. `from`/`to` are `::GameType`
+/// integers **verbatim**: `-1` undefined, `0` survival, `1` creative,
+/// `2` adventure, `5` default, `6` spectator. They are not renumbered — a
+/// private numbering drifts from the engine, and the way that drift shows up is
+/// "spectator is disallowed and players are still in spectator".
+///
+/// No event is dispatched when `from == to`; the engine re-sets the current
+/// mode on every respawn and dimension change.
+pub const PLAYER_CHANGE_GAME_MODE: &str = "PlayerChangeGameModeEvent";

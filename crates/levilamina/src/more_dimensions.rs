@@ -372,6 +372,15 @@ pub enum DimensionRule {
     FarmlandDecay = 9,
     /// 乘坐载具 / 骑乘生物
     Ride = 10,
+    /// 活塞把方块推**过地皮边界**。
+    ///
+    /// 和 [`DimensionRule::PistonPush`] 是两件事：那个是整维度关掉活塞搬运，
+    /// 这个是地皮内部照常推、跨界才拦。两条都设时任意一条禁止就推不动。
+    ///
+    /// 需要先用 [`set_plot_grid`] 注册网格，否则恒等于放行。
+    PistonCrossPlot = 11,
+    /// 实体越过地皮边界。玩家和**载人的**载具永远不受此限。
+    EntityCrossPlot = 12,
 }
 
 impl DimensionRule {
@@ -387,6 +396,8 @@ impl DimensionRule {
         DimensionRule::LiquidFlow,
         DimensionRule::FarmlandDecay,
         DimensionRule::Ride,
+        DimensionRule::PistonCrossPlot,
+        DimensionRule::EntityCrossPlot,
     ];
 }
 
@@ -429,5 +440,110 @@ mod dimension_rule_tests {
         assert_eq!(LiquidFlow as i32, 8);
         assert_eq!(FarmlandDecay as i32, 9);
         assert_eq!(Ride as i32, 10);
+        assert_eq!(PistonCrossPlot as i32, 11);
+        assert_eq!(EntityCrossPlot as i32, 12);
+    }
+
+    /// ALL 必须真的是全部：漏一条的表现是「表单里有这个开关、推规则时不推它」，
+    /// 也就是服主关掉了但完全没生效。
+    #[test]
+    fn all_covers_every_discriminant() {
+        let mut seen: Vec<i32> = super::DimensionRule::ALL
+            .iter()
+            .map(|r| *r as i32)
+            .collect();
+        seen.sort_unstable();
+        assert_eq!(seen, (0..=12).collect::<Vec<_>>());
+    }
+}
+
+// ─────────────────────── 地皮边界约束的数据推送 ───────────────────────
+
+/// 一块地皮的合并标记，推给 loader 用。
+///
+/// `mask` 的位序和插件侧 `Plot::merged` 的下标一致：
+/// `1 = 北(z-)`、`2 = 东(x+)`、`4 = 南(z+)`、`8 = 西(x-)`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlotMerge {
+    pub x: i32,
+    pub z: i32,
+    pub mask: u32,
+}
+
+impl PlotMerge {
+    pub const NORTH: u32 = 1;
+    pub const EAST: u32 = 2;
+    pub const SOUTH: u32 = 4;
+    pub const WEST: u32 = 8;
+
+    /// 由四个方向的布尔值组装。`dirs` 的下标就是 0=N 1=E 2=S 3=W。
+    pub fn from_dirs(x: i32, z: i32, dirs: [bool; 4]) -> PlotMerge {
+        let mut mask = 0u32;
+        for (i, on) in dirs.iter().enumerate() {
+            if *on {
+                mask |= 1u32 << i;
+            }
+        }
+        PlotMerge { x, z, mask }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.mask == 0
+    }
+}
+
+/// 注册（或更新）一个维度的地皮网格。
+///
+/// 这是 [`DimensionRule::PistonCrossPlot`] / [`DimensionRule::EntityCrossPlot`]
+/// 的前提：没有网格的维度，那两条规则恒等于放行。
+///
+/// `plot_size <= 0` 等价于 [`clear_plot_grid`]。几何变化会清掉合并表的缓存，
+/// 所以改了网格之后要重推一次 [`set_plot_merges`]。
+///
+/// **几何必须和世界实际使用的一致。** loader 侧用它复刻插件的 `owning_plot`；
+/// 对不上不会表现成「判错一格」，而是「主人能手放方块、活塞就是推不过去」。
+pub fn set_plot_grid(dimension: i32, plot_size: i32, road_width: i32) {
+    unsafe { (rt().api.md_set_plot_grid)(dimension, plot_size, road_width) }
+}
+
+/// 清掉一个维度的网格和合并表。世界被删除、或者改成不用地皮模型时调。
+pub fn clear_plot_grid(dimension: i32) {
+    unsafe { (rt().api.md_clear_plot_grid)(dimension) }
+}
+
+/// **整表替换**一个维度的合并标记。
+///
+/// 只需要传真的有标记的地皮 —— 没有条目的按「四面都没合并」处理，所以几千块
+/// 地皮、十来处合并的服务器，这张表也就几十个整数。
+///
+/// 整表替换而不是增量：增量要求两侧对「现在有哪些条目」的看法永远一致，而拆分
+/// 是先清邻居再存自己、中途可能失败的。一旦对不上，增量再也没有自愈的机会。
+pub fn set_plot_merges(dimension: i32, merges: &[PlotMerge]) {
+    // 摊平成三元组。空表也要发 —— 「这个世界现在一处合并都没有」是有效信息，
+    // 跳过发送等于让 loader 一直用着上一次的表。
+    let mut flat: Vec<i32> = Vec::with_capacity(merges.len() * 3);
+    for m in merges {
+        if m.is_empty() {
+            continue;
+        }
+        flat.push(m.x);
+        flat.push(m.z);
+        flat.push(m.mask as i32);
+    }
+    let count = (flat.len() / 3) as i32;
+    unsafe { (rt().api.md_set_plot_merges)(dimension, flat.as_ptr(), count) }
+}
+
+#[cfg(test)]
+mod plot_merge_tests {
+    use super::PlotMerge;
+
+    #[test]
+    fn mask_bits_match_the_direction_indices() {
+        let m = PlotMerge::from_dirs(1, 2, [true, false, true, false]);
+        assert_eq!(m.mask, PlotMerge::NORTH | PlotMerge::SOUTH);
+        let all = PlotMerge::from_dirs(0, 0, [true; 4]);
+        assert_eq!(all.mask, 0b1111);
+        assert!(PlotMerge::from_dirs(0, 0, [false; 4]).is_empty());
     }
 }

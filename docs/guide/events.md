@@ -1,140 +1,182 @@
 # 事件
 
-事件是模组感知游戏世界的主通道：玩家聊天、方块破坏、服务器启动……全部以事件形式广播。本页讲**今天可用**的订阅、读取（含结构化字段与玩家句柄）、改写与取消；完整的事件清单、事件 id 常量、以及规划中的逐事件强类型访问器见 [Event 参考](/api/event)。
-
-## 订阅一个事件
-
-在 `on_enable` 里通过 `Server::subscribe_event` 按事件 id 订阅：
+一个接口订阅一切：LeviLamina 总线上的事件、加载器自己钩出来的事件、别的模组发布的事件。
 
 ```rust
-fn on_enable(&mut self, ctx: &ModContext) -> Result<()> {
-    let logger = ctx.logger();
-    ctx.server()
-        .subscribe_event("PlayerJoinEvent", EventPriority::Normal, move |ev| {
-            logger.info(&format!("[join] {}", ev.snbt()));
-        })?
-        .forget();
-    Ok(())
+use levilamina::prelude::*;
+use levilamina::event::names;
+
+ctx.server()
+    .subscribe_event(names::PLAYER_JOIN, EventPriority::Normal, |ev| {
+        if let Some(p) = ev.player() {
+            Player::broadcast(&format!("§e{} 加入了游戏", p.name));
+        }
+    })?
+    .forget();
+```
+
+## 三步
+
+### 1. 挑事件名
+
+用 `levilamina::event::names` 里的常量。上游改名时你会得到编译错误而不是运行时 `Err`。
+
+常量表全在 [Event API](/api/event#事件名常量表)。
+
+不在表里的事件直接传字符串——**支持唯一后缀匹配**，写 `"PlayerAddExperienceEvent"` 就行，不用写全 `ll::event::PlayerAddExperienceEvent`。
+
+服务器里 `/levirs events` 能列出当前全部可订阅的 id。
+
+### 2. 挑优先级
+
+```rust
+pub enum EventPriority { Highest = 0, High = 1, Normal = 2, Low = 3, Lowest = 4 }
+```
+
+数字小的先跑。
+
+| 你想干什么 | 用哪档 |
+| --- | --- |
+| 拦截 / 否决（保护类模组） | `Highest` |
+| 修改内容 | `High` |
+| 一般业务 | `Normal` |
+| 观察最终结果、统计 | `Lowest` |
+
+### 3. 别忘了 forget
+
+```rust
+ctx.server().subscribe_event(...)?.forget();
+```
+
+不接返回值的话 `Listener` 当场被 drop，订阅立刻失效。
+
+## 读事件数据
+
+回调收到 `&mut EventRef`。数据是 SNBT，两种读法：
+
+```rust
+// 直接看原文（调试时最有用）
+println!("{}", ev.snbt());
+
+// 结构化
+let v = ev.value()?;
+let x = v.get("x").and_then(|n| n.as_i64()).unwrap_or(0);
+let name = v.path("_player.name").and_then(|n| n.as_str()).unwrap_or("?");
+```
+
+::: tip 不知道载荷长什么样就先打印
+```rust
+ctx.server().subscribe_event("SomeEvent", EventPriority::Lowest, |ev| {
+    println!("{}", ev.snbt());
+})?.forget();
+```
+比翻头文件快。
+:::
+
+### 玩家身份
+
+大部分玩家相关的事件里，桥接会拼一个 `_player` 块进去：
+
+```rust
+if let Some(id) = ev.player() {
+    println!("{} {} {}", id.name, id.xuid, id.uuid);
+}
+
+// 或者直接拿句柄
+if let Some(p) = ev.player_handle() {
+    p.send_message("嗨")?;
+    let (x, y, z) = p.get_actor()?.pos()?;
 }
 ```
 
-三个参数：
+`player_handle()` 优先按 XUID 构造，拿不到才退回名字。
 
-1. **事件 id** —— 支持**唯一后缀匹配**：写 `"PlayerChatEvent"` 就够了，不必写出带命名空间的全名。进游戏执行 `/levirs events` 可导出你服务器上当前存在的全部事件 id（包括其他模组发布的事件）。
-2. **优先级** —— `Highest` / `High` / `Normal` / `Low` / `Lowest`，决定多个监听器之间的调用顺序。
-3. **回调** —— 收到 `EventRef`，仅在服务器线程上被调用。
-
-`Server::list_events()` 也能在代码里拿到同一份事件 id 列表。
-
-## 监听器的生命周期
-
-`subscribe_event` 返回一个 `Listener`，RAII 语义：
+## 改事件数据
 
 ```rust
-let l = server.subscribe_event("PlayerChatEvent", EventPriority::Normal, |ev| { /* … */ })?;
+ctx.server().subscribe_event(names::PLAYER_CHAT, EventPriority::High, |ev| {
+    let Ok(mut v) = ev.value() else { return };
 
-// 方式一：存进模组结构体，模组禁用/析构时自动退订
-self.chat_listener = Some(l);
-
-// 方式二：整个模组生命周期都要听 → forget
-// l.forget();
-```
-
-丢弃 `Listener` 即退订；`.forget()` 让它存活到模组卸载，卸载时加载器会强制解除本模组全部监听，不会有残留。
-
-## 读取事件数据
-
-事件数据以 **SNBT 文本**（NBT 的字符串表示，形似 JSON）交给回调，也能解析成结构化的 [NbtValue](/api/nbt)：
-
-```rust
-server.subscribe_event("PlayerChatEvent", EventPriority::Normal, move |ev| {
-    let id = ev.id();       // 实际匹配到的完整事件 id
-    let data = ev.snbt();   // 事件全部字段的 SNBT 文本
-    logger.info(&format!("{id}: {data}"));
-
-    // 或结构化读取某个字段
-    if let Ok(v) = ev.value() {
-        if let Some(msg) = v.get("message").and_then(|m| m.as_str()) {
-            logger.info(&format!("聊天内容: {msg}"));
+    if let Some(msg) = v.get("message").and_then(|m| m.as_str()) {
+        if msg.contains("垃圾话") {
+            v.insert("message", NbtValue::String("[已屏蔽]".into()));
+            ev.set_value(&v);
         }
     }
-})?;
+})?.forget();
 ```
 
-想知道某个事件里有哪些字段，最快的办法就是先订阅它、把 `snbt()` 打进日志看一眼。
+`value()` 会带上本次回调里已经写过的改动，所以多次「读→改→写」能串起来。
 
-### 直接取出事件里的玩家
-
-玩家类事件和命令事件的回调，不用自己从 SNBT 里抠玩家名——`player()` 给出 `{name, xuid, uuid}` 身份，`player_handle()` 更进一步解析成可直接调用的 [Player](/api/player) 句柄：
+## 取消事件
 
 ```rust
-server.subscribe_event("ExecutedCommandEvent", EventPriority::Normal, move |ev| {
-    // 控制台/面板发起的命令没有玩家，player() 返回 None
-    if let Some(who) = ev.player() {           // PlayerIdentity { name, xuid, uuid }
-        let cmd = ev.value().ok()
-            .and_then(|v| v.get("command").and_then(|c| c.as_str()).map(String::from))
-            .unwrap_or_default();
-        logger.info(&format!("{} 执行了 /{}", who.name, cmd));
+ctx.server().subscribe_event(names::PLAYER_DESTROY_BLOCK, EventPriority::Highest, |ev| {
+    let Ok(v) = ev.value() else { return };
+    let (Some(x), Some(z)) = (
+        v.get("x").and_then(|n| n.as_i64()),
+        v.get("z").and_then(|n| n.as_i64()),
+    ) else { return };
+
+    if 在保护区内(x, z) {
+        ev.cancel();
+        if let Some(p) = ev.player_handle() {
+            let _ = p.tell("§c这里不能挖", MessageType::Tip);
+        }
     }
-    // 需要进一步操作该玩家时，用 ev.player_handle() 拿到 Player 句柄
-})?;
+})?.forget();
 ```
 
-> 🧩 规划中的进一步升级：按事件类型给出**逐事件**强类型访问器（如 `chat_event.message()` 直接返回可改写的字符串、`block_changed.new_block()` 直接给出 `Block` 句柄），省去 `value().get("字段名")` 这一步。设计细节见 [Event 参考的"字段访问"一节](/api/event)。
+对不可取消的事件调 `cancel()` 不报错也不生效。哪些能取消见 [常量表](/api/event#事件名常量表)。
 
-## 修改与取消事件
+## 写保护类模组的常见坑
 
-- **取消**：对可取消事件（参考页各表的"可取消"列），调用 `ev.cancel()`，行为就不会发生——例如取消 `PlayerChatEvent`，这条聊天不会广播。
-- **改写（文本）**：`ev.set_snbt(new_snbt)` 用修改后的 SNBT 覆盖事件数据。
-- **改写（结构化）**：`ev.value()` 拿到 `NbtValue`，改完再 `ev.set_value(&v)` 写回；因为 `value()` 已包含尚未提交的改动，`value → 改 → set_value` 可以链式叠加。
+::: warning 破坏保护只有一个事件
+没有 `PlayerDestroyingBlockEvent`。放置那一对确实是 `PlayerPlacingBlockEvent`（前置）+ `PlayerPlacedBlockEvent`（后置），但破坏只有一个 `PlayerDestroyBlockEvent`——过去式的名字，但它就是可取消的前置事件。
+:::
+
+::: warning 别漏了「不需要点击」的干扰方式
+一个既不能破坏、不能放置、不能交互、不能攻击的访客，照样可以：
+
+- **撞开实体**（`PlayerPushEntityEvent`）——把羊全赶出羊圈，或者把船顶进虚空
+- **丢东西**（`PlayerDropItemEvent`）——掉落物刷屏、卡实体上限
+- **从背包界面拖出物品**——和 Q 键是两条不同的代码路径，`PlayerDropItemEvent` 两条都钩了
+
+全部锁死之后剩下的就是这几样。
+:::
+
+::: warning 命令事件只报玩家
+`ExecutingCommandEvent` **不上报**控制台、命令方块和其他非玩家来源。这是故意的——拦掉控制台会把服主锁在自己服务器外面。
+:::
+
+## 高频事件
+
+`HopperTransferEvent`、移动类事件一秒能触发几千次。
+
+- 回调里**不要打日志**
+- 不要做 I/O、不要开数据库事务
+- 先做最便宜的判断早退
 
 ```rust
-server.subscribe_event("PlayerChatEvent", EventPriority::Normal, move |ev| {
-    if ev.snbt().contains("bad_word") {
-        ev.cancel();                 // 直接拦下这条聊天
-    }
-})?;
+ctx.server().subscribe_event(names::HOPPER_TRANSFER, EventPriority::Lowest, |ev| {
+    let Ok(v) = ev.value() else { return };
+    let Some(x) = v.get("x").and_then(|n| n.as_i64()) else { return };
 
-// 或改写字段而非取消
-server.subscribe_event("PlayerChatEvent", EventPriority::Normal, move |ev| {
-    if let Ok(mut v) = ev.value() {
-        v.insert("message", NbtValue::String("(已过滤)".into()));
-        ev.set_value(&v);
-    }
-})?;
+    if !我关心的坐标(x) { return; }      // 早退
+
+    // 到这里才做贵的事
+})?.forget();
 ```
 
-> 注意：只有原生带**可变字段**的事件（如 `PlayerChatEvent` 的消息、`ActorHurtEvent` 的伤害值）改写才会真正生效——桥接对所有事件统一尝试写回，实际是否生效取决于该事件原生是否支持反序列化。哪些事件哪些字段可写，见 [Event 参考](/api/event)。
+## 别的模组的事件
 
-## 常用事件速查
-
-完整清单在 [Event 参考](/api/event)，这里列最常用的一批（都可用后缀名直接订阅）：
-
-| 事件 id | 触发时机 | 可取消 |
-| --- | --- | :---: |
-| `PlayerJoinEvent` | 玩家加入服务器 | ✅ |
-| `PlayerDisconnectEvent` | 玩家断开连接 | — |
-| `PlayerChatEvent` | 玩家发送聊天 | ✅ |
-| `PlayerDieEvent` | 玩家死亡 | — |
-| `PlayerDestroyBlockEvent` | 玩家破坏方块 | ✅ |
-| `PlayerPlacingBlockEvent` | 玩家放置方块（前置，可取消；后置为 `PlayerPlacedBlockEvent`） | ✅ |
-| `PlayerInteractBlockEvent` | 玩家与方块交互 | ✅ |
-| `ActorHurtEvent` | 实体受伤 | ✅ |
-| `MobDieEvent` | 生物死亡 | — |
-| `ServerStartedEvent` | 服务器启动完成 | — |
-| `ExecutingCommandEvent` | 任意命令执行前 | ✅ |
-
-## 完整示例：进服欢迎
+`subscribe_event` 订的是引擎总线。模组之间自己约定的消息走 [Bus](/api/bus)：
 
 ```rust
-fn on_enable(&mut self, ctx: &ModContext) -> Result<()> {
-    let server = ctx.server();
-    ctx.server()
-        .subscribe_event("PlayerJoinEvent", EventPriority::Normal, move |_ev| {
-            // 写操作走命令是当前最通用的模式,见「命令」一页
-            let _ = server.execute_command("say 欢迎新玩家加入!");
-        })?
-        .forget();
-    Ok(())
-}
+use levilamina::bus;
+
+bus::subscribe("plot:enter", |_topic, payload| {
+    println!("{payload}");
+    false
+})?.forget();
 ```

@@ -1,96 +1,119 @@
 #!/usr/bin/env python3
-"""check_abi_sync.py — three-way ABI consistency check.
+"""
+Verify the three hand-synchronised ABI sites agree, in ORDER:
 
-Compares, in order:
-  1. field order of the LeviRsApi struct in src/LeviRsAbi.h  (source of truth)
-  2. the /* name */ initializer comments in src/bridge/ApiTable.cpp
-  3. the `pub name:` fields of LeviRsApi in crates/levilamina-sys/src/lib.rs
+  1. src/LeviRsAbi.h            -- the C struct field declarations
+  2. src/bridge/ApiTable.cpp    -- the positional initialiser
+  3. crates/levilamina-sys/src/api.rs -- the Rust #[repr(C)] mirror
 
-A mismatch in any pair is an ABI break that the compilers cannot catch
-(C++ positional aggregate init + Rust's independent mirror), so run this
-before every commit that touches the ABI:
+The table is positional: a field inserted in one place but not the others
+makes Rust call a neighbouring function pointer with no diagnostic at all,
+which is why this check exists.
 
-    python3 tools/check_abi_sync.py
+Also enforces the conditional-block invariant: the md_* fields must be gated
+on `not(feature = "client")` in Rust, NOT on `feature = "more_dimensions"`.
+The C++ server build compiles the md block in unconditionally (xmake.lua:
+`more_dims = not is_client`), so a Rust struct that omits it would misplace
+every field that follows.
+
+Usage: python3 tools/check_abi_sync.py [repo_root]
+Exit code 0 = in sync.
 """
 import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+root = Path(sys.argv[1] if len(sys.argv) > 1 else '.')
 
 
-def header_fields() -> list[str]:
-    text = (ROOT / "src/LeviRsAbi.h").read_text(encoding="utf-8")
-    m = re.search(r"typedef struct LeviRsApi\s*\{(.*?)\} LeviRsApi;", text, re.S)
-    if not m:
-        sys.exit("LeviRsAbi.h: cannot find `typedef struct LeviRsApi { … }`")
-    body = m.group(1)
-    # strip comments
-    body = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
-    body = re.sub(r"//[^\n]*", "", body)
-    # Drop nested type declarations that live inside the struct but are NOT
-    # v-table fields: the LLMoney `enum class` and the `typedef bool
-    # (*LLMoneyCallback)(...)`. Without this the typedef's `(*name)(` shape is
-    # picked up as a phantom function-pointer field and shifts everything.
-    body = re.sub(r"^\s*enum\s+class\s+\w+\s*\{[^}]*\}\s*;", "", body, flags=re.M)
-    body = re.sub(r"^\s*typedef\b.*?;", "", body, flags=re.M | re.S)
-    fields = []
-    # data members: `uint32_t abi_version;` / `uint32_t struct_size;`
-    for mm in re.finditer(r"^\s*uint32_t\s+(\w+);", body, re.M):
-        fields.append(mm.group(1))
-    # function pointers: `ret (*name)(args);`  (may span lines)
-    for mm in re.finditer(r"\(\s*\*\s*(\w+)\s*\)\s*\(", body):
-        fields.append(mm.group(1))
-    return fields
+def fail(msg):
+    print(f'FAIL: {msg}')
+    sys.exit(1)
 
 
-def table_fields() -> list[str]:
-    text = (ROOT / "src/bridge/ApiTable.cpp").read_text(encoding="utf-8")
-    m = re.search(r"const LeviRsApi gApi\s*\{(.*?)\};", text, re.S)
-    if not m:
-        sys.exit("ApiTable.cpp: cannot find `const LeviRsApi gApi{ … };`")
-    fields = []
-    for mm in re.finditer(r"/\*\s*([\w]+)\s*\*/", m.group(1)):
-        fields.append(mm.group(1))
-    return fields
+# ---- 1. C header: function-pointer fields of LeviRsApi ----------------------
+hdr = (root / 'src/LeviRsAbi.h').read_text(encoding='utf-8')
+m = re.search(r'typedef struct LeviRsApi\b.*?\n\{(.*?)\n\} LeviRsApi;', hdr, re.S)
+if not m:
+    fail('could not locate the LeviRsApi struct body in LeviRsAbi.h')
+body = m.group(1)
+
+# strip comments so names inside prose don't register as fields
+body_nc = re.sub(r'/\*.*?\*/', '', body, flags=re.S)
+body_nc = re.sub(r'//[^\n]*', '', body_nc)
+
+# `RET (*name)(args);` -- the only shape used for table slots.
+# Skip nested `typedef RET (*Name)(...)` declarations (e.g. LLMoneyCallback at
+# LeviRsAbi.h:701): they live inside the struct body but are types, not slots.
+c_fields = []
+for line in body_nc.splitlines():
+    if 'typedef' in line:
+        continue
+    c_fields += re.findall(r'\(\s*\*\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\s*\(', line)
+
+# ---- 2. ApiTable.cpp: the positional initialiser ----------------------------
+tbl = (root / 'src/bridge/ApiTable.cpp').read_text(encoding='utf-8')
+# every `/* name */ value,` comment marks one slot, in order
+t_fields = re.findall(r'/\*\s*([a-z_][a-z0-9_]*)\s*\*/', tbl)
+
+# ---- 3. api.rs: the Rust mirror --------------------------------------------
+rs = (root / 'crates/levilamina-sys/src/api.rs').read_text(encoding='utf-8')
+m = re.search(r'pub struct LeviRsApi \{(.*?)\n\}', rs, re.S)
+if not m:
+    fail('could not locate `pub struct LeviRsApi` in api.rs')
+rs_body = m.group(1)
+rs_body_nc = re.sub(r'///[^\n]*', '', rs_body)
+rs_body_nc = re.sub(r'//[^\n]*', '', rs_body_nc)
+rs_fields = re.findall(r'pub\s+([a-z_][a-z0-9_]*)\s*:', rs_body_nc)
+
+# the two scalars lead the struct in Rust but are not function pointers
+for scalar in ('abi_version', 'struct_size'):
+    if scalar in rs_fields:
+        rs_fields.remove(scalar)
+# ApiTable.cpp does not carry /* */ markers for the two scalars either
+t_fields = [f for f in t_fields if f not in ('abi_version', 'struct_size')]
+
+problems = []
 
 
-def sys_fields() -> list[str]:
-    text = (ROOT / "crates/levilamina-sys/src/lib.rs").read_text(encoding="utf-8")
-    m = re.search(r"pub struct LeviRsApi \{(.*?)\n\}", text, re.S)
-    if not m:
-        sys.exit("levilamina-sys: cannot find `pub struct LeviRsApi { … }`")
-    fields = []
-    for mm in re.finditer(r"^\s*pub\s+(\w+)\s*:", m.group(1), re.M):
-        fields.append(mm.group(1))
-    # Rust escapes the `mod` keyword as mod_ — normalize back for comparison.
-    return [f[:-1] if f.endswith("_") and f != "struct_size" else f for f in fields]
-
-
-def diff(name_a: str, a: list[str], name_b: str, b: list[str]) -> bool:
+def compare(a_name, a, b_name, b):
     if a == b:
-        print(f"OK   {name_a} == {name_b}  ({len(a)} fields)")
-        return True
-    print(f"FAIL {name_a} != {name_b}")
-    for i in range(max(len(a), len(b))):
-        fa = a[i] if i < len(a) else "<missing>"
-        fb = b[i] if i < len(b) else "<missing>"
-        marker = "   " if fa == fb else ">> "
-        print(f"  {marker}{i:3d}  {fa:<28} | {fb}")
-    return False
+        return
+    for i, (x, y) in enumerate(zip(a, b)):
+        if x != y:
+            problems.append(
+                f'{a_name} vs {b_name}: first divergence at slot {i}: '
+                f'{a_name}={x!r} but {b_name}={y!r}')
+            return
+    longer, shorter = (a_name, b_name) if len(a) > len(b) else (b_name, a_name)
+    extra = a[len(b):] if len(a) > len(b) else b[len(a):]
+    problems.append(f'{longer} has {len(extra)} extra trailing slot(s) '
+                    f'{shorter} lacks: {extra}')
 
 
-def main() -> int:
-    hdr = header_fields()
-    tbl = table_fields()
-    rs = sys_fields()
-    ok = diff("LeviRsAbi.h", hdr, "ApiTable.cpp", tbl)
-    ok &= diff("LeviRsAbi.h", hdr, "levilamina-sys", rs)
-    if ok:
-        print(f"\nABI v-table in sync across all three definitions ({len(hdr)} fields).")
-        return 0
-    return 1
+compare('LeviRsAbi.h', c_fields, 'ApiTable.cpp', t_fields)
+compare('LeviRsAbi.h', c_fields, 'api.rs', rs_fields)
 
+# ---- 4. conditional-block invariant ----------------------------------------
+for line_no, line in enumerate(rs_body.splitlines(), 1):
+    if 'cfg(feature = "more_dimensions")' in line:
+        problems.append(
+            f'api.rs LeviRsApi body line {line_no}: md fields must be gated on '
+            f'`cfg(not(feature = "client"))`, not `cfg(feature = '
+            f'"more_dimensions")` -- the C++ server build always compiles the '
+            f'md block in, so gating on the cargo feature truncates the struct '
+            f'and misaligns every field after it.')
 
-if __name__ == "__main__":
-    sys.exit(main())
+# ---- 5. nothing may follow the conditional blocks except the common tail ----
+tail = body.split('#endif')[-1]
+if 'Common additive tail' not in body:
+    problems.append('LeviRsAbi.h: the "Common additive tail" marker is gone; '
+                    'new slots have nowhere safe to go.')
+
+if problems:
+    for p in problems:
+        print('FAIL:', p)
+    sys.exit(1)
+
+print(f'ABI in sync: {len(c_fields)} function-table slots across all 3 sites.')
+print(f'  last 6 slots: {c_fields[-6:]}')

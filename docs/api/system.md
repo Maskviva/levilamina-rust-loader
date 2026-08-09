@@ -1,35 +1,41 @@
-# System — 文件 / 网络 / 进程 / 系统信息
+# System — 系统信息
 
-> 状态：✅ 已支持（系统信息与环境变量）。文件 / 网络 / 进程刻意不桥接，直接用 Rust 标准库与生态。
->
-> **接口来源说明**：这四块里只有"系统信息"对应 LeviLamina 真实提供的工具函数；文件、网络、进程都**没有**对应的原生/LeviLamina 封装——这些本来就是操作系统层面的通用需求，Rust 标准库和生态已经解决得很好，不需要、也不应该再造一层桥接。
+主机的操作系统信息和环境变量。**全部线程安全**。
 
-## SystemInfo — 系统信息
+```rust
+use levilamina::system;
 
-> 唯一真正原生的一块。**接口来源**：`ll::utils::sys_utils`（`ll/api/utils/SystemUtils.h`）。
+println!("{} {}", system::os_name()?, system::os_version()?);
+println!("区域设置 {}", system::locale()?);
 
-| API | 作用 | 原生对应 |
+let t = system::local_time()?;
+println!("{}-{:02}-{:02} {:02}:{:02}:{:02}", t.year, t.month, t.day, t.hour, t.minute, t.second);
+```
+
+| API | 返回 | 说明 |
 | --- | --- | --- |
-| `SystemInfo::os_name()` | 操作系统名称 | `sys_utils::getSystemName` |
-| `SystemInfo::os_version()` | 操作系统版本 | `sys_utils::getSystemVersion` |
-| `SystemInfo::locale()` | 系统语言/区域代码 | `sys_utils::getSystemLocaleCode` |
-| `SystemInfo::local_time()` | 本地时间（含毫秒） | `sys_utils::getLocalTime` |
-| `SystemInfo::env(name)` | 读取环境变量 | `sys_utils::getEnvironmentVariable` |
-| `SystemInfo::set_env(name, value)` | 设置环境变量 | `sys_utils::setEnvironmentVariable` |
-| `SystemInfo::is_wine()` | 是否运行在 Wine 兼容层下 | `sys_utils::isWine` |
+| `system::os_name()` | `Result<String>` | 如 `Windows` |
+| `system::os_version()` | `Result<String>` | 系统版本 |
+| `system::locale()` | `Result<String>` | 如 `zh_CN` |
+| `system::local_time()` | `Result<LocalTime>` | 本地时间 |
+| `system::env(name)` | `String` | 环境变量，未设置返回空串 |
+| `system::set_env(name, value)` | `Result<()>` | 设置环境变量 |
+| `system::is_wine()` | `bool` | 是不是跑在 Wine 下 |
 
-> 这些在 crate 里是 `system` 模块的自由函数（如 `system::os_name()`、`system::env(name)`），本页 `SystemInfo::` 前缀只作分组标识。
+```rust
+pub struct LocalTime {
+    pub year: i32, pub month: i32, pub day: i32,
+    pub hour: i32, pub minute: i32, pub second: i32,
+    pub ms: i32,
+}
+```
 
-> CPU / 内存占用这类进程级指标，`sys_utils` 里没有找到对应封装；真要做，会是 Rust 侧用 `sysinfo` 这类 crate 实现，同样不需要桥接参与。
+::: tip is_wine 有什么用
+Linux 上用 Wine 跑 BDS 的服务器不少。某些和文件路径、时间精度相关的行为在 Wine 下不一样，需要区别对待时用它。
+:::
 
-## File / FileSystem — 文件与目录
+## 没有的东西
 
-> **不对应原生/LeviLamina 类**。文件读写就是标准库 `std::fs`（`read_to_string`/`write`/`create_dir_all`/`remove_file` 等）能直接做的事，跟游戏引擎毫无关系，不需要经过桥接，模组里直接 `use std::fs` 即可。
+文件读写、进程管理、网络请求**都没有封装**——用 Rust 标准库和你喜欢的 crate 就行，它们在这个环境里正常工作。
 
-## Network — 网络请求
-
-> **不对应原生/LeviLamina 类**。HTTP 请求、WebSocket 这类需求，用 Rust 生态的 `reqwest`（HTTP）、`tokio-tungstenite`（WebSocket）等 crate 直接实现；发起请求本身不需要接触游戏引擎，同样不经过桥接。真正需要桥接的，是请求结果要**影响游戏世界**时的那一步——这时候用 [Scheduler](/api/scheduler) 的 `Scheduler::run`，把请求完成后的处理逻辑投递回服务器线程执行。
-
-## SystemCall — 系统调用与子进程
-
-> **不对应原生/LeviLamina 类**。执行系统命令、启动子进程，用标准库 `std::process::Command` 直接做。同样：只有"子进程的输出要拿来影响游戏"这一步需要经过 `Scheduler::run` 跨回服务器线程，发起调用本身不需要桥接参与。
+唯一要注意的是线程规则：后台干活可以，回来碰世界必须走 [`schedule`](/api/scheduler)。

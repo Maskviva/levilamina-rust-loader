@@ -1,180 +1,193 @@
-# Event — 事件
+# Event — 事件监听
 
-> 状态：✅ **已支持**。订阅走 `Server::subscribe_event`，回调收到 `EventRef`。事件数据以 **SNBT** 提供（`snbt()`），也可解析为结构化的 [NbtValue](/api/nbt)（`value()`）；可改写（`set_snbt` / `set_value`）、可取消（`cancel`）。玩家类事件与命令事件的回调还能直接取出玩家身份（`player()` / `player_handle()`）。
->
-> 按事件类型给出**逐事件强类型访问器**（如 `chat.message() -> &mut String`、`block_changed.new_block() -> Block`）仍属 🧩 规划——见下方「字段访问」一节，那里按真实原生事件类核实了目标设计。
-
-事件是模组感知游戏的主通道。订阅**仅限服务器线程**。`subscribe_event` 返回一个 `Listener`：丢弃它即自动退订（RAII），调用 `.forget()` 让其存活到模组卸载。回调收到 `&mut EventRef`，可读取数据、改写数据、或取消（对可取消事件）。
-
-## 订阅 API
-
-| API | 作用 |
-| --- | --- |
-| `Server::subscribe_event(id, priority, handler) -> Result<Listener>` | 按事件 id 订阅；`id` 支持**唯一后缀匹配**（写 `"PlayerChatEvent"` 即可，不必带命名空间全名）。id 未知或后缀有歧义时返回 `Err` |
-| `Server::list_events() -> Vec<String>` | 列出当前已注册的全部事件 id（含其他模组发布的事件）。等价于进游戏执行 `/levirs events` |
+一个订阅接口打天下：给事件名和优先级，拿回一个 RAII 句柄。事件数据是 SNBT，可以读、可以改写、可以取消。
 
 ```rust
 use levilamina::prelude::*;
+use levilamina::event::names;
 
-fn on_enable(&mut self, ctx: &ModContext) -> Result<()> {
-    let logger = ctx.logger();
-    ctx.server()
-        .subscribe_event("PlayerChatEvent", EventPriority::Normal, move |ev| {
-            logger.info(&format!("{}: {}", ev.id(), ev.snbt()));
-        })?
-        .forget();
-    Ok(())
-}
+ctx.server()
+    .subscribe_event(names::PLAYER_CHAT, EventPriority::Normal, |ev| {
+        if let Some(p) = ev.player() {
+            println!("{} 说：{}", p.name, ev.snbt());
+        }
+    })?
+    .forget();
 ```
 
-> 没有 `Event::player_join(..)` 这类「每个事件一个具名方法」的封装层——**所有事件都通过同一个 `subscribe_event` 按 id 订阅**。下表的事件名只是常见 id 的清单，不是独立的 API。稳定书写这些 id 可用 `levilamina::event::names` 模块里的常量（如 `names::PLAYER_CHAT`），避免手写字符串拼错。
-
-## `EventRef` —— 回调参数
-
-回调收到 `&mut EventRef`，方法如下：
-
-| 方法 | 返回 | 说明 |
-| --- | --- | --- |
-| `id()` | `&str` | 实际匹配到的完整事件 id（如 `ll::event::PlayerChatEvent`） |
-| `snbt()` | `&str` | 事件全部字段的 SNBT 文本（NBT 的字符串表示，形似 JSON） |
-| `value()` | `Result<NbtValue>` | 把事件数据解析成结构化的 [NbtValue](/api/nbt)；已包含尚未提交的改写，故 `value → 改 → set_value` 可链式组合 |
-| `player()` | `Option<PlayerIdentity>` | 若桥接为该事件附加了 `_player` 身份块，取出 `{name, xuid, uuid}` |
-| `player_handle()` | `Option<Player>` | 在 `player()` 基础上解析成可调用的 [Player](/api/player) 句柄（优先按 xuid，退回按名字） |
-| `set_snbt(s)` | — | 用改写后的 SNBT **整体覆盖**事件数据，桥接会反序列化回事件 |
-| `set_value(&v)` | — | 结构化写回：序列化 `NbtValue` 后作为新数据暂存 |
-| `cancel()` | — | 取消可取消事件（结构化置 `cancelled = 1b`；解析失败时退回文本替换 `cancelled:0b → 1b`） |
-
-> **改写何时真正生效**：只有原生实现了 `deserialize(CompoundTag const&)` 的事件（带**可变字段**者，如 `PlayerChatEvent` 的消息、`ActorHurtEvent` 的伤害）写回才会作用到引擎。桥接对所有事件统一尝试写回，实际是否生效取决于该事件原生是否支持——`set_snbt` / `set_value` / `cancel` 对不支持的事件是无害的空操作。
-
-### `player()` / `player_handle()` 从哪来
-
-桥接在序列化事件时，如果事件的 CompoundTag 里嵌有一个**在线玩家**的指针，就会拼进一个 `_player` 块（`{name, xuid, uuid}`）。玩家类事件普遍带这个块；**命令事件**（`ExecutingCommandEvent` / `ExecutedCommandEvent`）由桥接显式补上执行者的 `_player` 与 `command` 字段。因此这两类事件里，直接 `ev.player_handle()` 就能拿到执行者句柄，`ev.value().get("command")` 能取到命令文本，不必自己从 origin 解析。
+## 订阅
 
 ```rust
-server.subscribe_event("ExecutedCommandEvent", EventPriority::Normal, move |ev| {
-    // 控制台/面板发起的命令没有 _player，player() 返回 None，可据此跳过
-    if let Some(who) = ev.player() {           // who: PlayerIdentity { name, xuid, uuid }
-        let cmd = ev.value().ok()
-            .and_then(|v| v.get("command").and_then(|c| c.as_str()).map(String::from))
-            .unwrap_or_default();
-        logger.info(&format!("{} 执行了 /{}", who.name, cmd));
-        // 需要进一步操作该玩家时，用 ev.player_handle() 拿到 Player 句柄
-    }
-})?;
+Server::subscribe_event(
+    &self,
+    event_id: &str,
+    priority: EventPriority,
+    handler: impl FnMut(&mut EventRef) + 'static,
+) -> Result<Listener>
 ```
 
-## 事件清单
+`EventPriority`：`Highest=0`、`High=1`、`Normal=2`、`Low=3`、`Lowest=4`。数值小的先跑。
 
-以下是可直接用后缀名订阅的常见事件；「可取消」列指该事件在原生是否可取消（对不可取消事件调用 `cancel()` 是空操作）。完整列表以你服务器上的 `/levirs events` 输出为准。
+想拦截别人的操作就用 `Highest`；只想观察最终结果用 `Lowest`。
+
+### 事件名可以只写后缀
+
+引擎里的完整 id 长这样：`ll::event::PlayerChatEvent`。桥接支持**唯一后缀匹配**，所以直接写 `"PlayerChatEvent"` 就行。
+
+只要后缀在全服注册的事件里唯一就能解析。不唯一会返回 `Err`，并且日志里会打印出所有相近的名字——所以名字写错不会静默失败。
+
+::: tip 优先用 names 里的常量
+`levilamina::event::names` 下有全部已核实的事件名常量。用常量的好处是上游改名时你会得到一个编译错误，而不是一个运行时的 `Err`。
+:::
+
+### Listener 的生命周期
+
+```rust
+let listener = ctx.server().subscribe_event(...)?;
+// listener 被 drop → 自动退订
+
+listener.forget();   // 活到模组卸载
+```
+
+99% 的情况是在 `on_enable` 里注册然后 `.forget()`。需要动态开关的才留着句柄。
+
+::: warning 不要写 `subscribe_event(...)?;` 就完事
+不接收返回值的话，`Listener` 当场就被 drop 了，订阅**立刻失效**。编译器会给一个 `unused_must_use` 警告，别忽略它。
+:::
+
+## 在回调里能做什么
+
+回调收到 `&mut EventRef`：
+
+| API | 说明 |
+| --- | --- |
+| `ev.id() -> &str` | 完整事件 id |
+| `ev.snbt() -> &str` | 事件数据的 SNBT 原文 |
+| `ev.value() -> Result<NbtValue>` | 解析成结构化的值（含尚未提交的改动） |
+| `ev.player() -> Option<PlayerIdentity>` | 事件携带的玩家身份 `{name, xuid, uuid}` |
+| `ev.player_handle() -> Option<Player>` | 直接拿一个 `Player` 句柄 |
+| `ev.set_snbt(snbt)` | 整体替换事件数据 |
+| `ev.set_value(&nbt)` | 结构化写回 |
+| `ev.cancel()` | 取消（仅对可取消事件有效） |
+
+### 改一个字段
+
+```rust
+ctx.server().subscribe_event(names::PLAYER_CHAT, EventPriority::High, |ev| {
+    let Ok(mut v) = ev.value() else { return };
+    if let Some(msg) = v.get("message").and_then(|m| m.as_str()) {
+        if msg.contains("敏感词") {
+            v.insert("message", NbtValue::String("[已屏蔽]".into()));
+            ev.set_value(&v);
+        }
+    }
+})?.forget();
+```
+
+`value()` 会带上本次回调里已经写过的改动，所以 `读 → 改 → 写` 可以串起来。
+
+### 取消
+
+```rust
+ctx.server().subscribe_event(names::PLAYER_DESTROY_BLOCK, EventPriority::Highest, |ev| {
+    if 不该让他挖 {
+        ev.cancel();
+    }
+})?.forget();
+```
+
+对不可取消的事件调 `cancel()` 不会报错，但也不会有效果——下面的表里标了哪些能取消。
+
+## 事件名常量表
+
+全部在 `levilamina::event::names` 下，也按域分成了 `names::player` / `names::mob` / `names::server` 三个子模块（两种写法等价）。
 
 ### 玩家事件
 
-| 事件 id | 触发时机 | 可取消 |
-| --- | --- | :---: |
-| `PlayerConnectEvent` | 玩家开始连接 | ✅ |
-| `PlayerJoinEvent` | 玩家加入服务器 | ✅ |
-| `PlayerDisconnectEvent` | 玩家断开连接 | — |
-| `PlayerRespawnEvent` | 玩家重生 | — |
-| `PlayerChatEvent` | 玩家发送聊天 | ✅ |
-| `PlayerDieEvent` | 玩家死亡 | — |
-| `PlayerAttackEvent` | 玩家攻击 | ✅ |
-| `PlayerDestroyBlockEvent` | 玩家破坏方块 | ✅ |
-| `PlayerPlacingBlockEvent` | 玩家放置方块（前置） | ✅ |
-| `PlayerPlacedBlockEvent` | 玩家放置方块（后置） | — |
-| `PlayerInteractBlockEvent` | 玩家与方块交互 | ✅ |
-| `PlayerUseItemEvent` | 玩家使用物品 | ✅ |
-| `PlayerPickUpItemEvent` | 玩家拾取物品 | ✅ |
-| `PlayerJumpEvent` | 玩家跳跃 | — |
-| `PlayerSneakingEvent` | 玩家开始潜行（前置） | ✅ |
-| `PlayerSneakedEvent` | 玩家结束潜行（后置） | ✅ |
-| `PlayerSprintingEvent` | 玩家开始疾跑 | — |
-| `PlayerSprintedEvent` | 玩家结束疾跑 | — |
-| `PlayerSwingEvent` | 玩家挥手 | — |
-| `PlayerAddExperienceEvent` | 玩家获得经验 | ✅ |
-| `PlayerChangePermEvent` | 玩家权限变更 | ✅ |
+| 常量 | 事件 id | 可取消 | 备注 |
+| --- | --- | :---: | --- |
+| `PLAYER_JOIN` | `PlayerJoinEvent` | ✅ | |
+| `PLAYER_CONNECT` | `PlayerConnectEvent` | ✅ | |
+| `PLAYER_CHAT` | `PlayerChatEvent` | ✅ | 载荷 `{name, message, _player}`，改 `message` 即改写发言 |
+| `PLAYER_DISCONNECT` | `PlayerDisconnectEvent` | ❌ | |
+| `PLAYER_DIE` | `PlayerDieEvent` | ✅ | |
+| `PLAYER_RESPAWN` | `PlayerRespawnEvent` | ❌ | |
+| `PLAYER_JUMP` | `PlayerJumpEvent` | ❌ | |
+| `PLAYER_SPRINT` | `PlayerSprintEvent` | ❌ | |
+| `PLAYER_SWING` | `PlayerSwingEvent` | ❌ | |
+| `PLAYER_ATTACK` | `PlayerAttackEvent` | ✅ | |
+| `PLAYER_PICK_UP_ITEM` | `PlayerPickUpItemEvent` | ✅ | |
+| `PLAYER_USE_ITEM` | `PlayerUseItemEvent` | ✅ | |
+| `PLAYER_INTERACT_BLOCK` | `PlayerInteractBlockEvent` | ✅ | |
+| `PLAYER_DESTROY_BLOCK` | `PlayerDestroyBlockEvent` | ✅ | **破坏保护订这一个** |
+| `PLAYER_PLACING_BLOCK` | `PlayerPlacingBlockEvent` | ✅ | 前置 |
+| `PLAYER_PLACED_BLOCK` | `PlayerPlacedBlockEvent` | ❌ | 后置 |
+| `PLAYER_SNEAKING` | `PlayerSneakingEvent` | ✅ | 前置 |
+| `PLAYER_SNEAKED` | `PlayerSneakedEvent` | ❌ | 后置 |
 
-> **前置/后置成对事件**：原生把「正在发生（可取消）」与「已经发生（不可取消）」拆成两个类（如 `PlayerPlacingBlockEvent` / `PlayerPlacedBlockEvent`），本表按真实类名一一列出，不合并。`PlayerClickEvent` / `PlayerRightClickEvent` / `PlayerLeftClickEvent` 是**抽象分类基类**（攻击、放置、交互等由它们派生），不独立派发，故不在清单内。潜行的 `PlayerSneakingEvent` / `PlayerSneakedEvent` 类型上均继承自可取消基类 `PlayerSneakEvent`；取消「已结束潜行」的后置事件是否有效取决于引擎，不要依赖。
+::: warning 没有 `PlayerDestroyingBlockEvent`
+放置那一对是 `PlayerPlacingBlockEvent`（前置可取消）+ `PlayerPlacedBlockEvent`（后置），于是「破坏也该有 -ing 版本」看起来很自然。**破坏不按这个规律**：只有一个 `PlayerDestroyBlockEvent`，过去式的名字，但它就是那个可取消的前置事件。订它就够了，而且真的拦得住。
+:::
 
-### 实体事件
+### 玩家事件（桥接 hook 实现）
 
-| 事件 id | 触发时机 | 可取消 |
-| --- | --- | :---: |
-| `ActorHurtEvent` | 实体受伤 | ✅ |
-| `MobHurtEvent` | 生物受伤 | ✅ |
-| `MobDieEvent` | 生物死亡 | — |
-| `SpawningMobEvent` | 生物即将生成（前置） | ✅ |
-| `SpawnedMobEvent` | 生物已生成（后置） | — |
+下面这些**不是 LeviLamina 总线上的事件**，是加载器自己在 C++ 侧挂钩子做出来的。用法完全一样。
 
-### 世界事件
+| 常量 | 事件 id | 可取消 | 载荷 / 备注 |
+| --- | --- | :---: | --- |
+| `PLAYER_DROP_ITEM` | `PlayerDropItemEvent` | ✅ | `{x,y,z,dim,item,randomly,viaInventoryUi,_player}`。同时钩了 Q 键丢弃和背包界面拖出 |
+| `PLAYER_START_DESTROY_BLOCK` | `PlayerStartDestroyBlockEvent` | ❌ | `{x,y,z,face,_player}`。**开始**挖时触发，比 `PLAYER_DESTROY_BLOCK` 早。同步派发且在原函数之前，所以在回调里切快捷栏，破坏逻辑读到的就是换好的工具 |
+| `PLAYER_CHANGE_DIMENSION` | `PlayerChangeDimensionEvent` | ✅ | |
+| `PLAYER_OPEN_CONTAINER` | `PlayerOpenContainerEvent` | ✅ | |
+| `PLAYER_USE_ITEM_ON` | `PlayerUseItemOnEvent` | ✅ | 对方块用物品 |
+| `PLAYER_INTERACT_ENTITY` | `PlayerInteractEntityEvent` | ✅ | |
+| `PLAYER_RIDE` | `PlayerRideEvent` | ✅ | |
+| `PLAYER_SPAWN_PROJECTILE` | `PlayerSpawnProjectileEvent` | ✅ | |
+| `PLAYER_STEP_ON_PRESSURE_PLATE` | `PlayerStepOnPressurePlateEvent` | ✅ | |
+| `PLAYER_PUSH_ENTITY` | `PlayerPushEntityEvent` | ✅ | 撞开实体。**唯一一种不需要点击的干扰方式**——做保护类模组时容易漏 |
+| `PLAYER_CHANGE_GAME_MODE` | `PlayerChangeGameModeEvent` | ✅ | |
 
-| 事件 id | 触发时机 | 可取消 |
-| --- | --- | :---: |
-| `BlockChangedEvent` | 方块变化 | — |
-| `FireSpreadEvent` | 火焰蔓延 | ✅ |
-| `ServerLevelTickEvent` | 每个存档 tick | — |
+### 生物事件
 
-### 命令事件
+| 常量 | 事件 id |
+| --- | --- |
+| `SPAWNING_MOB` | `SpawningMobEvent` |
+| `SPAWNED_MOB` | `SpawnedMobEvent` |
+| `MOB_HURT` | `MobHurtEvent` |
+| `MOB_DIE` | `MobDieEvent` |
+| `ACTOR_HURT` | `ActorHurtEvent` |
+| `FIRE_SPREAD` | `FireSpreadEvent` |
 
-| 事件 id | 触发时机 | 可取消 |
-| --- | --- | :---: |
-| `ExecutingCommandEvent` | 命令执行前 | ✅ |
-| `ExecutedCommandEvent` | 命令执行后 | — |
+### 服务端与命令事件
 
-> 命令事件的回调载荷由桥接构造，含 `command`（命令文本）与执行者的 `_player` 块；控制台/面板发起的命令没有 `_player`（`player_handle()` 返回 `None`），据此可只记录玩家指令。这两个事件在原生只派发给 typed listener、且类型位于内联命名空间 `ll::event::inline command` 下，桥接已处理好 id 匹配，你直接用后缀名 `"ExecutedCommandEvent"` 订阅即可。
+| 常量 | 事件 id | 可取消 | 备注 |
+| --- | --- | :---: | --- |
+| `EXECUTING_COMMAND` | `ExecutingCommandEvent` | ✅ | 载荷 `{name, command, _player}`，`command` 是原始输入行（带斜杠） |
+| `EXECUTED_COMMAND` | `ExecutedCommandEvent` | ❌ | 已经执行完了 |
+| `CONSOLE_OUTPUTTING` | `ConsoleOutputtingEvent` | ✅ | |
+| `CONSOLE_OUTPUTTED` | `ConsoleOutputtedEvent` | ❌ | |
+| `SERVER_STARTED` | `ServerStartedEvent` | ❌ | |
+| `SERVER_STOPPING` | `ServerStoppingEvent` | ❌ | |
+| `HOPPER_TRANSFER` | `HopperTransferEvent` | ❌ | 桥接 hook。载荷 `{x,y,z,slot,item,count,old_item,old_count}` |
 
-### 服务器与控制台事件
+::: warning `EXECUTING_COMMAND` 只报玩家发起的命令
+控制台、命令方块和其他非玩家来源**完全不上报**。这是故意的：拦掉控制台会把服主锁在自己服务器外面，且没有恢复路径。
+:::
 
-| 事件 id | 触发时机 | 可取消 |
-| --- | --- | :---: |
-| `ServerStartedEvent` | 服务器启动完成 | — |
-| `ServerStoppingEvent` | 服务器开始停止 | — |
-| `ConsoleOutputtingEvent` | 控制台即将输出（前置） | ✅ |
-| `ConsoleOutputtedEvent` | 控制台已输出（后置） | — |
+::: warning `HOPPER_TRANSFER` 没有维度字段
+`HopperBlockActor::setItem` 那一层拿不到 `BlockSource`。要区分维度就按自己注册时记下的坐标认。另外它是高频事件，回调里别做重活。
+:::
 
-> `ServerStartedEvent` 有个时序细节：若模组在服务器**已启动之后**才加载，这个事件可能已经派发过、你订阅不到。需要「服务器已在运行」这一状态时，配合轮询 `Server::gaming_status()` 作兜底更稳妥。
+## 事件名不在表里怎么办
 
-## 事件 id 常量
-
-`levilamina::event::names` 模块提供了核实过的 id 常量，用它们代替手写字符串可避免拼写错误，也不受上游类名改动影响：
+表里是已核实的常量，不是全集。任何 LeviLamina 总线上的事件都能订，直接传字符串即可：
 
 ```rust
-use levilamina::event::names;
-
-server.subscribe_event(names::PLAYER_CHAT, EventPriority::Normal, |ev| { /* … */ })?;
+ctx.server().subscribe_event("PlayerAddExperienceEvent", EventPriority::Normal, |ev| {
+    println!("{}", ev.snbt());
+})?.forget();
 ```
 
-常量覆盖上表各事件（如 `PLAYER_CHAT`、`PLAYER_JOIN`、`ACTOR_HURT`、`EXECUTING_COMMAND`、`EXECUTED_COMMAND`、`SERVER_STARTED`、`SERVER_STOPPING` 等）。
+服务器里输入 `/levirs events` 可以列出当前全部可订阅的事件 id。
 
-## 字段访问（进阶设计，🧩 规划）
-
-> **接口来源**：以下按真实的原生事件类核实（`ll/api/event/` 下各事件头文件），说明具名事件的载荷本来带有哪些具体字段、哪些字段真正可写。**当前**已可通过 `value()` 拿到这些字段的结构化 `NbtValue`；下面描述的是把它们进一步包成**逐事件强类型访问器**的目标。
-
-原生事件不是无结构的大 SNBT 袋子——每个事件类都有自己的具名字段访问器，且都能追溯到一个共同的「给我这个事件的主体」入口：
-
-| 事件所属家族 | 取主体的访问器 | 返回类型 |
-| --- | --- | --- |
-| 玩家事件（`PlayerEvent` 及其派生） | `.self()` | `Player&`（`ServerPlayerEvent` 派生的进一步细化为 `ServerPlayer&`） |
-| 实体事件（`ActorEvent` 及其派生） | `.self()` | `Actor&` |
-| 世界事件（`WorldEvent` 及其派生） | `.blockSource()` | `BlockSource&`（该维度的方块访问入口） |
-
-在此之上，具体事件再各自附加自己的字段，例如：
-
-| 事件 | 附加字段访问器 | 返回类型 | 可写？ |
-| --- | --- | --- | --- |
-| `PlayerChatEvent` | `.message()` | `std::string&` | ✅ 可改写聊天内容 |
-| `ActorHurtEvent` | `.source()` / `.damage()` | `ActorDamageSource const&` / `float&` | 伤害数值 ✅ 可改 |
-| `PlayerDestroyBlockEvent` | `.pos()` | `BlockPos const&` | 只读 |
-| `PlayerPlacingBlockEvent`（放置前，可取消） | `.pos()` / `.face()` | `BlockPos const&` / `uchar const&` | 只读 |
-| `PlayerPlacedBlockEvent`（放置后） | `.pos()` / `.placedBlock()` | `BlockPos const&` / `Block const&` | 只读 |
-| `BlockChangedEvent` | `.layer()` / `.previousBlock()` / `.newBlock()` / `.pos()` | `uint const&` / `Block const&` ×2 / `BlockPos const&` | 只读 |
-
-目标设计是让 Rust 侧的 `EventRef` 按事件具体类型给出对应的强类型访问器——如 `chat_event.message()` 返回可改写的 `&mut String`、`block_changed_event.new_block()` 直接给出 [Block](/api/block) 句柄——省去手工解析 SNBT 字段名。这仰赖两件已打好基础的事：[Nbt](/api/nbt) 层的结构化解析（`value()` 已用它），以及 [Player](/api/player)/[Entity](/api/entity)/[Block](/api/block) 页已确定的句柄方法面（`player_handle()` 已用它）。
-
-## 相关类型
-
-| 类型 | 说明 |
-| --- | --- |
-| `EventPriority` | 优先级：`Highest` / `High` / `Normal` / `Low` / `Lowest`，决定多监听器间的调用顺序 |
-| `Listener` | 订阅句柄；丢弃即退订，`.forget()` 使其常驻到模组卸载 |
-| `EventRef`（回调参数） | 事件数据引用：`id()`、`snbt()`、`value()`、`player()`、`player_handle()`、`set_snbt()`、`set_value()`、`cancel()` |
-| `PlayerIdentity` | `player()` 的返回：`{ name, xuid, uuid }` 三个 `String` 字段 |
+不知道某个事件的载荷长什么样，就先订上打印 `ev.snbt()` 看一眼——这比翻头文件快。

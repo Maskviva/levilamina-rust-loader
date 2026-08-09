@@ -28,6 +28,7 @@
 #include "mc/world/level/PlayerSleepStatus.h"
 #include "mc/world/level/biome/Biome.h"
 #include "mc/world/level/block/Block.h"
+#include "mc/world/level/block/BlockChangeContext.h"
 #include "mc/world/effect/MobEffectInstance.h"
 #include "mc/world/phys/HitResult.h"
 #include "mc/world/item/enchanting/ItemEnchants.h"
@@ -323,12 +324,16 @@ namespace levi_rs::bridge
         try { v = std::stoi(std::string{value}); } catch (...) { return false; }
         auto opt = block.setState(*state, v);
         if (!opt) return false;
-        // Write back — BlockSource has no public setBlock(Block) variant that
-        // takes a permutation directly; the canonical path is the setblock
-        // command. For now, return success but rely on the engine's tile
-        // entity update path; if the block needs explicit placement, the
-        // caller should use the block_action API with a block spec.
-        return true;
+        // ── 这里以前是个假成功 ──
+        // 老实现算完新的 permutation 之后直接 `return true`，注释说「BlockSource
+        // 没有公开的 setBlock(Block) 重载」。**有的**：`setBlock(pos, block,
+        // updateFlags, syncMsg, changeContext)` 就是公开的虚函数（BlockSource.h）。
+        //
+        // 后果不是「少一个功能」，是**报告成功但世界没变**：调用方看到 Ok(())，
+        // 方块纹丝不动，而且没有任何日志。任何靠它还原朝向的代码都会在
+        // 「代码看着没问题、方块就是不转」上耗掉一整天。
+        return bs->setBlock(
+            BlockPos{x, y, z}, *opt, 3, nullptr, BlockChangeContext::commandsChange());
     }
 
     bool api_block_get_collision_shape(

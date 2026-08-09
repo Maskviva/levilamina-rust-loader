@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::client::{task_trampoline, Client, GamingStatus, TaskOnce};
+use crate::client::{task_trampoline, Client, GamingStatus, TaskId, TaskOnce};
 use crate::error::Result;
 use crate::ffi::call_out_str;
 use crate::player::Player;
@@ -39,29 +39,51 @@ impl Client {
     }
 
     /// Thread-safe: marshals work onto the client thread.
-    pub fn schedule<F>(&self, f: F)
+    ///
+    /// The task is owned by this mod and dropped if the mod unloads first.
+    pub fn schedule<F>(&self, f: F) -> TaskId
     where
         F: FnOnce() + Send + 'static,
     {
-        let boxed: Box<TaskOnce> = Box::new(Some(Box::new(f)));
-        unsafe {
-            (rt().api.schedule)(task_trampoline, Box::into_raw(boxed).cast());
+        let boxed: *mut TaskOnce = Box::into_raw(Box::new(Some(Box::new(f))));
+        let id = unsafe { (rt().api.schedule_for)(rt().handle, task_trampoline, boxed.cast()) };
+        if id == 0 {
+            unsafe { drop(Box::from_raw(boxed)) };
         }
+        TaskId(id)
     }
 
     /// Thread-safe.
-    pub fn schedule_after<F>(&self, delay: Duration, f: F)
+    pub fn schedule_after<F>(&self, delay: Duration, f: F) -> TaskId
     where
         F: FnOnce() + Send + 'static,
     {
-        let boxed: Box<TaskOnce> = Box::new(Some(Box::new(f)));
-        unsafe {
-            (rt().api.schedule_after)(
+        let boxed: *mut TaskOnce = Box::into_raw(Box::new(Some(Box::new(f))));
+        let id = unsafe {
+            (rt().api.schedule_after_for)(
+                rt().handle,
                 task_trampoline,
-                Box::into_raw(boxed).cast(),
+                boxed.cast(),
                 delay.as_millis() as u64,
-            );
+            )
+        };
+        if id == 0 {
+            unsafe { drop(Box::from_raw(boxed)) };
         }
+        TaskId(id)
+    }
+
+    /// Drop a task this mod scheduled, if it has not run yet. Thread-safe.
+    pub fn cancel_task(&self, id: TaskId) -> bool {
+        if id.0 == 0 {
+            return false;
+        }
+        unsafe { (rt().api.schedule_cancel)(rt().handle, id.0) }
+    }
+
+    /// How many tasks this mod still has queued. Thread-safe.
+    pub fn pending_tasks(&self) -> u32 {
+        unsafe { (rt().api.schedule_pending_count)(rt().handle) }
     }
 
     pub fn current_tick(&self) -> u64 {

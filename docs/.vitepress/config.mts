@@ -3,7 +3,7 @@ import {defineConfig} from 'vitepress'
 export default defineConfig({
     lang: 'zh-CN',
     title: 'levilamina-rs',
-    description: '用 Rust 编写 LeviLamina 模组：入门指南、API 参考（对标 LSE 分类）与深入设计',
+    description: '用 Rust 编写 LeviLamina 模组：入门指南、完整 API 参考与深入设计',
     themeConfig: {
         nav: [
             {text: '初级开发', link: '/guide/getting-started'},
@@ -40,47 +40,57 @@ export default defineConfig({
                     ],
                 },
                 {
-                    text: '事件 Event',
+                    text: '事件与网络',
                     items: [
                         {text: 'Event — 事件监听', link: '/api/event'},
-                        {text: 'Packet — 抓包/改包', link: '/api/packet'},
+                        {text: 'Packet — 抓包 / 改包', link: '/api/packet'},
                     ],
                 },
                 {
-                    text: '游戏 Game',
+                    text: '游戏对象',
                     items: [
-                        {text: 'Player — 玩家对象', link: '/api/player'},
-                        {text: 'Entity — 实体对象', link: '/api/entity'},
-                        {text: 'Block — 方块对象', link: '/api/block'},
-                        {text: 'Item — 物品对象', link: '/api/item'},
-                        {text: 'Container — 容器对象', link: '/api/container'},
+                        {text: 'Player — 玩家', link: '/api/player'},
+                        {text: 'Actor / Entity — 实体', link: '/api/entity'},
+                        {text: 'Block — 方块', link: '/api/block'},
+                        {text: 'Item — 物品', link: '/api/item'},
+                        {text: 'Container — 容器', link: '/api/container'},
                         {text: 'ScoreBoard — 计分板', link: '/api/scoreboard'},
-                        {text: 'Objects — 其他对象', link: '/api/objects'},
-                        {text: 'World — 世界/扫描', link: '/api/world'},
-                        {text: 'Command — 命令', link: '/api/command'},
-                        {text: 'Server — 服务端', link: '/api/server'},
                     ],
                 },
                 {
-                    text: '数据 Data',
+                    text: '世界与服务端',
+                    items: [
+                        {text: 'Server — 服务端', link: '/api/server'},
+                        {text: 'World — 世界扫描', link: '/api/world'},
+                        {text: 'Command — 命令', link: '/api/command'},
+                        {text: 'Dimensions — 自定义维度', link: '/api/dimensions'},
+                        {text: 'SimPlayer — 模拟玩家', link: '/api/sim'},
+                    ],
+                },
+                {
+                    text: '跨模组',
+                    items: [
+                        {text: 'Bus — 事件总线', link: '/api/bus'},
+                        {text: 'Service — 服务注册', link: '/api/service'},
+                    ],
+                },
+                {
+                    text: '数据',
                     items: [
                         {text: 'Nbt — NBT 读写', link: '/api/nbt'},
-                        {text: 'Data — 配置/数据库/经济', link: '/api/data'},
-                        {text: 'Money — 经济 (LegacyMoney)', link: '/api/money'},
+                        {text: 'Data — 持久化', link: '/api/data'},
+                        {text: 'Money — 经济', link: '/api/money'},
                     ],
                 },
                 {
-                    text: '界面与系统',
+                    text: '界面与运行时',
                     items: [
                         {text: 'Gui — 表单', link: '/api/gui'},
-                        {text: 'System — 文件/网络/进程', link: '/api/system'},
-                    ],
-                },
-                {
-                    text: '运行时',
-                    items: [
                         {text: 'Log — 日志', link: '/api/log'},
                         {text: 'Scheduler — 调度', link: '/api/scheduler'},
+                        {text: 'System — 系统信息', link: '/api/system'},
+                        {text: 'Client — 客户端 API', link: '/api/client'},
+                        {text: 'Objects — 其他类型', link: '/api/objects'},
                     ],
                 },
             ],
@@ -106,5 +116,6 @@ export default defineConfig({
         },
         outline: {level: [2, 3], label: '本页目录'},
         docFooter: {prev: '上一页', next: '下一页'},
+        search: {provider: 'local'},
     },
 })

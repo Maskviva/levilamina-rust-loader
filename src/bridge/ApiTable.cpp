@@ -235,6 +235,33 @@ namespace levi_rs
             /* md_get_dimension_id        */ more_dimensions::bridge::api_md_get_dimension_id,
             /* md_add_plot_dimension      */ more_dimensions::bridge::api_md_add_plot_dimension,
 #endif
+
+            /* ── Common additive tail (after every #ifdef block) ── */
+            /* schedule_for               */ api_schedule_for,
+            /* schedule_after_for         */ api_schedule_after_for,
+            /* schedule_cancel            */ api_schedule_cancel,
+            /* schedule_pending_count     */ api_schedule_pending_count,
+            /* container_refresh          */ api_container_refresh,
+            /* player_send_title          */ api_player_send_title,
+            /* bus_subscribe              */ api_bus_subscribe,
+            /* bus_unsubscribe            */ api_bus_unsubscribe,
+            /* bus_publish                */ api_bus_publish,
+            /* bus_publish_vetoable       */ api_bus_publish_vetoable,
+            /* bus_subscriber_count       */ api_bus_subscriber_count,
+            /* md_set_plot_grid           */ api_md_set_plot_grid,
+            /* md_clear_plot_grid         */ api_md_clear_plot_grid,
+            /* md_set_plot_merges         */ api_md_set_plot_merges,
+            /* service_register           */ api_service_register,
+            /* service_unregister         */ api_service_unregister,
+            /* service_call               */ api_service_call,
+            /* service_list               */ api_service_list,
+
+            /* ── 批量世界编辑（Edit.cpp）── */
+            /* edit_set_block_nbt         */ api_edit_set_block_nbt,
+            /* edit_set_block_states      */ api_edit_set_block_states,
+            /* edit_set_block_entity      */ api_edit_set_block_entity,
+            /* edit_spawn_entity_nbt      */ api_edit_spawn_entity_nbt,
+            /* edit_trace_ray             */ api_edit_trace_ray,
         };
     } // namespace
 
@@ -244,6 +271,18 @@ namespace levi_rs
     {
         void onRustModGone(RustMod* mod)
         {
+            // Scheduler first: a queued task can re-enter any of the
+            // subsystems below, so cut the task source before tearing them
+            // down rather than after.
+            bridge::schedulerOnRustModGone(mod);
+            // Bus second, same reasoning one step removed: another mod
+            // publishing during teardown would otherwise dispatch into this
+            // mod's dylib after we have started dismantling it.
+            bridge::busOnRustModGone(mod);
+            // Services next, for the same reason one step removed: a query
+            // arriving during teardown would otherwise call into this mod's
+            // dylib after we have started dismantling it.
+            bridge::servicesOnRustModGone(mod);
             bridge::commandsOnRustModGone(mod);
             bridge::formsOnRustModGone(mod);
             bridge::kvdbOnRustModGone(mod);

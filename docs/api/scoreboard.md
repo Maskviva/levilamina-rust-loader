@@ -1,80 +1,57 @@
 # ScoreBoard — 计分板
 
-> 状态：✅ 已支持。
->
-> **接口来源**：本页方法对应原生 C++ 类 `Scoreboard`（`mc/world/scores/Scoreboard.h`，服务端实际用的是其子类 `ServerScoreboard`）与 `Objective`（`mc/world/scores/Objective.h`）。入口是 `Level::getScoreboard()`（真实存在的公开虚方法，和取 `Player`/`Block` 走的是同一个 `level` 对象）。命名沿用 LSE 风格（snake_case）。
+分数的身份是**「假玩家名」**——和原版 `/scoreboard players` 用的是同一套命名空间，所以这里做的一切管理员在游戏里看得见、也能手动改。
 
-## 获取
+```rust
+use levilamina::prelude::*;
 
-| API | 作用 | 原生对应 |
-| --- | --- | --- |
-| `Scoreboard::get()` | 获取全局计分板 | `Level::getScoreboard` |
+let sb = Scoreboard::get();
+sb.add_objective("kills", "§c击杀数")?;
+sb.set_display(DisplaySlot::Sidebar, "kills")?;
+sb.add_score("kills", "Steve", 1)?;
+```
 
-## 计分项 Objective
+## 计分项
 
-| API | 作用 | 原生对应 |
-| --- | --- | --- |
-| `Scoreboard::add_objective(name, display_name, criteria?)` | 新建计分项 | `Scoreboard::addObjective`（`criteria` 默认走 `Scoreboard::createObjectiveCriteria`/`DEFAULT_CRITERIA`） |
-| `Scoreboard::get_objective(name)` | 按名获取计分项 | `Scoreboard::getObjective` |
-| `Scoreboard::remove_objective(objective)` | 删除计分项 | `Scoreboard::removeObjective` |
-| `Scoreboard::objective_names()` | 全部计分项的名字 | `Scoreboard::getObjectiveNames` |
-| `Scoreboard::objectives()` | 全部计分项 | `Scoreboard::getObjectives` |
-
-## 分数读写
-
-| API | 作用 | 原生对应 |
-| --- | --- | --- |
-| `objective.player_score(id)` | 读取某目标在该计分项下的分数 | `Objective::getPlayerScore` |
-| `Scoreboard::modify_score(id, objective, value, op)` | 按操作类型（设置/加/减）修改分数，一步到位 | `Scoreboard::modifyPlayerScore`（LeviLamina 自带的便捷封装） |
-| `Scoreboard::reset_player_score(id, objective)` | 清除某目标在该计分项下的分数 | `Scoreboard::resetPlayerScore` |
-| `Scoreboard::id_scores(id)` | 某目标在所有计分项下的分数 | `Scoreboard::getIdScores` |
-| `Scoreboard::scoreboard_id(actor)` | 某实体/玩家对应的计分板 id | `Scoreboard::getScoreboardId` |
-
-## 显示位置
-
-原生三个显示槽位是固定的字符串常量，不是自由文本：
-
-| API | 作用 | 原生对应 |
-| --- | --- | --- |
-| `Scoreboard::SIDEBAR` / `LIST` / `BELOW_NAME` | 三个显示槽位的名字常量 | `Scoreboard::DISPLAY_SLOT_SIDEBAR` / `DISPLAY_SLOT_LIST` / `DISPLAY_SLOT_BELOWNAME` |
-| `Scoreboard::set_display(slot, objective, sort_order?)` | 把计分项显示到指定槽位 | `Scoreboard::setDisplayObjective` |
-| `Scoreboard::clear_display(slot)` | 清空指定显示槽位 | `Scoreboard::clearDisplayObjective` |
-| `Scoreboard::get_display(slot)` | 读取指定槽位当前显示的计分项 | `Scoreboard::getDisplayObjective` |
-| `Scoreboard::display_slot_names()` | 全部显示槽位名字 | `Scoreboard::getDisplayObjectiveSlotNames` |
-| `Scoreboard::display_scores(slot)` | 指定槽位当前显示的全部分数（已按规则过滤） | `Scoreboard::getDisplayInfoFiltered` |
-
-## 分数变化监听
-
-| API | 作用 | 原生对应 |
-| --- | --- | --- |
-| `Scoreboard::add_score_listener(player, objective_name)` | 监听某玩家在某计分项下的分数变化（用于自动刷新客户端显示） | `Scoreboard::addScoreListener` |
-| `Scoreboard::remove_score_listener(player, objective_name)` | 取消监听 | `Scoreboard::removeScoreListener` |
-
-## 附录：其余原生方法
-
-**Scoreboard / Objective / ServerScoreboard**：
-
-| 原生方法 | 作用 |
+| API | 说明 |
 | --- | --- |
-| `createObjectiveCriteria` | 创建一种计分项的评判标准（决定分数如何计算，如是否只读） |
-| `getCriteria` | 按名字查找已创建的评判标准 |
-| `getDisplayInfoSorted` | 按自定义排序函数取指定槽位的分数列表 |
-| `applyPlayerOperation` | 对一批目标批量执行计分板运算符操作（对应 `/scoreboard players operation`） |
-| `clearScoreboardIdentity` | 彻底清除一个计分板身份（含其在所有计分项下的分数） |
-| `getScoreboardIdentityRefs` | 全部已注册的计分板身份引用 |
-| `getTrackedIds` | 全部被追踪的计分板 id |
-| `registerScoreboardIdentity` | 从存档数据注册一个计分板身份 |
-| `Objective::serialize` / `deserialize` | 计分项的存档读写（静态） |
-| `ScoreboardId::INVALID()` | 无效 id 的静态哨兵值 |
+| `sb.add_objective(name, display_name)` | 新建 |
+| `sb.remove_objective(name)` | 删除 |
+| `sb.objectives() -> Vec<Objective>` | 列出全部 |
 
-> `ServerScoreboard` 上还有一批以 `_` 开头的内部方法（如 `_updateScoreTag`、`_clearAllScoreTagsForObjective`），是 Mojang 自己标记为内部的实现细节，不在此列出。
+```rust
+pub struct Objective { pub name: String, pub display_name: String }
+```
 
-## 相关类型
+## 分数
 
-| 类型 | 说明 |
-| --- | --- |
-| `ScoreboardId` | 一个"计分板身份"的引用（玩家或虚拟的"假玩家"条目都算） |
-| `PlayerScoreSetFunction` | 分数运算方式：`Set` / `Add` / `Subtract` |
-| `ObjectiveSortOrder` | 排序方向：`Ascending` / `Descending` |
-| `ObjectiveRenderType` | 显示样式：`Integer`（数字） / `Hearts`（爱心） |
-| `ScoreInfo` | 单条分数：所属计分项、是否有效、数值 |
+| API | 返回 | 说明 |
+| --- | --- | --- |
+| `sb.score(objective, who)` | `Option<i64>` | 读；`None` = 没有记录 |
+| `sb.set_score(objective, who, value)` | `Result<i64>` | 设为某值，返回设置后的值 |
+| `sb.add_score(objective, who, delta)` | `Result<i64>` | 加 |
+| `sb.reduce_score(objective, who, delta)` | `Result<i64>` | 减 |
+| `sb.reset_score(objective, who)` | `Result<()>` | 清掉这条记录 |
+
+::: tip `score()` 返回 None 和返回 Some(0) 不一样
+`None` 是"这个人在这个计分项里没有记录"，`Some(0)` 是"有记录，值是 0"。侧边栏只显示有记录的行，所以这个区别是看得见的。
+:::
+
+## 显示槽
+
+```rust
+sb.set_display(DisplaySlot::Sidebar, "kills")?;
+sb.clear_display(DisplaySlot::Sidebar)?;
+```
+
+`DisplaySlot`：`Sidebar`（右侧边栏）、`List`（暂停菜单玩家列表）、`BelowName`（头顶名字下方）。
+
+## who 传什么
+
+传玩家名就是给玩家计分。传任意其他字符串就是一个"假玩家"——这是原版计分板做全局变量的标准手法：
+
+```rust
+sb.set_score("config", "#pvp_enabled", 1)?;
+```
+
+以 `#` 开头是社区惯例，这样的名字不会和真实玩家冲突，侧边栏里也一眼能认出来。

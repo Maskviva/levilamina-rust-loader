@@ -58,12 +58,20 @@ local shared_sources = {
     "src/bridge/NbtApi.cpp",
     "src/bridge/KvDbApi.cpp",
     "src/bridge/SysInfo.cpp",
+    -- 跨 mod 事件总线：不碰任何服务端专属头文件，客户端构建也编进去
+    -- （客户端一样可以装多个 rust mod，互相通信的需求是一样的）。
+    "src/bridge/Bus.cpp",
+    -- 跨 mod 服务注册（查询式调用）。和总线一样不碰服务端专属头文件。
+    "src/bridge/Services.cpp",
     "src/bridge/ApiTable.cpp",
 }
 
 -- Server-only source files (excluded from client build).
 -- These reference server-only headers (ll/api/command, mc/server/*, legacymoney).
 local server_only_sources = {
+    -- Runtime rust-mod control (/llr list|load|unload|reload). Server only:
+    -- it needs the command registrar.
+    "src/ModControl.cpp",
     "src/bridge/Commands.cpp",
     "src/bridge/Server.cpp",
     "src/bridge/Money.cpp",
@@ -75,6 +83,7 @@ local server_only_sources = {
     "src/bridge/Packets.cpp",
     "src/bridge/PacketHooks.cpp",
     "src/bridge/GapFill.cpp",
+    "src/bridge/Edit.cpp",
     "src/bridge/hooks/DestroyEvents.cpp",
     "src/bridge/hooks/ContainerEvents.cpp",
     "src/bridge/hooks/DimensionEvents.cpp",
@@ -95,6 +104,9 @@ local server_only_sources = {
     -- locked-down plot: no click, no log line. Its own TU so it can be
     -- dropped independently if PushableByEntityUtility drifts upstream.
     "src/bridge/hooks/PushEntityEvent.cpp",
+    -- 游戏模式强制。挂 Player::$setPlayerGameType —— 进世界时套一次只覆盖入口，
+    -- 玩家进去之后 /gamemode 就绕过去了。
+    "src/bridge/hooks/GameModeEvent.cpp",
 }
 
 -- Client-only source files (excluded from server build).
@@ -114,6 +126,8 @@ local more_dims_sources = {
     "src/more_dimensions/SimpleCustomDimension.cpp",
     "src/more_dimensions/PlotDimension.cpp",
     "src/more_dimensions/PlotGenerator.cpp",
+    -- 地皮边界约束（活塞 / 实体不出地皮）。网格和合并表由 Rust 侧推过来。
+    "src/more_dimensions/PlotConfine.cpp",
     "src/more_dimensions/Utils.cpp",
 }
 

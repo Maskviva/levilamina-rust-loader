@@ -25,6 +25,15 @@ namespace levi_rs::bridge
 
     bool api_spawn_particle_for(LeviRsPlayerSel, int32_t, LeviRsStr, double, double, double) { return false; }
     bool api_send_packet(LeviRsPlayerSel, int32_t, uint8_t const*, size_t) { return false; }
+    // Packets.cpp is server-only, but player_send_title sits in the common
+    // additive tail, so ApiTable.cpp references it on both builds.
+    bool api_player_send_title(LeviRsPlayerSel, int32_t, LeviRsStr, int32_t, int32_t, int32_t) { return false; }
+
+    // Same story for the plot-grid trio: MoreDimensionsBridge.cpp is compiled
+    // only into server builds, but their slots are in the common tail.
+    void api_md_set_plot_grid(int32_t, int32_t, int32_t) {}
+    void api_md_clear_plot_grid(int32_t) {}
+    void api_md_set_plot_merges(int32_t, int32_t const*, int32_t) {}
 
     bool api_tick_freeze(bool) { return false; }
     bool api_tick_step(uint32_t) { return false; }
@@ -96,6 +105,14 @@ namespace levi_rs::bridge
     bool api_level_get_sleep_status(void*, LeviRsStrSink) { return false; }
     bool api_level_update_weather(float, int32_t, float, int32_t) { return false; }
     bool api_level_find_path(LeviRsActorId, int32_t, int32_t, int32_t, void*, LeviRsStrSink) { return false; }
+
+    /* 批量世界编辑：客户端构建里没有权威世界可写，全部返回 false。
+       槽位必须存在 —— 少一个就是结构体尾部整体错位。 */
+    bool api_edit_set_block_nbt(int32_t, int32_t, int32_t, int32_t, LeviRsStr, int32_t) { return false; }
+    bool api_edit_set_block_states(int32_t, int32_t, int32_t, int32_t, LeviRsStr, LeviRsStr, int32_t) { return false; }
+    bool api_edit_set_block_entity(int32_t, int32_t, int32_t, int32_t, LeviRsStr) { return false; }
+    bool api_edit_spawn_entity_nbt(int32_t, LeviRsStr, bool, double, double, double, LeviRsActorId*) { return false; }
+    bool api_edit_trace_ray(LeviRsActorId, float, bool, bool, void*, LeviRsStrSink) { return false; }
 
     LeviRsPacketHookHandle api_packet_hook_register(LeviRsModHandle, int32_t, LeviRsPacketCb, void*) { return nullptr; }
     bool api_packet_hook_unregister(LeviRsModHandle, LeviRsPacketHookHandle) { return false; }

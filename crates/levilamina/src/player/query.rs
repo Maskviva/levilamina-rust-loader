@@ -1,7 +1,7 @@
 //! Read-only player queries.
 
 use super::*;
-use crate::entity::Entity;
+use crate::entity::{Actor, Entity};
 use crate::error::Result;
 use crate::{rt, sys};
 
@@ -22,6 +22,37 @@ impl Player {
         } else {
             Err(self.gone())
         }
+    }
+
+    /// 拿到这名玩家的 [`Actor`] 对象 —— [`Player::as_entity`] 的同义方法。
+    ///
+    /// 原生的继承链是 `Player : Mob : Actor`，也就是说位置、朝向、生命值、
+    /// 药水效果、Tag、骑乘、AABB、射线检测这些**都在 `Actor` 那一层**，
+    /// [`Player`] 上并没有重复一遍。要用它们，先转过去：
+    ///
+    /// ```no_run
+    /// # use levilamina::prelude::*;
+    /// # fn demo(player: &Player) -> Result<()> {
+    /// let actor = player.get_actor()?;
+    ///
+    /// let (x, y, z) = actor.pos()?;
+    /// actor.add_tag("in_arena")?;
+    /// actor.add_effect("speed", 200, 1, false, true)?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// 名字对齐 LSE / 原生 C++ 的叫法。`as_entity()` 保留，两者完全等价，
+    /// 挑顺手的用。
+    ///
+    /// # 失败条件
+    ///
+    /// 玩家不在线时返回 `Err` —— [`Player`] 是选择器不是指针，每次调用都会
+    /// 重新解析一遍。也因此**不要把结果缓存过一个 tick**：玩家退出重进后
+    /// `ActorUniqueID` 会变，旧的 [`Actor`] 从此指向一个不存在的实体。
+    /// 需要长期保存的是 [`Player`]（选择器），不是 [`Actor`]（id）。
+    pub fn get_actor(&self) -> Result<Actor> {
+        self.as_entity()
     }
 
     pub fn real_name(&self) -> Result<String> {

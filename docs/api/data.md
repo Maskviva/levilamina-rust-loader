@@ -1,41 +1,76 @@
-# Data — 配置 / 数据库 / 经济 / 玩家数据
+# Data — 持久化
 
-> 状态：部分✅（键值数据库已支持；经济桥接到可选的 LegacyMoney 插件；配置文件 / SQL 无原生依赖，可在键值库之上用 Rust 生态自建）。
->
-> **接口来源说明**：这一页四个子概念里，"键值数据库"对应 LeviLamina 真实提供的类，"经济"对应可选的 LegacyMoney 插件（见 [Money](/api/money)）；配置文件、SQL 数据库在原生/LeviLamina 里都**没有**对应实现——如实说明清楚，而不是假装它们也有原生依据。
+## KvDb — 键值存储
 
-## KvDb — 键值数据库
+底层是 LevelDB，**限制在模组自己的数据目录里**。
 
-> 唯一真正原生的一块。**接口来源**：`ll::data::KeyValueDB`（`ll/api/data/KeyValueDB.h`），基于 LevelDB 实现的本地键值存储，LeviLamina 自带，不需要额外依赖。
+```rust
+use levilamina::prelude::*;
 
-| API | 作用 | 原生对应 |
+let db = KvDb::open("plots")?;         // → bds/data_mods/<你的模组>/plots
+db.set("plot:1", r#"{"owner":"steve"}"#)?;
+if let Some(v) = db.get("plot:1") { println!("{v}"); }
+```
+
+| API | 返回 | 说明 |
 | --- | --- | --- |
-| `KvDb::open(path, create_if_missing?, fix_if_error?, bloom_filter_bits?)` | 打开（或创建）一个键值数据库 | `KeyValueDB::KeyValueDB` |
-| `db.get(key)` | 读取（不存在则为空） | `KeyValueDB::get` |
-| `db.has(key)` | 是否存在该键 | `KeyValueDB::has` |
-| `db.set(key, value)` | 写入 | `KeyValueDB::set` |
-| `db.delete(key)` | 删除 | `KeyValueDB::del` |
-| `db.is_empty()` | 数据库是否为空 | `KeyValueDB::empty` |
-| `db.iter()` | 遍历全部键值对 | `KeyValueDB::iter` |
+| `KvDb::open(path)` | `Result<KvDb>` | 打开或创建 |
+| `KvDb::open_existing(path)` | `Result<KvDb>` | 必须已存在，否则失败 |
+| `db.get(key)` | `Option<String>` | `None` = 键不存在 |
+| `db.set(key, value)` | `Result<()>` | |
+| `db.del(key)` | `Result<()>` | |
+| `db.has(key)` | `bool` | |
+| `db.is_empty()` | `bool` | |
+| `db.iter()` | `Vec<(String, String)>` | 全部键值对 |
 
-> 键和值都是字符串；存结构化数据（如一个玩家的多项设置）需要自己序列化成 JSON/SNBT 字符串再存入。
+`path` 必须是**相对路径**，最终落在 `bds/data_mods/<模组名>/<path>`。
 
-## ConfigFile — 配置文件
+::: tip KvDb 是线程安全的
+桥接内部用一把互斥锁保护每次操作，所以可以放心分享给后台线程。这在整个 SDK 里是少数几个线程安全的东西之一。
+:::
 
-> **不对应原生/LeviLamina 类**。这本来就是"读一个人类可编辑的配置文件"这种通用需求，直接用 Rust 生态处理即可：JSON 配置用 `serde_json`（配合 `serde::Deserialize`/`Serialize` 定义配置结构体），INI 用 `ini`/`configparser` 之类的 crate，文件读写用标准库 `std::fs`。不需要、也没有必要为此专门扩展桥接——这是纯 Rust 侧的事，模组在自己的 `Cargo.toml` 里加依赖就行。
+::: warning iter() 会把整个库读进内存
+库大了就别用。把键设计成有结构的（`plot:世界:编号`），然后直接 `get`。
+:::
 
-## Database — 关系型数据库（SQL）
+关闭是 `Drop` 时自动做的；模组卸载时还开着的库会被加载器强制关掉并打一条警告。
 
-> **不对应原生/LeviLamina 类**。需要 SQLite/MySQL 这类关系型数据库时，直接在模组的 `Cargo.toml` 里加 `rusqlite`（SQLite）或 `sqlx`/`mysql`（MySQL）这类 Rust crate，正常按 Rust 的方式使用，同样不经过桥接。
+## 配置文件
 
-## Economy — 经济系统
+**没有封装**，用标准库就行：
 
-> 状态：✅（桥接到**可选**的 LegacyMoney 插件）。Minecraft 本身没有玩家货币系统，但服务器生态里 LegacyMoney（LLMoney）是事实上的经济后端，因此加载器把它的 `LLMoney_*` 导出封装成了 [`levilamina::money`](/api/money)：`get`/`set`/`add`/`reduce`/`transfer`、历史、排名，以及交易前/后事件监听。
->
-> **可选依赖**：LegacyMoney 是延迟加载的——没装它加载器照常启动，只是每个 `money::*` 调用会走空转分支（读返回 `0`、写返回 `Err`、监听为 no-op），并在服务端控制台**打一次**"请检查是否安装并启用了 LegacyMoney"的警告。所以在没有该插件的服务器上拿到 `Err` 是**预期行为，不是 bug**。详见 [Money](/api/money)。
->
-> 如果你不想依赖 LegacyMoney，仍可退回老办法：用上面的 `KvDb`（或一个 SQL 数据库）自己存"玩家 id → 余额"这张表、自行实现存取款/转账规则——这条路不经过任何插件，完全自洽。
+```rust
+use std::fs;
+use serde::{Deserialize, Serialize};
 
-## PlayerData — 玩家绑定数据
+#[derive(Serialize, Deserialize, Default)]
+struct Config { max_plots: u32 }
 
-> **不是一个独立的原生系统**，是"用 `KvDb` 存以玩家 uuid 为键的数据"这个模式的简称。也可以选择把数据写进玩家自身的 NBT——[Entity](/api/entity) 页附录里的 `save`（对应原生 `Actor::save`）就是"把整个实体序列化成 NBT"的真实方法，读写自定义数据可以走这条路径，但目前还没有专门包装成一个简单的 get/set 接口，两种路径都可行，看数据要不要跟随存档迁移。
+let dir = std::path::Path::new("plugins/my-mod");
+fs::create_dir_all(dir)?;
+let path = dir.join("config.json");
+
+let cfg: Config = if path.exists() {
+    serde_json::from_str(&fs::read_to_string(&path)?)?
+} else {
+    let d = Config::default();
+    fs::write(&path, serde_json::to_string_pretty(&d)?)?;
+    d
+};
+```
+
+::: tip 配置读失败应该让模组加载失败
+静默用默认值硬跑是很糟的失败模式：服主改了配置发现没生效，而日志里什么都没有。在 `on_load` 里直接返回 `Err`，模组不加载，控制台有明确的错误。
+:::
+
+## 目录约定
+
+| 用途 | 位置 |
+| --- | --- |
+| 模组本体 + manifest | `plugins/<模组名>/` |
+| KvDb 数据 | `bds/data_mods/<模组名>/` |
+| 加载器自己的配置 | `configs/levilamina-rust-loader/` |
+
+## 经济
+
+余额、转账、流水在 [Money](/api/money)。

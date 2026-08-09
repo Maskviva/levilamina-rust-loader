@@ -1,57 +1,116 @@
-# Gui — 表单界面
+# Gui — 表单
 
-> 状态：✅ 已支持。
->
-> **接口来源**：本页对应 LeviLamina 自带（不是裸 Bedrock 协议）的表单封装：`ll::form::SimpleForm`、`ll::form::CustomForm`、`ll::form::ModalForm`（均在 `ll/api/form/`）。这三个类本来就是构建器风格（每个方法返回自身，可以链式调用）。Rust 侧封装为 `SimpleFormBuilder` / `CustomFormBuilder` / `ModalFormBuilder`，方法名取 LSE 风格的简短形式（`button` / `content` / `send` 等，不带 `append_`/`set_` 前缀）。
+三种基岩版原生表单，都是 builder 风格，结果通过回调返回。
 
-## SimpleForm — 按钮表单
+回调是 `FnOnce`，**恰好触发一次，在服务器线程上**——或者一次也不触发，如果模组在玩家回应之前被卸载了。
 
-`SimpleFormBuilder`：一列可点击的按钮，玩家点其中一个。链式构建，最后 `send`。
+## SimpleForm — 按钮列表
 
-| API | 作用 | 原生对应 |
-| --- | --- | --- |
-| `SimpleFormBuilder::new(title)` | 新建并设置标题 | `SimpleForm::SimpleForm` |
-| `.content(text)` | 设置正文 | `SimpleForm::setContent` |
-| `.header(text)` / `.label(text)` / `.divider()` | 追加标题行 / 文本行 / 分隔线 | `SimpleForm::appendHeader` / `appendLabel` / `appendDivider` |
-| `.button(text)` | 追加一个按钮 | `SimpleForm::appendButton` |
-| `.button_with_image(text, image, image_type)` | 追加带图标的按钮 | `SimpleForm::appendButton`（带图片参数的重载） |
-| `.send(player, cb)` | 发送给玩家；`cb: FnOnce(FormResponse)` | `SimpleForm::sendTo` |
+```rust
+use levilamina::prelude::*;
 
-结果 `FormResponse`：点了按钮为 `Button(index)`（按声明顺序的下标），玩家关闭为 `Cancelled { reason }`。
+SimpleFormBuilder::new("§l主菜单")
+    .content("选一个：")
+    .button("传送")
+    .button_with_image("商店", "textures/items/emerald", "path")
+    .button("关闭")
+    .send(&player, |resp| {
+        match resp {
+            FormResponse::Button(0) => { /* 传送 */ }
+            FormResponse::Button(1) => { /* 商店 */ }
+            _ => {}
+        }
+    })?;
+```
 
-## CustomForm — 自定义表单
-
-`CustomFormBuilder`：输入框、开关、下拉、滑块等控件的组合。
-
-| API | 作用 | 原生对应 |
-| --- | --- | --- |
-| `CustomFormBuilder::new(title)` | 新建并设置标题 | `CustomForm::CustomForm` |
-| `.submit(text)` | 设置提交按钮文字 | `CustomForm::setSubmitButton` |
-| `.header(text)` / `.label(text)` / `.divider()` | 同 SimpleForm | `CustomForm::appendHeader` 等 |
-| `.input(name, label, placeholder, default)` | 文本输入框 | `CustomForm::appendInput` |
-| `.toggle(name, label, default)` | 开关 | `CustomForm::appendToggle` |
-| `.dropdown(name, label, options, default_index)` | 下拉框 | `CustomForm::appendDropdown` |
-| `.slider(name, label, min, max, step, default)` | 滑块 | `CustomForm::appendSlider` |
-| `.step_slider(name, label, steps, default_index)` | 步进滑块（在给定的字符串档位间切换） | `CustomForm::appendStepSlider` |
-| `.send(player, cb)` | 发送；`cb: FnOnce(FormResponse)` | `CustomForm::sendTo` |
-
-结果 `FormResponse::Custom(map)`：按控件 `name` 取值的 `HashMap<String, FormValue>`；`FormValue` 为 `Int`（开关 0/1、下拉索引、步进档位索引）/ `Float`（滑块）/ `Text`（输入框）。玩家关闭为 `Cancelled { reason }`。
-
-## ModalForm — 二选一表单
-
-`ModalFormBuilder`：正文 + 上下两个按钮。
-
-| API | 作用 | 原生对应 |
-| --- | --- | --- |
-| `ModalFormBuilder::new(title, content)` | 新建 | `ModalForm::ModalForm` |
-| `.upper(text)` / `.lower(text)` | 设置上 / 下按钮文字 | 对应的 `setXxx` |
-| `.send(player, cb)` | 发送；`cb: FnOnce(FormResponse)` | `ModalForm::sendTo` |
-
-结果 `FormResponse::Modal { upper }`：`upper == true` 表示选了上（主）按钮，`false` 表示下按钮。玩家关闭为 `Cancelled { reason }`。
-
-## 相关类型
-
-| 类型 | 说明 |
+| 方法 | 说明 |
 | --- | --- |
-| `FormResponse` | 表单结果枚举：`Button(index)`（SimpleForm）/ `Custom(map)`（CustomForm）/ `Modal { upper }`（ModalForm）/ `Cancelled { reason }`（玩家关闭，`reason` 为原始取消码，-1 表示客户端未说明） |
-| `FormValue` | `CustomForm` 单个控件的值：`Int(i64)` / `Float(f64)` / `Text(String)` |
+| `.content(text)` | 顶部说明文字 |
+| `.button(text)` | 一个按钮 |
+| `.button_with_image(text, image, image_type)` | 带图标，`image_type` 传 `"path"` 或 `"url"` |
+| `.header(text)` / `.label(text)` / `.divider()` | 排版元素 |
+
+::: warning 按钮索引会被排版元素影响吗
+不会。`FormResponse::Button(i)` 里的 `i` 只数**按钮**，`header` / `label` / `divider` 不占号。
+:::
+
+## CustomForm — 表单控件
+
+```rust
+CustomFormBuilder::new("§l设置")
+    .input("nick", "昵称", "输入昵称", "")
+    .toggle("pvp", "开启 PVP", false)
+    .dropdown("mode", "模式", &["和平", "普通", "困难"], 1)
+    .slider("radius", "半径", 1.0, 64.0, 1.0, 16.0)
+    .step_slider("quality", "画质", &["低", "中", "高"], 2)
+    .submit("保存")
+    .send(&player, |resp| {
+        if let FormResponse::Custom(map) = resp {
+            let pvp = map.get("pvp").and_then(|v| v.as_bool()).unwrap_or(false);
+            let mode = map.get("mode").and_then(|v| v.as_index()).unwrap_or(0);
+        }
+    })?;
+```
+
+每个控件的第一个参数是**名字**，回调里按名字取值——不是按下标。加删控件不会打乱已有代码。
+
+| 方法 | 值类型 |
+| --- | --- |
+| `.input(name, text, placeholder, default)` | `Text(String)` |
+| `.toggle(name, text, default)` | `Int`（0/1） |
+| `.dropdown(name, text, &options, default)` | `Choice { index, text }` |
+| `.slider(name, text, min, max, step, default)` | `Float` |
+| `.step_slider(name, text, &steps, default)` | `Choice { index, text }` |
+
+`FormValue` 的取值方法：`as_i64()` `as_f64()` `as_bool()` `as_str()` `as_index()`。
+
+`as_index()` 只对下拉和步进滑块有意义，其他一律返回 `None`。
+
+## ModalForm — 两个按钮
+
+```rust
+ModalFormBuilder::new("§c确认", "真的要删除这块地皮吗？")
+    .upper("确认删除")
+    .lower("取消")
+    .send(&player, |resp| {
+        if let FormResponse::Modal { upper: true } = resp {
+            // 确认
+        }
+    })?;
+```
+
+只有两个按钮，不能多也不能少。破坏性操作的二次确认用它。
+
+## FormResponse
+
+```rust
+pub enum FormResponse {
+    Cancelled { reason: i32 },     // 玩家按了 ESC，或客户端拒绝
+    Button(usize),                 // SimpleForm
+    Custom(HashMap<String, FormValue>),  // CustomForm
+    Modal { upper: bool },         // ModalForm
+}
+```
+
+::: tip 一定要处理 Cancelled
+玩家随时可以按 ESC。如果你的流程依赖表单结果（比如"选完世界才能继续"），`Cancelled` 分支要么什么都不做，要么退回上一级菜单——不要假设一定有结果。
+:::
+
+## 表单链
+
+一个表单的回调里再开下一个表单是完全正常的用法：
+
+```rust
+SimpleFormBuilder::new("选择世界")
+    .button("世界 A")
+    .send(&player, move |resp| {
+        if let FormResponse::Button(i) = resp {
+            SimpleFormBuilder::new("选择操作")
+                .button("传送")
+                .send(&player, |_| {})
+                .ok();
+        }
+    })?;
+```
+
+注意闭包里要用的 `Player` 需要 `move` 进去——`Player` 可以克隆，成本很低。

@@ -28,6 +28,9 @@
 #include "mc/world/actor/Actor.h"
 #include "mc/world/actor/ActorHurtResult.h"
 #include "mc/world/actor/player/AbilitiesIndex.h"
+#include "mc/world/actor/player/Abilities.h"
+#include "mc/world/actor/player/LayeredAbilities.h"
+#include "mc/network/packet/UpdateAbilitiesPacket.h"
 #include "mc/network/packet/TextPacket.h"
 #include "mc/network/packet/TextPacketPayload.h"
 #include "mc/network/packet/TextPacketType.h"
@@ -452,6 +455,65 @@ namespace levi_rs::bridge
 
     // ───────────────────────── actions ─────────────────────────
 
+    namespace
+    {
+        /**
+         * Set one ability slot, dispatching bool vs float correctly.
+         *
+         * Three separate bugs met here, which is why this is a helper rather
+         * than a one-line change:
+         *
+         *  1. The old dispatch used `idx < 32` to decide bool vs float. That
+         *     is simply wrong — AbilitiesIndex only runs 0..19, and the float
+         *     slots sit at 13 (FlySpeed), 14 (WalkSpeed) and 19
+         *     (VerticalFlySpeed). Every ability therefore took the bool path.
+         *
+         *  2. `Player::setAbility` has ONLY a bool overload (Player.h:286), so
+         *     even the "float" branch resolved to it via an implicit
+         *     float→bool conversion: any non-zero speed silently became
+         *     `true`. Float abilities have never worked. The float path has to
+         *     go through LayeredAbilities::setAbility(idx, float)
+         *     (LayeredAbilities.h:25), which does have both overloads.
+         *
+         *  3. Writing the layer server-side does not tell the client. Movement
+         *     and flight speed are applied client-side, so without an
+         *     UpdateAbilitiesPacket the player keeps moving at the old speed.
+         *
+         * The bool path deliberately still goes through Player::setAbility:
+         * that is LeviLamina's own helper, it already syncs, and boolean
+         * abilities are the ones currently working. No reason to disturb them.
+         */
+        bool setPlayerAbility(Player& p, int idx, double value)
+        {
+            if (idx < 0 || idx >= static_cast<int>(AbilitiesIndex::AbilityCount))
+            {
+                return false;
+            }
+            auto index = static_cast<AbilitiesIndex>(idx);
+
+            switch (index)
+            {
+            case AbilitiesIndex::FlySpeed:
+            case AbilitiesIndex::WalkSpeed:
+            case AbilitiesIndex::VerticalFlySpeed:
+                {
+                    if (!p.getAbilities().setAbility(index, static_cast<float>(value)))
+                    {
+                        return false;
+                    }
+                    // Push the whole layered set to the client; speed is
+                    // applied client-side and will not change without this.
+                    UpdateAbilitiesPacket pkt{p.getOrCreateUniqueID(), p.getAbilities()};
+                    p.sendNetworkPacket(pkt);
+                    return true;
+                }
+            default:
+                p.setAbility(index, value != 0.0);
+                return true;
+            }
+        }
+    } // namespace
+
     bool api_player_action(
         LeviRsPlayerSel sel,
         int32_t action,
@@ -470,8 +532,7 @@ namespace levi_rs::bridge
         case LEVI_RS_PACT_SET_ABILITY:
             {
                 int idx = static_cast<int>(a);
-                p->setAbility(static_cast<AbilitiesIndex>(idx), b != 0.0);
-                return true;
+                return setPlayerAbility(*p, idx, b);
             }
         case LEVI_RS_PACT_CAN_USE_ABILITY:
             {

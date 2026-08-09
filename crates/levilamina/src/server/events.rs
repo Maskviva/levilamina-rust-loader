@@ -42,16 +42,60 @@ impl Server {
     }
 
     /// Run a closure on the server thread ASAP. Thread-safe.
-    pub fn schedule(&self, f: impl FnOnce() + Send + 'static) {
+    ///
+    /// The task is owned by this mod: if the mod is unloaded before the task
+    /// runs, the task is dropped instead of jumping into the freed dylib.
+    /// Returns a [`TaskId`] that can be passed to [`Server::cancel_task`].
+    pub fn schedule(&self, f: impl FnOnce() + Send + 'static) -> TaskId {
         let boxed: *mut TaskOnce = Box::into_raw(Box::new(Some(Box::new(f))));
-        unsafe { (rt().api.schedule)(task_trampoline, boxed.cast()) }
+        let id = unsafe { (rt().api.schedule_for)(rt().handle, task_trampoline, boxed.cast()) };
+        if id == 0 {
+            // Rejected before registration, so the trampoline will never run
+            // and never reclaim the box. Reclaim it here.
+            unsafe { drop(Box::from_raw(boxed)) };
+        }
+        TaskId(id)
     }
 
     /// Run a closure on the server thread after `delay`. Thread-safe.
-    pub fn schedule_after(&self, delay: Duration, f: impl FnOnce() + Send + 'static) {
+    ///
+    /// Same ownership guarantee as [`Server::schedule`]. Note that the timer
+    /// itself still expires on schedule after an unload — it just finds a dead
+    /// ticket and does nothing.
+    pub fn schedule_after(&self, delay: Duration, f: impl FnOnce() + Send + 'static) -> TaskId {
         let boxed: *mut TaskOnce = Box::into_raw(Box::new(Some(Box::new(f))));
-        unsafe {
-            (rt().api.schedule_after)(task_trampoline, boxed.cast(), delay.as_millis() as u64)
+        let id = unsafe {
+            (rt().api.schedule_after_for)(
+                rt().handle,
+                task_trampoline,
+                boxed.cast(),
+                delay.as_millis() as u64,
+            )
+        };
+        if id == 0 {
+            unsafe { drop(Box::from_raw(boxed)) };
         }
+        TaskId(id)
+    }
+
+    /// Drop a task this mod scheduled, if it has not run yet. Thread-safe.
+    ///
+    /// Returns `true` if a pending task was actually dropped. Cancelling leaks
+    /// the closure (the loader cannot run this mod's drop glue from the other
+    /// side of the FFI boundary), so prefer letting short tasks run.
+    pub fn cancel_task(&self, id: TaskId) -> bool {
+        if id.0 == 0 {
+            return false;
+        }
+        unsafe { (rt().api.schedule_cancel)(rt().handle, id.0) }
+    }
+
+    /// How many tasks this mod still has queued. Thread-safe.
+    ///
+    /// A mod that wants `"reload_safe": true` in its manifest should assert
+    /// this is zero by the end of `on_unload` — a pending task at that point
+    /// is work the loader has to throw away.
+    pub fn pending_tasks(&self) -> u32 {
+        unsafe { (rt().api.schedule_pending_count)(rt().handle) }
     }
 }

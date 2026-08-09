@@ -205,6 +205,62 @@ typedef void (*LeviRsFormResultCb)(void* user, LeviRsStr result_snbt);
 /** Opaque handle to an open key-value database owned by the loader. */
 typedef void* LeviRsKvDbHandle;
 
+/* ═════════════════ Cross-mod event bus FFI types ═════════════════
+ * A mod cannot hand another mod a function pointer: `RustModManager::unload`
+ * calls FreeLibrary, so the publisher would be left holding a pointer into an
+ * unmapped dylib. The loader therefore owns the subscription table, with the
+ * same weak_ptr + ticket discipline as Forms.cpp and the mod-scoped scheduler.
+ *
+ * The loader never parses `payload` — it is opaque UTF-8 (JSON, SNBT, or
+ * anything else the two mods agree on). Keeping the loader format-agnostic is
+ * deliberate: the alternative is a schema that every publisher has to satisfy
+ * and that the loader has to version.
+ *
+ * Topics are plain strings; namespace them (`plot:enter`, not `enter`).
+ */
+
+/**
+ * Subscriber callback. `topic` and `payload` are borrowed for the duration of
+ * the call — copy anything you keep.
+ *
+ * The return value is a **veto**, and only for `bus_publish_vetoable`:
+ *   true  = "refuse this",
+ *   false = "no opinion".
+ * It is ignored entirely by `bus_publish`. There is deliberately no way to
+ * turn a refusal back into an approval: a subscriber can only tighten, never
+ * loosen. Letting one mod override another's refusal means the *last*
+ * subscriber to run decides, and subscriber order is not something either mod
+ * controls.
+ *
+ * Called on the thread that published. Never called after the owning mod is
+ * unloaded or while it is disabled.
+ */
+typedef bool (*LeviRsBusCb)(void* user, LeviRsStr topic, LeviRsStr payload);
+
+/**
+ * Provider callback for the cross-mod **service registry** (query-style calls,
+ * as opposed to the bus's one-way broadcast).
+ *
+ * Write the answer through `reply(ctx, ...)` — exactly once — and return true.
+ * Return false to report failure; anything written first is handed to the
+ * caller as the error text, which is what makes "no such plot" and "the
+ * database is down" distinguishable at the call site.
+ *
+ * `request` and `reply` are opaque UTF-8 the two mods agree on out of band. The
+ * loader never looks inside either.
+ *
+ * Runs synchronously on the CALLING thread, inside `service_call`. Never called
+ * after the providing mod is unloaded or while it is disabled.
+ */
+typedef bool (*LeviRsServiceCb)(
+    void* user, LeviRsStr name, LeviRsStr request, void* ctx, LeviRsStrSink reply);
+
+/** service_call return codes. */
+#define LEVI_RS_SERVICE_OK 0        /* provider ran and wrote a reply */
+#define LEVI_RS_SERVICE_NOT_FOUND 1 /* nobody provides this name (or is disabled/unloaded) */
+#define LEVI_RS_SERVICE_ERROR 2     /* provider returned false; reply holds its message */
+#define LEVI_RS_SERVICE_REFUSED 3   /* bad name, self-call, or call-depth limit */
+
 /* ═════════════════ Packet interception FFI types ═════════════════
  * Used by packet_hook_register / packet_conn_hook_register. See the block
  * comment on those fields in LeviRsApi for the full contract. */
@@ -374,7 +430,7 @@ enum LeviRsPlayerStrProp
  */
 enum LeviRsPlayerAction
 {
-    LEVI_RS_PACT_SET_ABILITY = 0, /* a=AbilitiesIndex, b=0/1        Player::setAbility */
+    LEVI_RS_PACT_SET_ABILITY = 0, /* a=AbilitiesIndex, b=0/1 (bool slots) or float (FlySpeed etc.) Player::setAbility */
     LEVI_RS_PACT_CAN_USE_ABILITY = 1, /* a=AbilitiesIndex → out "0"/"1" Player::canUseAbility */
     LEVI_RS_PACT_SET_SELECTED_SLOT = 2, /* a=slot                          Player::setSelectedSlot */
     LEVI_RS_PACT_GIVE_ITEM = 3, /* sarg=item SNBT                  ItemStack::fromTag + Player::addAndRefresh */
@@ -668,6 +724,16 @@ enum LeviRsDimRule
     LEVI_RS_DIMRULE_LIQUID_FLOW   = 8,  /* water/lava spreading */
     LEVI_RS_DIMRULE_FARMLAND_DECAY = 9, /* farmland trampled back to dirt */
     LEVI_RS_DIMRULE_RIDE          = 10, /* mounting boats/minecarts/animals */
+    /* ── Plot-boundary confinement (needs md_set_plot_grid) ── */
+    /* Pistons moving blocks ACROSS a plot boundary. Distinct from
+     * LEVI_RS_DIMRULE_PISTON_PUSH, which disables pistons for the whole
+     * dimension: this one leaves them working inside a plot and only refuses
+     * the push that would cross the edge. Both apply — either one denying is
+     * enough to stop the push. Inert in dimensions with no registered grid. */
+    LEVI_RS_DIMRULE_PISTON_CROSS_PLOT = 11,
+    /* Entities crossing a plot boundary. Players and ridden vehicles are
+     * never confined — see PlotConfine.cpp for why. */
+    LEVI_RS_DIMRULE_ENTITY_CROSS_PLOT = 12,
 };
 
 enum LeviRsSysInfoProp
@@ -1266,7 +1332,13 @@ typedef struct LeviRsApi
     /** Unregister. Safe to call from inside the callback. */
     bool (*packet_conn_hook_unregister)(LeviRsModHandle mod, LeviRsPacketHookHandle handle);
 
-    /* Future additive fields: append here only. */
+    /* ⚠ DO NOT APPEND HERE. This point is followed by two conditionally
+     * compiled blocks (LEVI_RS_TARGET_CLIENT, then LEVI_RS_FEATURE_MORE_DIMENSIONS).
+     * A field inserted here shifts the offset of every md_* / client_* slot
+     * below it, which silently breaks any already-compiled mod that uses them:
+     * the mod would call a neighbouring function pointer with no diagnostic.
+     * New fields go at the TRUE end of the struct — see the
+     * "Common additive tail" block after the #endif of the md block. */
 
     /* ═════════════════ Client-only function pointers (ABI v5 additive, client target) ═════════════════
      * Present ONLY when the loader is built against the client target
@@ -1386,6 +1458,263 @@ typedef struct LeviRsApi
      *  Idempotent, like md_add_simple_dimension. Returns dim id (>=3) or -1. */
     int32_t (*md_add_plot_dimension)(LeviRsStr name, uint32_t seed, LeviRsStr layout_snbt);
 #endif
+
+    /* ═════════════════ Common additive tail (struct_size-gated) ═════════════════
+     * The TRUE end of the table. Both conditional blocks above have closed, so
+     * fields here sit at the same offset on server and client builds and can
+     * grow without disturbing anything. All future additions go here.
+     *
+     * IMPORTANT for the Rust mirror (crates/levilamina-sys/src/api.rs): the
+     * md_* fields must be declared under `#[cfg(not(feature = "client"))]`,
+     * NOT under `#[cfg(feature = "more_dimensions")]`. The C++ server build
+     * always compiles the md block in — it is not optional there — so a Rust
+     * struct that omits it would place the fields below at the wrong offset.
+     *
+     * ── Mod-scoped scheduling ──
+     * `schedule` / `schedule_after` above take a bare callback with no owner.
+     * That is a use-after-free waiting to happen: a mod that schedules a task
+     * and is then unloaded leaves the executor holding a function pointer into
+     * a freed dylib. These replacements attribute each task to a mod, so the
+     * loader can drop still-pending tasks when that mod goes away — the same
+     * weak_ptr + ticket discipline the form callbacks already use.
+     *
+     * The old slots remain (ABI is additive) and still work, but they cannot
+     * be made unload-safe: they carry no owner. Mods that want to survive
+     * /llr unload or /llr reload must be rebuilt against a levilamina crate
+     * that routes through the slots below. */
+
+    /** Run `cb(user)` on the server (or client) thread ASAP, owned by `mod`.
+     *  Thread-safe. Returns a task id (>0), or 0 if the task was rejected.
+     *  If `mod` unloads before the task runs, the task is dropped and `cb` is
+     *  never called — `user` is then leaked by design, because the only code
+     *  that could free it lives in the dylib that just went away. */
+    uint64_t (*schedule_for)(LeviRsModHandle mod, LeviRsTaskCb cb, void* user);
+
+    /** As above, delayed by `delay_ms`. Thread-safe. Returns a task id (>0),
+     *  or 0 if rejected. The timer itself is not cancelled on unload — it
+     *  still expires — but the task is dropped when it does, so nothing calls
+     *  into the freed dylib. */
+    uint64_t (*schedule_after_for)(LeviRsModHandle mod, LeviRsTaskCb cb, void* user, uint64_t delay_ms);
+
+    /** Drop a task scheduled by this mod if it has not run yet. Returns true
+     *  if a pending task was actually dropped. Safe to call from any thread
+     *  and from inside another task. Cancelling leaks `user` for the same
+     *  reason as above, so prefer letting short tasks run. */
+    bool (*schedule_cancel)(LeviRsModHandle mod, uint64_t task_id);
+
+    /** Number of tasks this mod still has pending. Intended for a mod to
+     *  assert it has drained its own work in on_disable / on_unload, which is
+     *  a precondition for being marked "reload_safe" in its manifest. */
+    uint32_t (*schedule_pending_count)(LeviRsModHandle mod);
+
+    /* ── Client-side container resync ──
+     * `container_set_item` / `_clear` / `_add_item` all write through
+     * `Container::setItem`, which mutates the server's copy and sends nothing.
+     * The client keeps rendering whatever it last received, so a bulk rewrite
+     * (swapping a player's inventory on a cross-dimension teleport, say) looks
+     * like it did nothing until the player clicks a slot and forces a resync.
+     *
+     * Call this once after a batch of writes. Batching matters: this pushes
+     * the whole container, so calling it per-slot inside a loop is a packet
+     * storm for no benefit. */
+
+    /** Resend a player-owned container (which 0..3) to its owner. Returns
+     *  false for block containers (which == 4) — a chest has no single owner
+     *  to resend to; its viewers are refreshed by the engine's own container
+     *  transaction path. */
+    bool (*container_refresh)(LeviRsContainerRef ref);
+
+    /* ── Titles ──
+     * `PACT_SET_TITLE` (player_action opcode 6) reaches the client by running
+     * the console command `title "<name>" title <text>`. Three things are
+     * wrong with that and none of them are theoretical:
+     *   - the text is pasted into a command line unquoted, so a plot named
+     *     `He said "hi"` truncates the command;
+     *   - `title`'s text parameter is a `message`, which expands selectors —
+     *     a plot named `@e` is a command injection, not a name;
+     *   - `/title` has no way to set fade/stay for the same call, so timing is
+     *     whatever the client last stored.
+     * This slot builds a real SetTitlePacket instead. No wire format crosses
+     * the FFI (the packet is constructed field-by-field on this side), so it
+     * survives protocol bumps the way `spawn_particle_for` does.
+     *
+     * `type` is SetTitlePacketPayload::TitleType:
+     *   0 Clear · 1 Reset · 2 Title · 3 Subtitle · 4 Actionbar · 5 Times
+     * The TextObject variants (6..8) need a ResolvedTextObject and are refused.
+     * `text` is ignored for Clear/Reset/Times.
+     *
+     * Durations are in TICKS. For 2/3/4, when all three are >= 0 a Times
+     * packet is sent first so the timing is deterministic rather than
+     * inherited from whatever the client last stored; pass -1 for all three to
+     * keep the client's current timing. Mixing (-1 with >=0) is refused rather
+     * than guessed at — a half-specified duration set has no sane meaning.
+     * Server thread only. */
+    bool (*player_send_title)(
+        LeviRsPlayerSel sel, int32_t type, LeviRsStr text, int32_t fade_in_ticks,
+        int32_t stay_ticks, int32_t fade_out_ticks);
+
+    /* ── Cross-mod event bus ──
+     * See LeviRsBusCb above for why the loader owns the table instead of mods
+     * exchanging pointers. All four are thread-safe; callbacks run on the
+     * publishing thread.
+     *
+     * A mod does **not** receive its own publishes. Two reasons: a mod that
+     * wants to notify itself has a direct function call available, and
+     * self-delivery is the one loop shape that no depth limit can distinguish
+     * from legitimate work. Cross-mod loops (A publishes → B's handler
+     * publishes → A's handler publishes → …) are caught by a depth cap
+     * instead; hitting it drops the innermost publish and logs once. */
+
+    /** Subscribe `mod` to `topic`. Returns a subscription id (>0), or 0 if the
+     *  topic is empty/oversized, the callback is null, or the mod is unknown.
+     *  Subscriptions are dropped automatically when the mod unloads. */
+    uint64_t (*bus_subscribe)(LeviRsModHandle mod, LeviRsStr topic, LeviRsBusCb cb, void* user);
+
+    /** Drop one of this mod's subscriptions. Scoped to the caller — a mod
+     *  cannot unsubscribe another mod. Returns true if one was removed.
+     *  Safe to call from inside a callback (including one's own). */
+    bool (*bus_unsubscribe)(LeviRsModHandle mod, uint64_t sub_id);
+
+    /** Deliver `payload` to every *other* mod subscribed to `topic`. Returns
+     *  how many subscribers actually ran (0 is normal — nobody is listening).
+     *  Return values from subscribers are ignored. */
+    uint32_t (*bus_publish)(LeviRsModHandle mod, LeviRsStr topic, LeviRsStr payload);
+
+    /** As above, but collects the veto bit: returns true when **any**
+     *  subscriber returned true. Every subscriber still runs — no
+     *  short-circuit — so observers see a consistent stream whether or not an
+     *  earlier one refused. `out_delivered` may be NULL. */
+    bool (*bus_publish_vetoable)(
+        LeviRsModHandle mod, LeviRsStr topic, LeviRsStr payload, uint32_t* out_delivered);
+
+    /** How many subscribers a topic has right now, across all mods. Intended
+     *  for skipping the cost of building a payload nobody will read. */
+    uint32_t (*bus_subscriber_count)(LeviRsStr topic);
+
+    /* ── Plot-boundary confinement ──
+     * Backing store for LEVI_RS_DIMRULE_PISTON_CROSS_PLOT and
+     * LEVI_RS_DIMRULE_ENTITY_CROSS_PLOT. Those two rules ask "are these two
+     * columns in the same plot?", and the answer needs the grid geometry plus
+     * the merge markers. The question is asked from
+     * `PistonBlockActor::_checkAttachedBlocks` and `Actor::move` — engine tick
+     * paths, hundreds of calls a second — so the data is pushed here once and
+     * read natively rather than queried back across the FFI.
+     *
+     * The ownership rule implemented on the loader side mirrors the plugin's
+     * own `owning_plot`: a seam between two merged plots counts as plot, a
+     * junction counts as plot only when all four surrounding edges are merged.
+     * Divergence does not show up as "one column judged wrong" — it shows up as
+     * an owner who can place a block by hand on their merged plot but whose
+     * piston refuses to push there. Server thread only. */
+
+    /** Register (or update) the plot grid of a dimension. `plot_size <= 0`
+     *  clears it. Values are clamped loader-side — `cell = plot_size +
+     *  road_width` is a modulus, and a caller-supplied 0 would divide by zero
+     *  in a tick path. Clears the merge table when the geometry changes. */
+    void (*md_set_plot_grid)(int32_t dimension, int32_t plot_size, int32_t road_width);
+
+    /** Drop a dimension's grid and merge table (world deleted, or the world
+     *  stopped using the plot model). */
+    void (*md_clear_plot_grid)(int32_t dimension);
+
+    /** Replace a dimension's merge markers wholesale. `entries` is `count`
+     *  triples `(x, z, mask)`, i.e. `count * 3` int32s; `mask` is a bitset of
+     *  1=north, 2=east, 4=south, 8=west matching the plugin's `merged[]`
+     *  indices. Only plots that actually carry a marker need to be sent.
+     *
+     *  Wholesale, not incremental: incremental requires both sides to agree
+     *  forever on what is currently in the table, and `unlink` clears the
+     *  neighbour before storing itself — a failure in between leaves the two
+     *  views apart with no way back. Replacing pulls them into agreement on
+     *  every push. Call `md_set_plot_grid` first; a push for an unregistered
+     *  dimension is dropped with a warning. */
+    void (*md_set_plot_merges)(int32_t dimension, int32_t const* entries, int32_t count);
+
+    /* ── Cross-mod service registry (query-style calls) ──
+     * The bus is one-way broadcast; this is request/response. The shapes differ
+     * on every axis, which is why they are separate tables rather than one:
+     *
+     *   - providers per name: bus any / service **exactly one**
+     *   - nobody registered:  bus normal / service an error the caller handles
+     *   - return value:       bus none / service the entire point
+     *   - ordering:           bus undefined and must not matter / service n/a
+     *
+     * Registration is EXCLUSIVE. Two mods answering `plot:can` is not "both
+     * run" — it is an ambiguous answer with no way for the caller to pick, so
+     * the second registrar is refused loudly. Silent last-wins would make the
+     * answer depend on mod load order, which nobody controls and which changes
+     * when an unrelated mod is installed.
+     *
+     * Ownership follows the same weak_ptr + ticket discipline as the bus and
+     * the forms: the loader keeps the table, and the call path revalidates the
+     * provider immediately before crossing into its dylib.
+     *
+     * Synchronous, on the caller's thread, no timeout. A provider that blocks
+     * blocks the server thread exactly like any other callback; returning
+     * "timed out" while the callback kept running would hand the caller a wrong
+     * answer AND leave the provider running. */
+
+    /** Register `mod` as the provider of `name`. Returns a registration id
+     *  (>0), or 0 if the name is empty/oversized/already taken, the callback is
+     *  null, or the mod is unknown. Dropped automatically on unload. */
+    uint64_t (*service_register)(
+        LeviRsModHandle mod, LeviRsStr name, LeviRsServiceCb cb, void* user);
+
+    /** Drop one of this mod's registrations. Scoped to the caller — a mod
+     *  cannot unregister another mod's service. */
+    bool (*service_unregister)(LeviRsModHandle mod, uint64_t reg_id);
+
+    /** Call `name` with `request`; the provider's answer arrives through
+     *  `reply`. Returns one of LEVI_RS_SERVICE_*. A mod cannot call its own
+     *  service (it has a direct function call, and self-calls are the least
+     *  legible loop shape). */
+    int32_t (*service_call)(
+        LeviRsModHandle mod, LeviRsStr name, LeviRsStr request, void* ctx, LeviRsStrSink reply);
+
+    /** Every registered service as a JSON array of `{"name":…,"mod":…}`.
+     *  For diagnostics and for a caller deciding whether to build a request
+     *  nobody can answer. */
+    void (*service_list)(void* ctx, LeviRsStrSink sink);
+
+    /* ═════════════════ Batch world edit (ABI v5 additive, struct_size-gated) ═════════════════
+     * Native write paths that bypass the console-command route used by
+     * set_block (`execute in <dim> run setblock …`). With these, block
+     * states come from structured NBT instead of command-string splicing,
+     * block entities can be written back, and entities can be respawned from
+     * saved NBT — all via existing engine entry points.
+     *
+     * update_flags is a bitmask: 1 = notify neighbours, 2 = sync client,
+     * 3 = both (equivalent to /setblock), 0 = neither (fastest for bulk
+     * fills, but the caller must resync afterwards). Server thread only. */
+
+    /** Write a block from serialized NBT ({name,states,version}, i.e. the
+     *  shape get_block produces). */
+    bool (*edit_set_block_nbt)(
+        int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr snbt, int32_t update_flags);
+
+    /** Write a block from a name + optional partial states. An empty
+     *  states_snbt means all-default states; the version is taken from the
+     *  default state on the loader side — the caller must not supply one. */
+    bool (*edit_set_block_states)(
+        int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr name, LeviRsStr states_snbt,
+        int32_t update_flags);
+
+    /** Write a block entity's NBT back (BlockActor::load). The cell must
+     *  already hold the matching block. */
+    bool (*edit_set_block_entity)(int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr snbt);
+
+    /** Spawn an entity from full NBT (the inverse of actor_snapshot). When
+     *  use_pos is true, (x,y,z) overrides the Pos tag; the UniqueID is
+     *  reassigned by the engine and returned via out. */
+    bool (*edit_spawn_entity_nbt)(
+        int32_t dim, LeviRsStr snbt, bool use_pos, double x, double y, double z,
+        LeviRsActorId* out);
+
+    /** Ray trace yielding the BLOCK coordinate and hit face:
+     *  {type, block:[x,y,z], facing, pos:[x,y,z], entity}. */
+    bool (*edit_trace_ray)(
+        LeviRsActorId id, float max_dist, bool include_actors, bool include_blocks, void* ctx,
+        LeviRsStrSink sink);
 } LeviRsApi;
 
 /**

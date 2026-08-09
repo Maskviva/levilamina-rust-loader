@@ -3,6 +3,7 @@
 #include "more_dimensions/CustomDimensionConfig.h"
 #include "more_dimensions/CustomDimensionManager.h"
 #include "more_dimensions/DimensionRules.h"
+#include "more_dimensions/PlotConfine.h"
 #include "more_dimensions/PlotDimension.h"
 #include "more_dimensions/PlotLayout.h"
 #include "more_dimensions/SimpleCustomDimension.h"
@@ -22,6 +23,7 @@
 #include "mc/world/level/dimension/VanillaDimensions.h"
 
 #include "LeviRsAbi.h"
+#include "bridge/Api.h"
 
 namespace more_dimensions::bridge
 {
@@ -228,3 +230,31 @@ namespace more_dimensions::bridge
     // Check whether the MoreDimensions feature is available in this loader build.
     bool api_md_is_available() { return true; }
 } // namespace more_dimensions::bridge
+
+/*
+ * 地皮边界约束的数据入口。
+ *
+ * 命名空间是 `levi_rs::bridge` 而不是上面那个 `more_dimensions::bridge`：
+ * 这三个槽位落在 ABI 的**公共尾部**（放进 md 条件块里会把尾部所有字段的偏移
+ * 推走），于是客户端构建的 ApiTable 也会引用它们，需要 ClientStubs.cpp 给桩。
+ * 和 `api_player_send_title` 是同一套安排。
+ *
+ * 这里只做转接，逻辑全在 PlotConfine.cpp —— 两处各判一遍迟早会分叉。
+ */
+namespace levi_rs::bridge
+{
+    void api_md_set_plot_grid(int32_t dimension, int32_t plotSize, int32_t roadWidth)
+    {
+        more_dimensions::setPlotGrid(dimension, plotSize, roadWidth);
+    }
+
+    void api_md_clear_plot_grid(int32_t dimension) { more_dimensions::clearPlotGrid(dimension); }
+
+    void api_md_set_plot_merges(int32_t dimension, int32_t const* entries, int32_t count)
+    {
+        // 空表是合法输入（「这个世界一处合并都没有」），但 count>0 配空指针是
+        // 调用方的 bug，别拿它去做指针算术。
+        if (entries == nullptr) count = 0;
+        more_dimensions::setPlotMerges(dimension, entries, count);
+    }
+} // namespace levi_rs::bridge

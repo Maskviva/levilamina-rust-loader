@@ -23,6 +23,13 @@ namespace levi_rs
         int32_t api_gaming_status();
         void api_schedule(LeviRsTaskCb cb, void* user);
         void api_schedule_after(LeviRsTaskCb cb, void* user, uint64_t delayMs);
+        /* Mod-scoped replacements: tasks are dropped if their owner unloads. */
+        uint64_t api_schedule_for(LeviRsModHandle mod, LeviRsTaskCb cb, void* user);
+        uint64_t api_schedule_after_for(LeviRsModHandle mod, LeviRsTaskCb cb, void* user, uint64_t delayMs);
+        bool api_schedule_cancel(LeviRsModHandle mod, uint64_t taskId);
+        uint32_t api_schedule_pending_count(LeviRsModHandle mod);
+        /** Drop every task still queued for `mod`. Called from onRustModGone. */
+        void schedulerOnRustModGone(RustMod* mod);
         uint64_t api_get_current_tick();
         double api_get_tick_delta_time();
         int32_t api_get_player_count();
@@ -209,6 +216,51 @@ namespace levi_rs
         bool api_container_add_item(LeviRsContainerRef ref, LeviRsStr itemSnbt);
         bool api_container_remove_item(LeviRsContainerRef ref, int32_t slot, int32_t count);
         bool api_container_clear(LeviRsContainerRef ref);
+        /** Resend a player-owned container to its owner (ABI additive tail). */
+        bool api_container_refresh(LeviRsContainerRef ref);
+
+        /* ── Bus.cpp — cross-mod event bus ── */
+        uint64_t api_bus_subscribe(LeviRsModHandle mod, LeviRsStr topic, LeviRsBusCb cb, void* user);
+        bool api_bus_unsubscribe(LeviRsModHandle mod, uint64_t subId);
+        uint32_t api_bus_publish(LeviRsModHandle mod, LeviRsStr topic, LeviRsStr payload);
+        bool api_bus_publish_vetoable(
+            LeviRsModHandle mod, LeviRsStr topic, LeviRsStr payload, uint32_t* outDelivered);
+        uint32_t api_bus_subscriber_count(LeviRsStr topic);
+        /** Drop every subscription owned by a mod that is going away. */
+        void busOnRustModGone(RustMod* mod);
+
+        /* ── Services.cpp — cross-mod service registry (query-style calls) ── */
+        uint64_t api_service_register(
+            LeviRsModHandle mod, LeviRsStr name, LeviRsServiceCb cb, void* user);
+        bool api_service_unregister(LeviRsModHandle mod, uint64_t regId);
+        int32_t api_service_call(
+            LeviRsModHandle mod, LeviRsStr name, LeviRsStr request, void* ctx, LeviRsStrSink reply);
+        void api_service_list(void* ctx, LeviRsStrSink sink);
+        /** Drop every service provided by a mod that is going away. */
+        void servicesOnRustModGone(RustMod* mod);
+
+        /* MoreDimensionsBridge.cpp — plot-boundary confinement data.
+         *
+         * These live in `levi_rs::bridge` rather than `more_dimensions::bridge`
+         * with the rest of the md_* family for one reason: their ABI slots sit
+         * in the **common additive tail**, so ApiTable.cpp names them on the
+         * client build too. Same arrangement as api_player_send_title —
+         * server definition in a server-only TU, client stub in
+         * ClientStubs.cpp. Putting the slots inside the md #ifdef block instead
+         * would have shifted every field of the tail below it. */
+        void api_md_set_plot_grid(int32_t dimension, int32_t plotSize, int32_t roadWidth);
+        void api_md_clear_plot_grid(int32_t dimension);
+        void api_md_set_plot_merges(int32_t dimension, int32_t const* entries, int32_t count);
+
+        /* Packets.cpp — native SetTitlePacket (replaces the /title console path) */
+        bool api_player_send_title(
+            LeviRsPlayerSel sel,
+            int32_t type,
+            LeviRsStr text,
+            int32_t fadeInTicks,
+            int32_t stayTicks,
+            int32_t fadeOutTicks
+        );
 
         /* ── ScoreboardApi.cpp ── */
         bool api_scoreboard_op(int32_t op, LeviRsStr a, LeviRsStr b, int64_t n, void* ctx, LeviRsStrSink out);
@@ -316,6 +368,35 @@ namespace levi_rs
         bool api_level_get_sleep_status(void* ctx, LeviRsStrSink sink);
         bool api_level_update_weather(float rain_level, int32_t rain_time, float lightning_level, int32_t lightning_time);
         bool api_level_find_path(LeviRsActorId id, int32_t x, int32_t y, int32_t z, void* ctx, LeviRsStrSink sink);
+
+        /* ── Edit.cpp — 批量世界编辑（原生写入，不走命令）── */
+        bool api_edit_set_block_nbt(
+            int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr snbt, int32_t update_flags);
+        bool api_edit_set_block_states(
+            int32_t dim,
+            int32_t x,
+            int32_t y,
+            int32_t z,
+            LeviRsStr name,
+            LeviRsStr states_snbt,
+            int32_t update_flags);
+        bool api_edit_set_block_entity(
+            int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr snbt);
+        bool api_edit_spawn_entity_nbt(
+            int32_t dim,
+            LeviRsStr snbt,
+            bool use_pos,
+            double x,
+            double y,
+            double z,
+            LeviRsActorId* out);
+        bool api_edit_trace_ray(
+            LeviRsActorId id,
+            float max_dist,
+            bool include_actors,
+            bool include_blocks,
+            void* ctx,
+            LeviRsStrSink sink);
 
         /* ── Client.cpp — client-only bridge (LEVI_RS_TARGET_CLIENT) ── */
 #ifdef LEVI_RS_TARGET_CLIENT

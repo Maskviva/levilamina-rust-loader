@@ -61,6 +61,20 @@
 //! `ActorUniqueID`, a [`Block`] is `(dimension, position)`, and an
 //! [`ItemStack`] is a pure SNBT value object. Nothing you hold can dangle;
 //! at worst a call returns `Err` because the target is gone.
+//!
+//! [`Actor`] is an alias of [`Entity`] — same type, two names, because the
+//! native class is `Actor` (`Player : Mob : Actor`) while this crate
+//! originally shipped `Entity`. Everything inherited from the actor layer
+//! (position, health, effects, tags, riding, ray casts) lives there, so a
+//! [`Player`] reaches it via [`Player::get_actor`]:
+//!
+//! ```no_run
+//! # use levilamina::prelude::*;
+//! # fn demo(player: &Player) -> Result<()> {
+//! let (x, y, z) = player.get_actor()?.pos()?;
+//! # Ok(())
+//! # }
+//! ```
 
 // The `server` and `client` features are mutually exclusive — exactly one
 // must be enabled. Enforced at compile time so a misconfigured mod fails
@@ -80,6 +94,8 @@ pub use levilamina_sys as sys;
 
 // Shared API (both server and client).
 pub mod block;
+/// 跨 mod 事件总线（发布 / 订阅）。见 [`bus`] 的模块文档。
+pub mod bus;
 pub mod container;
 pub mod entity;
 mod error;
@@ -93,6 +109,9 @@ pub mod packet;
 pub mod player;
 mod registration;
 mod runtime;
+/// 跨 mod **服务注册**（查询式调用）。和 [`bus`] 的分工见 [`service`] 的模块文档：
+/// 总线是「发生了什么」，服务是「问一个问题」。
+pub mod service;
 pub mod system;
 pub mod types;
 pub mod world;
@@ -100,6 +119,9 @@ pub mod world;
 // ── Server-only API ───────────────────────────────────────────────────
 #[cfg(feature = "server")]
 pub mod command;
+/// 批量世界编辑（原生写入，不走命令解析）。见 [`edit`] 的模块文档。
+#[cfg(feature = "server")]
+pub mod edit;
 #[cfg(feature = "server")]
 pub mod gui;
 #[cfg(feature = "server")]
@@ -122,8 +144,9 @@ pub mod more_dimensions;
 pub mod client;
 
 pub use block::Block;
+pub use bus::{Subscription, Vetoable};
 pub use container::Container;
-pub use entity::{Entity, EntityId};
+pub use entity::{Actor, Entity, EntityId};
 pub use error::{Error, Result};
 pub use event::{EventPriority, EventRef, Listener, PlayerIdentity};
 pub use item::ItemStack;
@@ -134,7 +157,9 @@ pub use nbt::NbtValue;
 // generic enough that hoisting them to the crate root would collide with a
 // mod's own vocabulary.
 pub use packet::{ConnectionState, PacketCtx, PacketHook, Packets};
-pub use player::{Ability, GameMode, MessageType, Player, PlayerInfo};
+pub use player::{
+    Ability, AbilityValue, GameMode, MessageType, Player, PlayerInfo, TitleKind, TitleTimes,
+};
 pub use registration::{__init_runtime, __lifecycle, __load, LeviMod, ModSlot};
 pub use runtime::ModContext;
 pub use world::{
@@ -142,6 +167,8 @@ pub use world::{
 };
 
 // ── Server-only re-exports ────────────────────────────────────────────
+#[cfg(feature = "server")]
+pub use edit::{BlockUpdate, RayHit, RayHitKind};
 #[cfg(feature = "server")]
 pub use command::{
     CommandBuilder, CommandInvocation, CommandInvocationEx, CommandOrigin, CommandPermission,
@@ -154,13 +181,13 @@ pub use money::{MoneyEvent, MoneyEventKind};
 #[cfg(feature = "server")]
 pub use scoreboard::{DisplaySlot, Objective, Scoreboard};
 #[cfg(feature = "server")]
-pub use server::{GamingStatus, Server, SoftEnumOp, Weather};
+pub use server::{GamingStatus, Server, SoftEnumOp, TaskId, Weather};
 #[cfg(feature = "server")]
 pub use sim::SimPlayer;
 
 // ── Client-only re-exports ────────────────────────────────────────────
 #[cfg(feature = "client")]
-pub use client::{Client, ClientInstance, GamingStatus};
+pub use client::{Client, ClientInstance, GamingStatus, TaskId};
 
 // Re-exported so every `use crate::{rt, sys}` in sibling modules keeps
 // resolving after the runtime split.
@@ -169,17 +196,18 @@ pub(crate) use runtime::rt;
 pub mod prelude {
     //! Everything most mods need, in one `use`.
     pub use crate::{
-        register_mod, Ability, Block, BlockInfo, Cell, Entity, EntityInfo, EventPriority, EventRef,
-        GameMode, ItemStack, KvDb, LeviMod, Listener, LogLevel, Logger, MessageType, ModContext,
-        NbtValue, Player, PlayerInfo, PlayerPos, Result, Scan, ScanLayer,
+        register_mod, Ability, Actor, Block, BlockInfo, Cell, Entity, EntityInfo, EventPriority,
+        EventRef, GameMode, ItemStack, KvDb, LeviMod, Listener, LogLevel, Logger, MessageType,
+        ModContext, NbtValue, Player, PlayerInfo, PlayerPos, Result, Scan, ScanLayer, TitleKind,
+        TitleTimes,
     };
 
     // Server-only prelude items.
     #[cfg(feature = "server")]
     pub use crate::{
-        CommandBuilder, CommandInvocation, CommandInvocationEx, CommandPermission, Container,
+        BlockUpdate, CommandBuilder, CommandInvocation, CommandInvocationEx, CommandPermission, Container,
         DisplaySlot, FormResponse, FormValue, GamingStatus, Objective, ParamType, Scoreboard,
-        Server, SimPlayer, SoftEnumOp, Weather,
+        Server, SimPlayer, SoftEnumOp, TaskId, Weather,
     };
 
     // Opt-in: only when `more_dimensions` is enabled (implies server).
@@ -188,5 +216,5 @@ pub mod prelude {
 
     // Client-only prelude items.
     #[cfg(feature = "client")]
-    pub use crate::{client::KeyAction, Client, ClientInstance, Container};
+    pub use crate::{client::KeyAction, Client, ClientInstance, Container, TaskId};
 }

@@ -1,85 +1,126 @@
 # 日志与调度
 
-这两组 API 是全 API 面里仅有的**线程安全**成员（外加 `Server::gaming_status`），也因此是后台线程与游戏世界之间的桥梁。
-
 ## 日志
 
-日志走模组自己的 LeviLamina 日志器，输出自动带模组名前缀。从 `ModContext` 拿到 `Logger` 后可以随意 clone、move 进闭包、跨线程使用：
-
 ```rust
-let logger = ctx.logger();
+let logger = ctx.logger();          // 或者任何地方 Logger::get()
 
-logger.info("服务已就绪");
-logger.warn("配置缺少字段, 使用默认值");
-logger.error("数据库连接失败");
-logger.debug("tick 详情…");
-logger.trace("最啰嗦的级别");
-logger.log(LogLevel::Fatal, "显式指定级别");
+logger.info("模组已启用");
+logger.warn("配置项缺失，用默认值");
+logger.error("数据库打不开");
+logger.debug("详细状态：…");
 ```
 
-级别：`Fatal` / `Error` / `Warn` / `Info` / `Debug` / `Trace`。Debug/Trace 是否显示取决于服务器的 LeviLamina 日志配置。
+六档：`fatal` `error` `warn` `info` `debug` `trace`。
 
-## 调度：把工作投递回服务器线程
+会自动带模组名前缀，不用自己加。**线程安全**，后台线程可以直接打。
+
+::: warning 高频回调里不要无条件打日志
+`HopperTransferEvent`、移动类事件、包拦截器一秒能触发几千次。日志 I/O 会直接拖垮 tick。要打就加采样或节流。
+:::
+
+## 调度
 
 ```rust
-let server = Server::get();
+use std::time::Duration;
 
-// 尽快在服务器线程上执行
-server.schedule(|| {
-    // 这里可以调用任何 API
+// 尽快在游戏线程执行
+ctx.server().schedule(|| {
+    Player::broadcast("下一刻见");
 });
 
-// 延迟执行
-server.schedule_after(Duration::from_secs(5), || {
-    let _ = Server::get().execute_command("say 5 秒到了");
+// 延迟
+let id = ctx.server().schedule_after(Duration::from_secs(5), || {
+    Player::broadcast("五秒到了");
 });
+
+// 取消
+ctx.server().cancel_task(id);
 ```
 
-两个方法都线程安全，闭包**总是**在服务器线程上执行。
+`schedule` / `schedule_after` 是**线程安全**的，这是它们存在的主要理由。
 
-### 周期任务
+## 后台线程回到游戏
 
-没有专门的"每 N 秒"接口，用 `schedule_after` 自我续期即可（`region-scan` 示例的动画循环就是这个模式）：
+这是整个 SDK 里最重要的一个模式。
 
 ```rust
-fn tick_loop() {
-    Server::get().schedule_after(Duration::from_millis(500), || {
-        // …做事…
-        tick_loop(); // 续期下一轮
+use std::thread;
+
+thread::spawn(move || {
+    // ✅ 后台线程，随便慢：网络请求、大文件、复杂计算
+    let data = 很慢的活();
+
+    // ✅ 回到游戏线程再碰世界
+    Server::get().schedule(move || {
+        Player::by_name("Steve").send_message(&data).ok();
     });
+});
+```
+
+::: danger 后台线程能碰的只有这些
+- `Server::schedule` / `schedule_after` / `gaming_status`
+- `KvDb` 全部方法
+- `system::*` 全部
+- `Logger` 全部
+
+**其余一切**在游戏线程之外调用都是未定义行为。可能崩，也可能更糟——静默的数据损坏。
+:::
+
+配合 Tokio 也是同一个模式：在 runtime 里跑异步，结果出来 `schedule` 回去。
+
+## 循环任务
+
+没有内置的"重复任务"，自己重排：
+
+```rust
+fn tick() {
+    // 干活
+
+    Server::get().schedule_after(Duration::from_secs(1), tick);
+}
+
+// on_enable 里启动
+ctx.server().schedule_after(Duration::from_secs(1), tick);
+```
+
+好处是想停就不再排，不用管句柄。
+
+::: warning 确认每次只排一个
+自我重排的任务如果某条分支排了两次，就是指数增长。模组卸载时加载器会把没跑的任务丢掉，所以不会泄漏，但跑起来的服务器已经卡死了。
+:::
+
+## TaskId
+
+```rust
+let id = ctx.server().schedule_after(d, f);
+if !id.is_valid() {
+    // 排队失败（模组正在卸载）
 }
 ```
 
-需要可停止的循环时，配一个"代际计数"：启动时记下当前代，每轮开头核对，代不匹配就直接返回不再续期。
+id 在进程内单调递增、**永不复用**。过期的 `TaskId` 取消不了任何东西，不会误伤凑巧用了同一个数字的无关任务。
 
-## 后台线程模式（Tokio / HTTP / AI agent）
+## 任务归属
 
-铁律回顾：**回调都在服务器线程；除日志/调度/`gaming_status` 外一切 API 只能在服务器线程调用**（详见[核心概念](/guide/concepts)）。
+任务归注册它的模组。模组卸载时还没跑的任务会被丢掉——不会在半个模组已经消失的情况下执行。
 
-于是"后台干重活、结果回游戏"的标准形状是：
+`on_disable` 里通常不需要手动取消任务，加载器会处理。需要手动取消的是那些**跨 tick 持有外部资源**的任务。
+
+## 定时保存的常见写法
 
 ```rust
-fn on_enable(&mut self, ctx: &ModContext) -> Result<()> {
-    let logger = ctx.logger();
+struct MyMod { dirty: Arc<AtomicBool> }
 
-    std::thread::spawn(move || {
-        // ① 后台线程:自由使用 reqwest/tokio/std::fs… 与游戏无关的一切
-        let result = do_heavy_work();
-        logger.info("后台任务完成");            // 日志线程安全,直接用
-
-        // ② 结果要影响游戏 → 投递回服务器线程
-        Server::get().schedule(move || {
-            let _ = Server::get()
-                .execute_command(&format!("say 任务结果: {result}"));
-        });
-    });
-
-    Ok(())
+// on_enable
+let dirty = self.dirty.clone();
+fn autosave(dirty: Arc<AtomicBool>) {
+    if dirty.swap(false, Ordering::Relaxed) {
+        // 存盘
+    }
+    let d = dirty.clone();
+    Server::get().schedule_after(Duration::from_secs(60), move || autosave(d));
 }
 ```
 
-反过来也一样：事件回调里不要做阻塞 I/O（会卡住整个服务器 tick），把慢活丢给后台线程/`tokio::spawn`，完成后再 `schedule` 回来。
-
-## 文件、网络、进程：直接用 Rust 生态
-
-配置文件、HTTP 请求、SQLite、子进程……这些与游戏引擎无关的需求**不经过桥接**，在模组的 `Cargo.toml` 里加常规 crate（`serde_json`、`reqwest`、`rusqlite`、`std::fs`、`std::process` ……）正常写 Rust 即可。唯一的纪律仍然是上面那条：结果要碰游戏时走 `schedule`。详见 [System](/api/system) 与 [Data](/api/data) 参考页的说明。
+比"每次改动都存盘"省事，也比"只在 `on_disable` 存"安全——服务器崩了 `on_disable` 是不跑的。

@@ -84,3 +84,28 @@ impl ModContext {
         Client::get()
     }
 }
+
+/// Handle to a scheduled task, returned by `schedule` / `schedule_after`.
+///
+/// Lives here rather than in `server` / `client` because those two modules are
+/// mutually exclusive cargo features and both need this type.
+///
+/// Loader-side ids are per-process and monotonically increasing, so an id is
+/// never reused: a stale `TaskId` cancels nothing rather than cancelling some
+/// unrelated task that happened to reuse the number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TaskId(pub(crate) u64);
+
+impl TaskId {
+    /// The id the loader returns when a task could not be registered.
+    pub const NONE: TaskId = TaskId(0);
+
+    /// False when scheduling failed (null callback, or the mod is going away).
+    pub fn is_valid(self) -> bool {
+        self.0 != 0
+    }
+
+    pub fn raw(self) -> u64 {
+        self.0
+    }
+}
