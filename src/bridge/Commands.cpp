@@ -319,6 +319,12 @@ namespace levi_rs::bridge
                         "}");
                 }
                 break;
+            case K::BlockName:
+                if (p.hold(K::BlockName))
+                {
+                    key("\"" + snbtEscape(p.get<K::BlockName>().getBlockName()) + "\"");
+                }
+                break;
             case K::Vec3:
                 if (p.hold(K::Vec3))
                 {
