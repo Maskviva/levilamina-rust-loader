@@ -94,7 +94,9 @@ impl Block {
         if ok {
             Ok(())
         } else {
-            Err(Error(format!("set_states 失败 ({x}, {y}, {z})：方块名「{name}」不存在，或状态不合法")))
+            Err(Error(format!(
+                "set_states 失败 ({x}, {y}, {z})：方块名「{name}」不存在，或状态不合法"
+            )))
         }
     }
 
@@ -141,13 +143,15 @@ impl Server {
             None => (false, (0.0, 0.0, 0.0)),
         };
         let mut id: sys::LeviRsActorId = 0;
-        let ok = unsafe {
-            (rt().api.edit_spawn_entity_nbt)(dim, s(snbt), use_pos, x, y, z, &mut id)
-        };
+        let ok =
+            unsafe { (rt().api.edit_spawn_entity_nbt)(dim, s(snbt), use_pos, x, y, z, &mut id) };
         if ok {
             Ok(Entity::from_id(id))
         } else {
-            Err(Error("spawn_entity_nbt 失败：维度未就绪、SNBT 解析失败，或这不是一个可加载的实体标签".into()))
+            Err(Error(
+                "spawn_entity_nbt 失败：维度未就绪、SNBT 解析失败，或这不是一个可加载的实体标签"
+                    .into(),
+            ))
         }
     }
 }

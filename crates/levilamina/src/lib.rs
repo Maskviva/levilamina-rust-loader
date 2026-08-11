@@ -168,12 +168,12 @@ pub use world::{
 
 // ── Server-only re-exports ────────────────────────────────────────────
 #[cfg(feature = "server")]
-pub use edit::{BlockUpdate, RayHit, RayHitKind};
-#[cfg(feature = "server")]
 pub use command::{
     CommandBuilder, CommandInvocation, CommandInvocationEx, CommandOrigin, CommandPermission,
     CommandResult, OverloadBuilder, ParamType,
 };
+#[cfg(feature = "server")]
+pub use edit::{BlockUpdate, RayHit, RayHitKind};
 #[cfg(feature = "server")]
 pub use gui::{CustomFormBuilder, FormResponse, FormValue, ModalFormBuilder, SimpleFormBuilder};
 #[cfg(feature = "server")]
@@ -205,9 +205,9 @@ pub mod prelude {
     // Server-only prelude items.
     #[cfg(feature = "server")]
     pub use crate::{
-        BlockUpdate, CommandBuilder, CommandInvocation, CommandInvocationEx, CommandPermission, Container,
-        DisplaySlot, FormResponse, FormValue, GamingStatus, Objective, ParamType, Scoreboard,
-        Server, SimPlayer, SoftEnumOp, TaskId, Weather,
+        BlockUpdate, CommandBuilder, CommandInvocation, CommandInvocationEx, CommandPermission,
+        Container, DisplaySlot, FormResponse, FormValue, GamingStatus, Objective, ParamType,
+        Scoreboard, Server, SimPlayer, SoftEnumOp, TaskId, Weather,
     };
 
     // Opt-in: only when `more_dimensions` is enabled (implies server).
