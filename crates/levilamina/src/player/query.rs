@@ -37,7 +37,7 @@ impl Player {
     ///
     /// let (x, y, z) = actor.pos()?;
     /// actor.add_tag("in_arena")?;
-    /// actor.add_effect("speed", 200, 1, false, true)?;
+    /// actor.add_effect("speed", 200, 1, false)?;
     /// # Ok(())
     /// # }
     /// ```
