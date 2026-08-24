@@ -1,6 +1,3 @@
-//! Container productions: the dispatch `value`, plus compounds, lists, and
-//! the `[B; …]` / `[I; …]` / `[L; …]` typed arrays.
-
 use crate::error::Result;
 
 use super::{super::super::NbtValue, Parser};
@@ -48,7 +45,7 @@ impl<'a> Parser<'a> {
 
     pub(super) fn list_or_array(&mut self) -> Result<NbtValue> {
         self.expect(b'[')?;
-        // Typed arrays: [B; …] / [I; …] / [L; …]
+
         if self.bytes.len() >= self.pos + 2 && self.bytes[self.pos + 1] == b';' {
             let kind = self.bytes[self.pos];
             self.pos += 2;

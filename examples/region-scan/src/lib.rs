@@ -1,37 +1,15 @@
-//! region-scan — 3D selection + particle outline + live block/entity scan.
-//!
-//! A player marks two corners, an animated particle box traces the selection's
-//! edges, and the region's blocks and entities are collected in real time into
-//! the layered data model ([`Scan`]): one 2-D array per Y level, each cell an
-//! object holding the block **and** any entities occupying that cell.
-//!
-//! Commands (`/rscan …`, permission: Any):
-//!   pos1 / pos2   set a corner to the block you're standing in
-//!   show / hide   start / stop the animated outline + live scan
-//!   collect       one-shot scan, print a per-layer summary
-//!   status        print the current selection
-//!   clear         clear your selection
-//!
-//! The latest live scan is kept in [`latest_scan`] for other systems (e.g. an
-//! AI agent) to read.
-//!
-//! Requires levilamina-rust-loader ABI v3+ (spawn_particle / scan_region /
-//! get_player_position).
-
 use levilamina::prelude::*;
 use levilamina::types::{PositionF64, PositionI32 as Position};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
-/// Particle used to trace the selection edges. Swap for any valid Bedrock
-/// particle id if this one isn't ideal on your version.
 const OUTLINE_PARTICLE: &str = "minecraft:redstone_wire_dust_particle";
-/// How often the outline redraws and the live scan refreshes.
+
 const REFRESH: Duration = Duration::from_millis(500);
-/// Spacing (in blocks) between particles along an edge.
+
 const EDGE_STEP: f64 = 0.5;
-/// Above this many cells, live auto-scan is skipped (use `/rscan collect`).
+
 const MAX_AUTO_SCAN_CELLS: usize = 32 * 32 * 32;
 
 #[derive(Default, Clone)]
@@ -42,7 +20,6 @@ struct Selection {
 }
 
 impl Selection {
-    /// Min/max corners once both are set.
     fn bounds(&self) -> Option<(Position, Position)> {
         match (self.pos1, self.pos2) {
             (Some(a), Some(b)) => Some((
@@ -54,35 +31,25 @@ impl Selection {
     }
 }
 
-// ───────────────────────── shared state (statics) ─────────────────────────
-// Command handlers and the scheduled loop are both `'static` and can't borrow
-// the mod instance, so selection state lives here.
-
 fn selections() -> &'static Mutex<HashMap<String, Selection>> {
     static S: OnceLock<Mutex<HashMap<String, Selection>>> = OnceLock::new();
     S.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// The most recent live scan, for other systems to consume.
 pub fn latest_scan() -> &'static Mutex<Option<Scan>> {
     static S: OnceLock<Mutex<Option<Scan>>> = OnceLock::new();
     S.get_or_init(|| Mutex::new(None))
 }
 
-/// Bumped by `/rscan show` (start) and `/rscan hide` (stop). The animation loop
-/// stops as soon as its captured generation no longer matches.
 fn generation() -> &'static Mutex<u64> {
     static S: OnceLock<Mutex<u64>> = OnceLock::new();
     S.get_or_init(|| Mutex::new(0))
 }
 
-/// Last logged (non_empty, entities) so the live scan only logs on change.
 fn last_summary() -> &'static Mutex<Option<(usize, usize)>> {
     static S: OnceLock<Mutex<Option<(usize, usize)>>> = OnceLock::new();
     S.get_or_init(|| Mutex::new(None))
 }
-
-// ───────────────────────── the mod ─────────────────────────
 
 struct RegionScan;
 
@@ -105,7 +72,7 @@ impl LeviMod for RegionScan {
     }
 
     fn on_disable(&mut self, ctx: &ModContext) -> Result<()> {
-        *generation().lock().unwrap() += 1; // stop any running outline loop
+        *generation().lock().unwrap() += 1;
         ctx.logger().info("region-scan disabled");
         Ok(())
     }
@@ -156,7 +123,7 @@ fn handle_command(logger: Logger, inv: &CommandInvocation) {
             }
             let gen = {
                 let mut g = generation().lock().unwrap();
-                *g += 1; // invalidate any previous loop, claim a new generation
+                *g += 1;
                 *g
             };
             *last_summary().lock().unwrap() = None;
@@ -165,7 +132,7 @@ fn handle_command(logger: Logger, inv: &CommandInvocation) {
         }
 
         "hide" => {
-            *generation().lock().unwrap() += 1; // stops the loop on its next tick
+            *generation().lock().unwrap() += 1;
             inv.success("outline + live scan off");
         }
 
@@ -223,11 +190,9 @@ fn handle_command(logger: Logger, inv: &CommandInvocation) {
     }
 }
 
-/// One animation frame: redraw every selection's outline and refresh the live
-/// scan, then re-arm itself unless this generation has been superseded.
 fn run_outline(logger: Logger, gen: u64) {
     if *generation().lock().unwrap() != gen {
-        return; // superseded by a newer show/hide/clear
+        return;
     }
     let server = Server::get();
 
@@ -238,7 +203,6 @@ fn run_outline(logger: Logger, gen: u64) {
         };
         draw_outline(&server, sel.dim, min, max);
 
-        // Live collection into the layered data model.
         let (sx, sy, sz) = size_of_box(min, max);
         if sx * sy * sz > MAX_AUTO_SCAN_CELLS {
             log_once(
@@ -265,7 +229,6 @@ fn run_outline(logger: Logger, gen: u64) {
     server.schedule_after(REFRESH, move || run_outline(logger, gen));
 }
 
-/// Log a message only when the summary signature changes (avoids per-frame spam).
 fn log_once(logger: Logger, sig: (usize, usize), msg: &str) {
     let mut last = last_summary().lock().unwrap();
     if *last != Some(sig) {
@@ -274,13 +237,10 @@ fn log_once(logger: Logger, sig: (usize, usize), msg: &str) {
     }
 }
 
-/// Trace the 12 edges of the block-space box [min..max] with particles.
 fn draw_outline(server: &Server, dim: i32, min: Position, max: Position) {
-    // A block at `min` occupies world [min, min+1); the visual box therefore
-    // spans min .. max+1 in world coordinates.
     let (x0, y0, z0) = (min.0 as f64, min.1 as f64, min.2 as f64);
     let (x1, y1, z1) = ((max.0 + 1) as f64, (max.1 + 1) as f64, (max.2 + 1) as f64);
-    // 8 corners indexed by bits: bit0=x, bit1=y, bit2=z.
+
     let c = [
         (x0, y0, z0),
         (x1, y0, z0),
@@ -291,20 +251,20 @@ fn draw_outline(server: &Server, dim: i32, min: Position, max: Position) {
         (x0, y1, z1),
         (x1, y1, z1),
     ];
-    // 12 edges: corner pairs differing in exactly one axis.
+
     const EDGES: [(usize, usize); 12] = [
         (0, 1),
         (2, 3),
         (4, 5),
-        (6, 7), // x
+        (6, 7),
         (0, 2),
         (1, 3),
         (4, 6),
-        (5, 7), // y
+        (5, 7),
         (0, 4),
         (1, 5),
         (2, 6),
-        (3, 7), // z
+        (3, 7),
     ];
     for &(a, b) in &EDGES {
         draw_edge(server, dim, c[a], c[b]);
@@ -327,7 +287,6 @@ fn draw_edge(server: &Server, dim: i32, a: PositionF64, b: PositionF64) {
     }
 }
 
-/// Print a per-layer summary of a scan to the command sender.
 fn report_scan(inv: &CommandInvocation, scan: &Scan) {
     let (sx, sy, sz) = scan.size();
     inv.success(&format!(

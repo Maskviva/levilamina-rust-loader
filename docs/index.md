@@ -11,7 +11,7 @@ hero:
       link: /guide/getting-started
     - theme: alt
       text: API 参考
-      link: /api/overview
+      link: /api/core/overview
     - theme: alt
       text: 高级开发
       link: /advanced/architecture
@@ -22,7 +22,7 @@ features:
     link: /guide/getting-started
   - title: 📖 API 参考
     details: 按代码里的 pub fn 逐条对齐 —— 列出来的都能编译，能编译的都列出来了。
-    link: /api/overview
+    link: /api/core/overview
   - title: 🔬 高级开发
     details: 四层架构、ABI 契约与演进规则、内存安全与句柄设计、扩展桥接的完整流程、设计取舍记录。
     link: /advanced/architecture
@@ -34,7 +34,7 @@ features:
     link: /guide/logging-scheduling
   - title: 跨模组通信
     details: 总线负责广播「发生了什么」，服务注册负责回答「一个问题」。句柄由加载器持有，卸载模组不会留下野指针。
-    link: /api/bus
+    link: /api/core/bus
 ---
 
 ## 这一版文档修了什么
@@ -43,10 +43,10 @@ features:
 
 这一版按代码逐条核对重写，并补上了此前完全没有文档的几块：
 
-- [自定义维度](/api/dimensions) —— 注册新维度、地皮世界生成器、**按维度**的行为规则（gamerule 做不到的那种）
-- [跨模组总线](/api/bus) 与 [服务注册](/api/service)
-- [模拟玩家](/api/sim) —— carpet 风格的假人
-- [客户端 API](/api/client) —— 本地玩家、按键绑定
+- [自定义维度](/api/world/dimensions) —— 注册新维度、地皮世界生成器、**按维度**的行为规则（gamerule 做不到的那种）
+- [跨模组总线](/api/core/bus) 与 [服务注册](/api/core/service)
+- [模拟玩家](/api/actor/sim) —— carpet 风格的假人
+- [客户端 API](/api/rt/client) —— 本地玩家、按键绑定
 
 ## 常见的第一个问题
 
@@ -60,4 +60,4 @@ let (x, y, z) = actor.pos()?;
 let hp = actor.health()?;
 ```
 
-`Actor` 是 `Entity` 的别名，同一个类型两个名字 —— 原生叫 Actor，本 crate 早期叫 Entity。详见 [Actor / Entity](/api/entity)。
+`Actor` 是 `Entity` 的别名，同一个类型两个名字 —— 原生叫 Actor，本 crate 早期叫 Entity。详见 [Actor / Entity](/api/actor/entity)。

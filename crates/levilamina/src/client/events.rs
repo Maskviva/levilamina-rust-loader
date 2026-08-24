@@ -1,13 +1,9 @@
-//! Client event subscription. Reuses the same `subscribe_event` FFI as
-//! server events; only the event-id strings differ.
-
 use crate::client::Client;
 use crate::error::{Error, Result};
 use crate::event::{event_trampoline, EventCallback, EventPriority, EventRef, Listener};
 use crate::ffi::s;
 use crate::rt;
 
-/// Canonical client event IDs (mirrors `ll::event::client::*` class names).
 pub mod events {
     pub const CLIENT_START_JOIN_LEVEL: &str = "ClientStartJoinLevelEvent";
     pub const CLIENT_JOIN_LEVEL: &str = "ClientJoinLevelEvent";
@@ -22,7 +18,6 @@ pub mod events {
 }
 
 impl Client {
-    /// Client thread only. Returns a [`Listener`] that unsubscribes on drop.
     pub fn subscribe_event(
         &self,
         event_id: &str,
@@ -48,7 +43,6 @@ impl Client {
         Ok(Listener::new(raw, cb))
     }
 
-    /// Client thread only.
     pub fn list_events(&self) -> Vec<String> {
         crate::ffi::collect_strs(|ctx, sink| unsafe { (rt().api.list_events)(ctx, sink) })
     }

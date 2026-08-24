@@ -1,12 +1,7 @@
-//! Block handles: `(dimension, position)` resolved against the live
-//! BlockSource on every call.
-
 use crate::error::{Error, Result};
 use crate::ffi::call_out_str;
 use crate::rt;
 
-/// A block handle. Copy-cheap; re-reads the world every call, so it always
-/// reflects the *current* block at that position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Block {
     dim: i32,
@@ -45,8 +40,6 @@ impl Block {
         .ok_or_else(|| self.unreachable())
     }
 
-    /// Handle for the block at `(x, y, z)` in `dimension`
-    /// (0=overworld 1=nether 2=the_end).
     pub fn at(dimension: i32, x: i32, y: i32, z: i32) -> Block {
         Block {
             dim: dimension,

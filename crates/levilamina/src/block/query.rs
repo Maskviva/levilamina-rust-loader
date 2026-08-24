@@ -1,5 +1,3 @@
-//! Read-only block queries.
-
 use super::*;
 use crate::error::Result;
 use crate::ffi::call_out_str;
@@ -7,17 +5,14 @@ use crate::nbt::NbtValue;
 use crate::{rt, sys};
 
 impl Block {
-    /// Full type name, e.g. `minecraft:grass_block`.
     pub fn type_name(&self) -> Result<String> {
         self.get_str(sys::BSTR_TYPE_NAME)
     }
 
-    /// Full serialization `{name, states, version}` as a structured value.
     pub fn to_nbt(&self) -> Result<NbtValue> {
         NbtValue::parse(&self.get_str(sys::BSTR_SNBT)?)
     }
 
-    /// Raw serialization SNBT.
     pub fn snbt(&self) -> Result<String> {
         self.get_str(sys::BSTR_SNBT)
     }
@@ -30,7 +25,6 @@ impl Block {
         self.get_str(sys::BSTR_DEBUG_STRING)
     }
 
-    /// Engine block tags (e.g. `minecraft:is_axe_item_destructible`).
     pub fn tags(&self) -> Result<Vec<String>> {
         let raw = self.get_str(sys::BSTR_TAGS)?;
         let v = NbtValue::parse(&raw)?;
@@ -69,7 +63,6 @@ impl Block {
         self.get_num(sys::BPROP_IS_AIR).map(|v| v != 0.0)
     }
 
-    /// Legacy data value (block variant).
     pub fn data(&self) -> Result<i32> {
         self.get_num(sys::BPROP_DATA).map(|v| v as i32)
     }
@@ -91,14 +84,13 @@ impl Block {
         self.get_num(sys::BPROP_HAS_BLOCK_ENTITY).map(|v| v != 0.0)
     }
 
-    /// The block entity's saved NBT (chest contents, sign text, …), if any.
     pub fn block_entity(&self) -> Result<Option<NbtValue>> {
         let snbt = call_out_str(|ctx, sink| unsafe {
             (rt().api.block_entity_snbt)(self.dim, self.x, self.y, self.z, ctx, sink)
         });
         match snbt {
             Some(text) => Ok(Some(NbtValue::parse(&text)?)),
-            None => Ok(None), // no block entity here (or unreachable)
+            None => Ok(None),
         }
     }
 }

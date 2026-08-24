@@ -1,5 +1,3 @@
-//! Mob spawning and explosions.
-
 use super::*;
 use crate::entity::Entity;
 use crate::error::{Error, Result};
@@ -7,8 +5,6 @@ use crate::ffi::s;
 use crate::{rt, sys};
 
 impl Server {
-    /// Spawn a mob; returns its [`Entity`] handle.
-    /// `type_name`: e.g. `"minecraft:zombie"`.
     pub fn spawn_mob(&self, dim: i32, type_name: &str, x: f64, y: f64, z: f64) -> Result<Entity> {
         let mut id: sys::LeviRsActorId = 0;
         let ok = unsafe { (rt().api.spawn_mob)(dim, s(type_name), x, y, z, &mut id) };
@@ -19,7 +15,6 @@ impl Server {
         }
     }
 
-    /// Create an explosion. `source`: optional entity credited with the blast.
     #[allow(clippy::too_many_arguments)]
     pub fn explode(
         &self,
@@ -39,7 +34,7 @@ impl Server {
                 y,
                 z,
                 radius,
-                f32::MAX, // max_resistance: no artificial cap
+                f32::MAX,
                 source.map(|e| e.id()).unwrap_or(0),
                 fire,
                 breaks_blocks,

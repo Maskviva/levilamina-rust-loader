@@ -1,31 +1,21 @@
-//! Read-only world-data types from `Server::villages` / `structures_near`:
-//! [`VillageInfo`] and [`StructureInfo`], with SNBT parsing helpers.
-
 use super::*;
 use crate::types::PositionF64;
 
-/// One village, from [`Server::villages`](crate::server::Server::villages).
 #[derive(Debug, Clone, PartialEq)]
 pub struct VillageInfo {
-    /// Stable village UUID string.
     pub uuid: String,
-    /// Approximate village centre.
+
     pub center: PositionF64,
-    /// Village bounding box.
+
     pub bounds: Bounds,
-    /// Number of points of interest (claimed + unclaimed) tracked by the
-    /// village — a stable proxy for village size / dweller capacity.
+
     pub poi_count: u64,
 }
 
-/// One hardcoded spawn area (HSA), from
-/// [`Server::structures_near`](crate::server::Server::structures_near).
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructureInfo {
-    /// Structure kind: `nether_fortress`, `witch_hut`, `ocean_monument`,
-    /// `pillager_outpost`, or `village_deprecated`.
     pub kind: String,
-    /// The spawn-override box.
+
     pub bounds: Bounds,
 }
 

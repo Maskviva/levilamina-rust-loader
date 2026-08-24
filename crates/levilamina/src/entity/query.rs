@@ -1,5 +1,3 @@
-//! Read-only entity queries.
-
 use super::*;
 use crate::error::Result;
 use crate::ffi::call_out_str;
@@ -8,12 +6,10 @@ use crate::types::PositionF64;
 use crate::{rt, sys};
 
 impl Entity {
-    /// Wrap a raw ActorUniqueID (from a snapshot, a command selector arg, …).
     pub fn from_id(id: i64) -> Entity {
         Entity { id }
     }
 
-    /// Enumerate live entities; `dimension = None` for all dimensions.
     pub fn list(dimension: Option<i32>) -> Vec<EntityId> {
         use std::ffi::c_void;
         unsafe extern "C" fn sink(ctx: *mut c_void, id: sys::LeviRsActorId, name: sys::LeviRsStr) {
@@ -37,13 +33,11 @@ impl Entity {
         self.id
     }
 
-    /// Does the id currently resolve to a live entity?
     pub fn exists(&self) -> bool {
         let mut out = 0.0f64;
         unsafe { (rt().api.actor_get_num)(self.id, sys::APROP_IS_ALIVE, &mut out) }
     }
 
-    /// Full `Actor::save` NBT snapshot as a structured value.
     pub fn snapshot(&self) -> Result<NbtValue> {
         let snbt =
             call_out_str(|ctx, sink| unsafe { (rt().api.actor_snapshot)(self.id, ctx, sink) })
@@ -67,7 +61,6 @@ impl Entity {
         ))
     }
 
-    /// (pitch, yaw) in degrees.
     pub fn rotation(&self) -> Result<(f64, f64)> {
         Ok((
             self.get_num(sys::APROP_ROT_PITCH)?,
@@ -87,7 +80,6 @@ impl Entity {
         self.get_num(sys::APROP_MAX_HEALTH).map(|v| v as i32)
     }
 
-    /// Speed in meters per second.
     pub fn speed(&self) -> Result<f64> {
         self.get_num(sys::APROP_SPEED)
     }

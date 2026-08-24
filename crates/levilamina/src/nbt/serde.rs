@@ -1,14 +1,8 @@
-//! SNBT serializer: `NbtValue::write` + the free helpers it depends on, plus
-//! the round-trip tests. The serializer's compatibility baseline is the
-//! bridge's own output (`CompoundTag::toSnbt(SnbtFormat::Minimize)`); every
-//! value this module emits round-trips through `CompoundTag::fromSnbt`.
-
 use std::fmt::Write as _;
 
 use super::NbtValue;
 
 impl NbtValue {
-    /// Recursive writer backing [`super::NbtValue::to_snbt`].
     pub(super) fn write(&self, out: &mut String) {
         match self {
             NbtValue::Byte(v) => {
@@ -94,7 +88,6 @@ impl NbtValue {
 
 fn write_float(out: &mut String, v: f64) {
     if v == v.trunc() && v.is_finite() && v.abs() < 1e15 {
-        // Keep a decimal point so the suffix-less double form stays a double.
         let _ = write!(out, "{v:.1}");
     } else {
         let _ = write!(out, "{v}");

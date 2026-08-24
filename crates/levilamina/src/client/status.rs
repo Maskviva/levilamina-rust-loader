@@ -1,5 +1,3 @@
-//! Client status, local player, and scheduling.
-
 use std::time::Duration;
 
 use crate::client::{task_trampoline, Client, GamingStatus, TaskId, TaskOnce};
@@ -9,7 +7,6 @@ use crate::player::Player;
 use crate::rt;
 
 impl Client {
-    /// Thread-safe.
     pub fn gaming_status(&self) -> GamingStatus {
         let raw = unsafe { (rt().api.gaming_status)() };
         match raw {
@@ -38,9 +35,6 @@ impl Client {
             .ok_or_else(|| crate::error::Error("screen name unavailable".into()))
     }
 
-    /// Thread-safe: marshals work onto the client thread.
-    ///
-    /// The task is owned by this mod and dropped if the mod unloads first.
     pub fn schedule<F>(&self, f: F) -> TaskId
     where
         F: FnOnce() + Send + 'static,
@@ -53,7 +47,6 @@ impl Client {
         TaskId(id)
     }
 
-    /// Thread-safe.
     pub fn schedule_after<F>(&self, delay: Duration, f: F) -> TaskId
     where
         F: FnOnce() + Send + 'static,
@@ -73,7 +66,6 @@ impl Client {
         TaskId(id)
     }
 
-    /// Drop a task this mod scheduled, if it has not run yet. Thread-safe.
     pub fn cancel_task(&self, id: TaskId) -> bool {
         if id.0 == 0 {
             return false;
@@ -81,7 +73,6 @@ impl Client {
         unsafe { (rt().api.schedule_cancel)(rt().handle, id.0) }
     }
 
-    /// How many tasks this mod still has queued. Thread-safe.
     pub fn pending_tasks(&self) -> u32 {
         unsafe { (rt().api.schedule_pending_count)(rt().handle) }
     }

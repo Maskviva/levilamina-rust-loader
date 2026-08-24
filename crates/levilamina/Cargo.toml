@@ -1,6 +1,6 @@
 [package]
 name = "levilamina"
-version = "26.20.4"
+version = "26.20.5"
 edition = "2021"
 license = "Apache-2.0"
 description = "Write LeviLamina mods for Minecraft Bedrock (server or client) in safe Rust. Targets BDS 1.26.20 / LeviLamina 26.20.4 (ABI v5)."
@@ -9,27 +9,15 @@ readme = "../../README.md"
 keywords = ["levilamina", "minecraft", "bedrock", "mod", "bds"]
 categories = ["game-development", "api-bindings"]
 
-# Minecraft / LeviLamina compatibility is metadata, NOT the crate version:
-# the crate follows its own SemVer (ABI stayed v5 across 1.0.0..26.20), while
-# these track which game/loader build the current release is verified against.
 [package.metadata.minecraft]
 bds_version = "1.26.20"
 levilamina_version = "26.20.4"
 abi_version = 5
+lane_protocol = 1
 
 [dependencies]
-# default-features = false: the `server`/`client` feature is selected EXCLUSIVELY
-# via this crate's own `server`/`client` feature below. Letting levilamina-sys's
-# default (`server`) leak in would compile BOTH side's FFI pointers into the
-# same #[repr(C)] LeviRsApi struct, producing a wrong ABI layout / struct_size.
-levilamina-sys = { version = "26.20.4", path = "../levilamina-sys", default-features = false }
+levilamina-sys = { version = "26.20.5", path = "../levilamina-sys", default-features = false }
 
-# ── Dual-target feature gates ──────────────────────────────────────────
-# Exactly one of `server` / `client` must be enabled. They select which
-# side-specific API surface is available; the shared API (blocks, entities,
-# items, NBT, players, world, …) is always compiled in.
-# Release builds publish two separate .dll packages (server / client), and
-# the Rust SDK publishes one crate whose mods pick a side via features.
 [features]
 default = ["server"]
 server = ["levilamina-sys/server"]

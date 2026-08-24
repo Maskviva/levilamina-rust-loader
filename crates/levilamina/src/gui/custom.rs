@@ -1,12 +1,8 @@
-//! A custom form: inputs, toggles, dropdowns, sliders.
-
 use super::*;
 use crate::error::Result;
 use crate::nbt::NbtValue;
 use crate::player::Player;
 
-/// A settings-style form with named inputs; results come back keyed by the
-/// element names you pass in.
 pub struct CustomFormBuilder {
     title: String,
     submit: Option<String>,
@@ -22,7 +18,6 @@ impl CustomFormBuilder {
         }
     }
 
-    /// Text of the submit button.
     pub fn submit(mut self, text: &str) -> Self {
         self.submit = Some(text.into());
         self

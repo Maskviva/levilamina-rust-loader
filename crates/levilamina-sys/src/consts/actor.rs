@@ -1,7 +1,3 @@
-//! Actor property/action constants — LeviRsActorNumProp, LeviRsActorStrProp,
-//! LeviRsActorAction. Append-only; never renumber.
-
-// LeviRsActorNumProp
 pub const APROP_POS_X: i32 = 0;
 pub const APROP_POS_Y: i32 = 1;
 pub const APROP_POS_Z: i32 = 2;
@@ -51,13 +47,11 @@ pub const APROP_IS_IN_LOVE: i32 = 45;
 pub const APROP_DEATH_TIME: i32 = 46;
 pub const APROP_HAS_PASSENGER: i32 = 47;
 
-// LeviRsActorStrProp
 pub const ASTR_TYPE_NAME: i32 = 0;
 pub const ASTR_NAME_TAG: i32 = 1;
 pub const ASTR_SCORE_TAG: i32 = 2;
 pub const ASTR_FILTERED_NAME: i32 = 3;
 
-// LeviRsActorAction
 pub const AACT_KILL: i32 = 0;
 pub const AACT_DESPAWN: i32 = 1;
 pub const AACT_HEAL: i32 = 2;
@@ -89,3 +83,5 @@ pub const AACT_SET_SCORE_TAG: i32 = 27;
 pub const AACT_SET_SKIN_ID: i32 = 28;
 pub const AACT_SET_STRENGTH: i32 = 29;
 pub const AACT_REMOVE_ALL_PASSENGERS: i32 = 30;
+pub const AACT_EXECUTE_EVENT: i32 = 31;
+pub const AACT_SET_ROTATION: i32 = 32;

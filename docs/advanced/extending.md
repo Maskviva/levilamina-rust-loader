@@ -88,6 +88,6 @@ cargo test --workspace
 
 ## 已知的 v0.1 简化（设计使然）
 
-- `EventRef::cancel()` 是对 SNBT 做 `cancelled:0b → cancelled:1b` 的文本翻转。它能工作是因为 `Cancellable` 恰好序列化这个字段；结构化的 NBT 编辑器是 v0.2 计划（配合 [Nbt](/api/nbt) 层落地）。
-- 所有 Rust 命令都是 `/<name> [raw text]`；类型化参数在路线图上（它们能干净地映射到更多 runtime overload，目标设计见 [Command 参考](/api/command)）。
+- `EventRef::cancel()` 是对 SNBT 做 `cancelled:0b → cancelled:1b` 的文本翻转。它能工作是因为 `Cancellable` 恰好序列化这个字段；结构化的 NBT 编辑器是 v0.2 计划（配合 [Nbt](/api/world/nbt) 层落地）。
+- 所有 Rust 命令都是 `/<name> [raw text]`；类型化参数在路线图上（它们能干净地映射到更多 runtime overload，目标设计见 [Command 参考](/api/actor/command)）。
 - 尚无直接的世界/实体指针；`execute_command` 覆盖了大部分需求（这也是[设计取舍记录](/advanced/decisions)第 3 条选择命令行落点的原因之一）。

@@ -1,17 +1,13 @@
-//! Item queries and property setters.
-
 use super::*;
 use crate::error::Result;
 use crate::nbt::NbtValue;
 use crate::sys;
 
 impl ItemStack {
-    /// The stack's serialized form (vanilla `ItemStack::save` layout).
     pub fn snbt(&self) -> &str {
         &self.snbt
     }
 
-    /// Parse into a structured value for field-level inspection.
     pub fn to_nbt(&self) -> Result<NbtValue> {
         NbtValue::parse(&self.snbt)
     }
@@ -28,7 +24,6 @@ impl ItemStack {
         self.get_num(sys::IPROP_AUX_VALUE).map(|v| v as i32)
     }
 
-    /// Numeric runtime item id (not stable across versions — prefer names).
     pub fn id(&self) -> Result<i32> {
         self.get_num(sys::IPROP_ID).map(|v| v as i32)
     }
@@ -61,12 +56,10 @@ impl ItemStack {
         self.get_num(sys::IPROP_IS_DAMAGED).map(|v| v != 0.0)
     }
 
-    /// Full type name, e.g. `minecraft:diamond_sword`.
     pub fn type_name(&self) -> Result<String> {
         self.get_str(sys::ISTR_TYPE_NAME)
     }
 
-    /// Display name (custom name if set, else the localized item name).
     pub fn name(&self) -> Result<String> {
         self.get_str(sys::ISTR_NAME)
     }

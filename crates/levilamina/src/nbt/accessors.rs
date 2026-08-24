@@ -1,8 +1,3 @@
-//! `NbtValue` accessors: get/insert/path/index + typed `as_*` projections.
-//!
-//! Split out of [`super::NbtValue`] so the object-model surface is browseable
-//! independently from the SNBT serializer.
-
 use std::collections::BTreeMap;
 
 use super::NbtValue;
@@ -22,7 +17,6 @@ impl NbtValue {
         }
     }
 
-    /// Insert into a compound (no-op returning `false` on other variants).
     pub fn insert(&mut self, key: impl Into<String>, value: NbtValue) -> bool {
         match self {
             NbtValue::Compound(map) => {
@@ -33,7 +27,6 @@ impl NbtValue {
         }
     }
 
-    /// Walk a dotted path through nested compounds: `v.path("player.pos")`.
     pub fn path(&self, dotted: &str) -> Option<&NbtValue> {
         let mut cur = self;
         for part in dotted.split('.') {

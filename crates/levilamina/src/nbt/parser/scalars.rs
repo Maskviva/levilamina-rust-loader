@@ -1,7 +1,3 @@
-//! Scalar productions: quoted strings (with escapes + UTF-8), bare tokens,
-//! and the numeric/boolean dispatch that turns a bare token into a typed
-//! [`NbtValue`].
-
 use crate::error::Result;
 
 use super::{super::super::NbtValue, utf8_len, Parser};
@@ -27,7 +23,6 @@ impl<'a> Parser<'a> {
                 },
                 Some(b) if b < 0x80 => out.push(b as char),
                 Some(b) => {
-                    // Re-decode a UTF-8 sequence starting at `b`.
                     let start = self.pos - 1;
                     let len = utf8_len(b);
                     let end = (start + len).min(self.bytes.len());
@@ -58,14 +53,14 @@ impl<'a> Parser<'a> {
 
     pub(super) fn scalar(&mut self) -> Result<NbtValue> {
         let token = self.bare_token()?;
-        // Booleans.
+
         if token.eq_ignore_ascii_case("true") {
             return Ok(NbtValue::Byte(1));
         }
         if token.eq_ignore_ascii_case("false") {
             return Ok(NbtValue::Byte(0));
         }
-        // Suffixed numbers.
+
         let (body, suffix) = match token.as_bytes().last() {
             Some(c @ (b'b' | b'B' | b's' | b'S' | b'l' | b'L' | b'f' | b'F' | b'd' | b'D')) => {
                 (&token[..token.len() - 1], Some(c.to_ascii_lowercase()))
@@ -112,14 +107,13 @@ impl<'a> Parser<'a> {
                     } else if let Ok(v) = body.parse::<i32>() {
                         return Ok(NbtValue::Int(v));
                     } else if let Ok(v) = body.parse::<i64>() {
-                        // Engine sometimes prints int64 without the L suffix.
                         return Ok(NbtValue::Long(v));
                     }
                 }
                 _ => {}
             }
         }
-        // Anything else is an unquoted string.
+
         Ok(NbtValue::String(token.to_owned()))
     }
 }

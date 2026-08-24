@@ -1,7 +1,3 @@
-//! Player property/action constants — LeviRsPlayerNumProp, LeviRsPlayerStrProp,
-//! LeviRsPlayerAction. Append-only; never renumber.
-
-// LeviRsPlayerNumProp
 pub const PPROP_GAME_TYPE: i32 = 0;
 pub const PPROP_LEVEL: i32 = 1;
 pub const PPROP_EXPERIENCE: i32 = 2;
@@ -39,7 +35,6 @@ pub const PPROP_IS_DEAD: i32 = 33;
 pub const PPROP_HAS_DIED_BEFORE: i32 = 34;
 pub const PPROP_DIMENSION: i32 = 35;
 
-// LeviRsPlayerStrProp
 pub const PSTR_REAL_NAME: i32 = 0;
 pub const PSTR_UUID: i32 = 1;
 pub const PSTR_XUID: i32 = 2;
@@ -51,7 +46,6 @@ pub const PSTR_LAST_DEATH_DIMENSION: i32 = 7;
 pub const PSTR_NETWORK_STATUS: i32 = 8;
 pub const PSTR_PLATFORM_ONLINE_ID: i32 = 9;
 
-// LeviRsPlayerAction
 pub const PACT_SET_ABILITY: i32 = 0;
 pub const PACT_CAN_USE_ABILITY: i32 = 1;
 pub const PACT_SET_SELECTED_SLOT: i32 = 2;
@@ -76,3 +70,5 @@ pub const PACT_UNREGISTER_TRACKED_BOSS: i32 = 20;
 pub const PACT_PLAY_EMOTE: i32 = 21;
 pub const PACT_RESEND_ALL_CHUNKS: i32 = 22;
 pub const PACT_OPEN_INVENTORY: i32 = 23;
+pub const PACT_SIDEBAR_SET: i32 = 24;
+pub const PACT_SIDEBAR_CLEAR: i32 = 25;

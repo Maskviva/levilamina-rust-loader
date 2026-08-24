@@ -132,7 +132,7 @@ chest.add_item(&item)?;
 
 ## 维度 id 不止 0/1/2
 
-有 [自定义维度](/api/dimensions) 的服务器上，`dimension()` 会返回 >= 3 的值：
+有 [自定义维度](/api/world/dimensions) 的服务器上，`dimension()` 会返回 >= 3 的值：
 
 ```rust
 // ❌

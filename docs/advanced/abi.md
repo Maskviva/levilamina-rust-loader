@@ -104,7 +104,7 @@ return false;
 |           v3            | 世界读取（生成粒子、查玩家坐标、区域扫描）                                                                                                                                          |
 |           v5            | 玩家管理（列表/消息/踢出/生命值/游戏模式/传送）+ 世界写入（读写单方块）+ 世界时钟（时间/天气）                                                                                                           |
 | v5 追加（`struct_size` 门控） | 单连接发包：`send_packet`（通用原语——任意 `MinecraftPacketIds` + 当前版本线格式包体，反序列化后只发给一个玩家）与 `spawn_particle_for`（其上的类型化派生：按玩家单发粒子包，不广播）                                       |
-| v5 追加（`struct_size` 门控） | 经济接口：`get`/`set`/`add`/`reduce`/`transfer`/`history`/`ranking` 及前置/后置事件监听，桥接到**可选**的 LegacyMoney 插件（见 [Money](/api/money)）。10 个表尾槽 `get_money`…`money_ranking` |
+| v5 追加（`struct_size` 门控） | 经济接口：`get`/`set`/`add`/`reduce`/`transfer`/`history`/`ranking` 及前置/后置事件监听，桥接到**可选**的 LegacyMoney 插件（见 [Money](/api/actor/money)）。10 个表尾槽 `get_money`…`money_ranking` |
 
 具体条目见仓库 `CHANGELOG.md`。
 

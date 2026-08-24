@@ -1,6 +1,3 @@
-//! Block, Item, Scoreboard, System, Server constants. Append-only; never renumber.
-
-// LeviRsBlockNumProp
 pub const BPROP_IS_AIR: i32 = 0;
 pub const BPROP_DATA: i32 = 1;
 pub const BPROP_BLOCK_ITEM_ID: i32 = 2;
@@ -31,7 +28,6 @@ pub const BPROP_BOUNCINESS: i32 = 26;
 pub const BPROP_IS_SOLID: i32 = 27;
 pub const BPROP_REQUIRES_TOOL: i32 = 28;
 
-// LeviRsBlockStrProp
 pub const BSTR_TYPE_NAME: i32 = 0;
 pub const BSTR_SNBT: i32 = 1;
 pub const BSTR_DESCRIPTION_ID: i32 = 2;
@@ -42,13 +38,11 @@ pub const BSTR_COLLISION_SHAPE: i32 = 6;
 pub const BSTR_OUTLINE_SHAPE: i32 = 7;
 pub const BSTR_DISPLAY_NAME: i32 = 8;
 
-// LeviRsBlockAction
 pub const BACT_HAS_TAG: i32 = 0;
 pub const BACT_GET_STATE: i32 = 1;
 pub const BACT_POP_RESOURCE: i32 = 2;
 pub const BACT_AS_ITEM: i32 = 3;
 
-// LeviRsItemNumProp
 pub const IPROP_COUNT: i32 = 0;
 pub const IPROP_MAX_STACK_SIZE: i32 = 1;
 pub const IPROP_AUX_VALUE: i32 = 2;
@@ -78,7 +72,6 @@ pub const IPROP_IS_BUNDLE: i32 = 25;
 pub const IPROP_HAS_USER_DATA: i32 = 26;
 pub const IPROP_HAS_CUSTOM_NAME: i32 = 27;
 
-// LeviRsItemStrProp
 pub const ISTR_TYPE_NAME: i32 = 0;
 pub const ISTR_NAME: i32 = 1;
 pub const ISTR_CUSTOM_NAME: i32 = 2;
@@ -91,7 +84,6 @@ pub const ISTR_HOVER_NAME: i32 = 8;
 pub const ISTR_EFFECT_NAME: i32 = 9;
 pub const ISTR_COLOR: i32 = 10;
 
-// LeviRsItemOp
 pub const IOP_SET_CUSTOM_NAME: i32 = 0;
 pub const IOP_SET_DAMAGE: i32 = 1;
 pub const IOP_SET_COUNT: i32 = 2;
@@ -106,7 +98,6 @@ pub const IOP_RESET_NAME: i32 = 10;
 pub const IOP_SET_CAN_DESTROY: i32 = 11;
 pub const IOP_SET_CAN_PLACE_ON: i32 = 12;
 
-// LeviRsScoreboardOp
 pub const SB_ADD_OBJECTIVE: i32 = 0;
 pub const SB_REMOVE_OBJECTIVE: i32 = 1;
 pub const SB_LIST_OBJECTIVES: i32 = 2;
@@ -118,12 +109,10 @@ pub const SB_RESET_SCORE: i32 = 7;
 pub const SB_SET_DISPLAY: i32 = 8;
 pub const SB_CLEAR_DISPLAY: i32 = 9;
 
-// LeviRsSysInfoProp
 pub const SYS_OS_NAME: i32 = 0;
 pub const SYS_OS_VERSION: i32 = 1;
 pub const SYS_LOCALE: i32 = 2;
 pub const SYS_LOCAL_TIME: i32 = 3;
 
-// LeviRsServerInfoProp
 pub const SRV_BDS_VERSION: i32 = 0;
 pub const SRV_PROTOCOL_VERSION: i32 = 1;

@@ -69,7 +69,7 @@ levilamina = { version = "26.20.4", features = ["more_dimensions"] }
 
 `server` 和 `client` **互斥**，必须恰好开一个。
 
-> **经济功能**：只有用到 [`levilamina::money`](/api/money) 时才需要额外装 [LegacyMoney](https://github.com/LiteLDev/LegacyMoney)。它是**软依赖**——没装的话加载器照常启动，只是 `money::*` 调用空转并警告一次。当硬需求的话，在 `manifest.json` 的 `dependencies` 里也加上它。
+> **经济功能**：只有用到 [`levilamina::money`](/api/actor/money) 时才需要额外装 [LegacyMoney](https://github.com/LiteLDev/LegacyMoney)。它是**软依赖**——没装的话加载器照常启动，只是 `money::*` 调用空转并警告一次。当硬需求的话，在 `manifest.json` 的 `dependencies` 里也加上它。
 
 ## 3. 第一个模组
 
@@ -150,7 +150,7 @@ actor.add_effect("speed", 200, 1, false, true)?;
 actor.add_tag("in_arena")?;
 ```
 
-`Actor` 是 `Entity` 的别名，同一个东西。详见 [Actor / Entity](/api/entity)。
+`Actor` 是 `Entity` 的别名，同一个东西。详见 [Actor / Entity](/api/actor/entity)。
 
 ## 6. 接下来读什么
 

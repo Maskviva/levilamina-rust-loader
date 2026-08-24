@@ -1,12 +1,8 @@
-//! Scoreboard operations: objectives, scores, and display slots.
-
 use super::*;
 use crate::error::{Error, Result};
 use crate::nbt::NbtValue;
 
 impl Scoreboard {
-    /// Create an objective (criteria: `dummy`). `display_name` may be empty
-    /// to reuse `name`.
     pub fn add_objective(&self, name: &str, display_name: &str) -> Result<()> {
         self.op_bool(
             sys::SB_ADD_OBJECTIVE,
@@ -47,12 +43,10 @@ impl Scoreboard {
             .unwrap_or_default()
     }
 
-    /// A score, or `None` when the target has no score on this objective.
     pub fn score(&self, objective: &str, who: &str) -> Option<i64> {
         self.op(sys::SB_GET_SCORE, objective, who, 0)?.parse().ok()
     }
 
-    /// Set and return the new value.
     pub fn set_score(&self, objective: &str, who: &str, value: i64) -> Result<i64> {
         self.op(sys::SB_SET_SCORE, objective, who, value)
             .and_then(|v| v.parse().ok())
@@ -88,8 +82,6 @@ impl Scoreboard {
     }
 
     pub fn set_display(&self, slot: DisplaySlot, objective: &str) -> Result<()> {
-        // Bridge contract: a = display slot, b = objective
-        // (mirrors `/scoreboard objectives setdisplay <slot> [objective]`).
         self.op_bool(
             sys::SB_SET_DISPLAY,
             slot.as_str(),

@@ -1,11 +1,8 @@
-//! A two-button modal form.
-
 use super::*;
 use crate::error::Result;
 use crate::nbt::NbtValue;
 use crate::player::Player;
 
-/// A two-button confirm dialog.
 pub struct ModalFormBuilder {
     title: String,
     content: String,

@@ -4,10 +4,26 @@
  * This header is the single source of truth for the FFI contract between the
  * C++ loader mod (`levilamina-rust-loader`) and Rust mods (`levilamina-sys`).
  * The Rust side mirrors these declarations field-for-field in
- * `crates/levilamina-sys/src/lib.rs`. Any change here requires:
- *   1. bumping LEVI_RS_ABI_VERSION,
- *   2. appending fields ONLY at the end of structs (never reorder/remove),
- *   3. updating the Rust mirror.
+ * `crates/levilamina-sys/src/lib.rs`.
+ *
+ * # 改这个文件的规矩
+ *
+ * 1. **只能在结构体末尾追加**，永远不重排、不删除、不改已有字段的签名。
+ * 2. 更新 Rust 镜像（字段顺序逐格对齐，`tools/verify_structure.py` 会查）。
+ * 3. **追加不升 `LEVI_RS_ABI_VERSION`。**
+ *
+ * 第 3 条是有意的，而且和直觉相反，所以说清楚：ABI 版本号是**给 loader 用来
+ * 区分加载能力**的，它回答的是「旧插件还能不能直接用」。追加一个槽位不会让
+ * 任何旧插件失效 —— 旧插件根本不碰那一格。为它升版本等于宣布一次不存在的
+ * 不兼容，而真正的代价是每个下游都要跟着改一遍编译期常量。
+ *
+ * 真正需要升版本的是**非追加**变更：重排字段、删字段、改已有字段的签名 ——
+ * 也就是「旧插件必须改了才能用」的时候。或者 LeviLamina 那边动得太大、
+ * 导致 loader 本身也大改。
+ *
+ * 两个方向的安全都不靠版本号靠别的：
+ *   - 新 loader + 旧 mod：旧表是新表的前缀，旧 mod 够不到尾部的槽位
+ *   - 旧 loader + 新 mod：`__init_runtime` 比对 `struct_size`，表太小就拒绝加载
  *
  * C++-only: `LeviRsStr` is `std::string_view`, so this header no longer
  * parses as C (nothing in-tree used it as C, but it could have). Deliberate
@@ -261,6 +277,117 @@ typedef bool (*LeviRsServiceCb)(
 #define LEVI_RS_SERVICE_ERROR 2     /* provider returned false; reply holds its message */
 #define LEVI_RS_SERVICE_REFUSED 3   /* bad name, self-call, or call-depth limit */
 
+/* ═════════════════ Rust 高速公路 (Rust-to-Rust fast lane) ═════════════════
+ *
+ * bus / service 都是「(名字, UTF-8 载荷) -> UTF-8 载荷」。那个形状是**跨语言**
+ * 的最大公约数：C++ mod、脚本 mod、Rust mod 都能说这门话。代价是每次调用都要
+ * 序列化一次，而且类型信息在字符串里全丢了。
+ *
+ * 这条车道是给「两边都是 Rust，而且是同一次工具链编出来的」这个特例准备的。
+ * 那时候两个 cdylib 里的 `#[repr(C)]` 函数表布局逐字节相同，可以直接递指针。
+ *
+ * ── loader 在这里做什么、不做什么 ──
+ *
+ * 做：拥有名字 -> 车道的表（独占，和 service 一样）、校验指纹、发/收租约、
+ *     持有一个**永不释放**的存活标志，并在提供方消失的那一刻把它清零。
+ * 不做：解释 `data` / `vtable` 里的任何一个字节。那两个指针对 loader 而言是
+ *       不透明的，就像 bus 的 payload 一样。
+ *
+ * ── 为什么非要 loader 掺一脚 ──
+ *
+ * 因为 `RustModManager::unload` 调 `FreeLibrary`。提供方的**内存**可以靠 Arc
+ * 活下去，但它的**代码段会被 unmap** —— 消费方手里那个函数指针在卸载之后是
+ * use-after-free，而崩溃发生在消费方，日志里没有任何线索指向刚离开的那个 mod。
+ *
+ * 所以：
+ *   1. `alive` 指向 loader 自己堆上的一格，**永远不释放**（车道数量是几十，
+ *      泄漏的是几十个 uint32）。提供方走掉时 loader 把它写 0。消费方每次调用
+ *      前读一下这一格 —— 一次普通的原子读，不过 FFI、不拿锁。这就是「高速」
+ *      的实际含义：热路径上 loader 一行代码都不跑。
+ *   2. 提供方消失时，loader 在 `FreeLibrary` **之前**替所有未归还的租约调用
+ *      `release`，让提供方在自己的 dylib 里、用自己的分配器释放自己的东西。
+ *
+ * ── 指纹 ──
+ *
+ * Rust 没有稳定 ABI。同一份契约 crate 被两个 cdylib 各编一遍，`-C metadata`
+ * 不同，`repr(Rust)` 的字段顺序**可能**不同 —— 而那是静默的内存错乱，不是崩溃。
+ *
+ * 所以不比版本号，比**指纹**：rustc 版本、target、契约名与版本、函数表类型的
+ * `TypeId` 与 `size_of`/`align_of`，全部揉进一个 u64。任何一处不同 -> 指纹不同
+ * -> `lane_acquire` 返回 LEVI_RS_LANE_FINGERPRINT，一个指针都不递出去。
+ *
+ * 失败模式是「慢」（消费方降级回 service 的 JSON 通道），不是 UB。这个性质是
+ * 这条车道敢存在的全部理由。
+ *
+ * loader 只做**相等比较**，不解释指纹的含义 —— 那是 Rust 侧的事，而且必须是，
+ * 否则「指纹里加一项」就成了一次 ABI 变更。
+ */
+
+/** 车道协议版本。和 LEVI_RS_ABI_VERSION 分开：车道的形状可以独立演进，
+ *  而且不匹配时的处理方式不一样（拒绝这一条车道，而不是拒绝整个 mod）。 */
+#define LEVI_RS_LANE_PROTOCOL 1u
+
+/** lane_acquire 返回值。 */
+#define LEVI_RS_LANE_OK 0          /* 拿到了，out 已填好 */
+#define LEVI_RS_LANE_NOT_FOUND 1   /* 没人发布这个名字（没装那个 mod）*/
+#define LEVI_RS_LANE_FINGERPRINT 2 /* 发布了，但指纹不同 —— 降级，别递指针 */
+#define LEVI_RS_LANE_REFUSED 3     /* 名字非法 / 自取 / 提供方被禁用 / 协议不符 */
+
+/**
+ * 引用计数钩子，在**提供方自己的 dylib 里**执行。
+ *
+ * 由 loader 在 `lane_acquire` / `lane_release` 里调用，以及在提供方卸载时替
+ * 所有未归还的租约补调 `release`。
+ *
+ * 不许回调进 loader（`lane_*` 的任何一个），会自死锁。典型实现就是
+ * `Arc::increment_strong_count` / `decrement_strong_count`，两行都不碰锁。
+ */
+typedef void (*LeviRsLaneRefFn)(void* data);
+
+/** 提供方发布一条车道时描述它自己。所有字段由提供方填，loader 只搬运。 */
+typedef struct LeviRsLaneDesc
+{
+    /** sizeof(LeviRsLaneDesc)，和 LeviRsApi::struct_size 一个纪律。 */
+    uint32_t struct_size;
+    /** 必须等于 LEVI_RS_LANE_PROTOCOL，否则 publish 被拒。 */
+    uint32_t protocol;
+    /** 编译指纹。0 是保留值（表示「随便谁都能连」），**不要用**。 */
+    uint64_t fingerprint;
+    /** 提供方的状态指针（通常是 `Arc::into_raw`）。loader 不解释。 */
+    void* data;
+    /** `#[repr(C)]` 函数表。loader 不解释，也不复制内容 —— 提供方必须保证它
+     *  活到这条车道被撤销为止（`&'static` 或泄漏出来的 Box）。 */
+    void const* vtable;
+    /** 可为 NULL（那时租约不计数，靠 alive 标志兜底）。 */
+    LeviRsLaneRefFn retain;
+    LeviRsLaneRefFn release;
+} LeviRsLaneDesc;
+
+/** `lane_acquire` 的产出。 */
+typedef struct LeviRsLaneRef
+{
+    /** sizeof(LeviRsLaneRef) —— **由调用方填好再传进来**，loader 据此决定写到
+     *  哪一格为止。这个方向和别处相反，因为这里是 loader 在写调用方的结构体。 */
+    uint32_t struct_size;
+    /** 归还时用。0 表示没拿到。 */
+    uint64_t lease;
+    /** 提供方的指纹。指纹不匹配时也会填，专门给诊断用 —— 服主要看到的是
+     *  「你的两个 mod 是不同 rustc 编的」，不是「不匹配」四个字。 */
+    uint64_t fingerprint;
+    void* data;
+    void const* vtable;
+    /**
+     * **loader 拥有的存活标志**，非 0 = 提供方还在。
+     *
+     * 这一格永不释放，所以提供方卸载之后读它仍然是合法的 —— 那正是它存在的
+     * 理由。消费方每次调用前读一次（`Relaxed` 就够：写 0 发生在服务器线程上的
+     * 卸载路径里，而所有调用也在服务器线程上）。
+     *
+     * 指纹不匹配时为 NULL。
+     */
+    uint32_t const* alive;
+} LeviRsLaneRef;
+
 /* ═════════════════ Packet interception FFI types ═════════════════
  * Used by packet_hook_register / packet_conn_hook_register. See the block
  * comment on those fields in LeviRsApi for the full contract. */
@@ -455,6 +582,8 @@ enum LeviRsPlayerAction
     LEVI_RS_PACT_PLAY_EMOTE = 21,            /* sarg=piece id         Player::playEmote */
     LEVI_RS_PACT_RESEND_ALL_CHUNKS = 22,     /*                       Player::resendAllChunks */
     LEVI_RS_PACT_OPEN_INVENTORY = 23,        /*                       Player::openInventory */
+    LEVI_RS_PACT_SIDEBAR_SET = 24,          /* sarg="obj\ntitle\nline…"  per-player sidebar */
+    LEVI_RS_PACT_SIDEBAR_CLEAR = 25,        /* sarg=objective        RemoveObjectivePacket */
 };
 
 /** actor_get_num / actor_set_num keys. (S)=settable via actor_set_num. */
@@ -557,6 +686,8 @@ enum LeviRsActorAction
     LEVI_RS_AACT_SET_SKIN_ID = 28,          /* a=skin id             Actor::setSkinID */
     LEVI_RS_AACT_SET_STRENGTH = 29,         /* a=strength            Actor::setStrength */
     LEVI_RS_AACT_REMOVE_ALL_PASSENGERS = 30,/*                       Actor::removeAllPassengers */
+    LEVI_RS_AACT_EXECUTE_EVENT = 31,        /* sarg=event name       Actor::executeEvent */
+    LEVI_RS_AACT_SET_ROTATION = 32,         /* a=pitch b=yaw         Actor::setRotationWrapped */
 };
 
 /** block_get_num keys. */
@@ -754,6 +885,29 @@ enum LeviRsServerInfoProp
 /**
  * Function table handed to the Rust mod at load time.
  * Pointer remains valid for the whole lifetime of the mod.
+ */
+/*
+ * ⚠ 加新槽之前：**先把现有的槽名读一遍。**
+ *
+ * 这不是客套话。最近两轮各犯了一次同样的错：
+ *
+ *   加 `level_actors_in_box` —— 而 `list_actors` 早就能按维度列出实体
+ *   加 `actor_despawn` / `actor_set_health` —— 而 `actor_action` 的
+ *       `AACT_DESPAWN` / `AACT_HEAL` 早就做了同样的事，Rust 侧连
+ *       `Entity::despawn()` / `Entity::heal()` 都封装好了
+ *
+ * 两次都是编译期才发现（重复定义），而如果名字恰好不冲突，
+ * 它们会一直并存 —— 直到某天两份实现分岔，而
+ * 「为什么这里删得掉那里删不掉」是个没人答得上的问题。
+ *
+ * 尤其要先查这三个"什么都能干"的槽，它们覆盖面很宽：
+ *
+ *   actor_action     删除、治疗、点燃、传送、加效果…（见 LEVI_RS_AACT_*）
+ *   actor_get_num    坐标、血量、朝向、各种数值（见 LEVI_RS_APROP_*）
+ *   list_actors      按维度列出全部实体，带类型名
+ *
+ * 试过一次自动检查（按词根找重复），噪音大到没法用 —— `actor_get_*` 会
+ * 两两配对报一屏。所以这里靠这段话，而不是靠脚本。
  */
 typedef struct LeviRsApi
 {
@@ -1715,6 +1869,189 @@ typedef struct LeviRsApi
     bool (*edit_trace_ray)(
         LeviRsActorId id, float max_dist, bool include_actors, bool include_blocks, void* ctx,
         LeviRsStrSink sink);
+
+    /* ═════════════════ Rust 高速公路 (additive, struct_size-gated) ═════════════════
+     * 追加五个槽位，**不动 LEVI_RS_ABI_VERSION** —— 按 docs/DESIGN.md §8 第 2 条：
+     * 纯追加不算版本变更，`struct_size` 才是精确闸门。
+     *
+     * 两个方向都成立：
+     *   - 新 loader 跑旧 mod：旧 mod 的表是新表的**逐字节前缀**，它够不到这五个
+     *     槽，照常工作。
+     *   - 新 mod 跑旧 loader：`__init_runtime` 比较 `struct_size`，发现 loader 的
+     *     表比自己编译时的小，直接拒绝加载。这正是应该发生的事 —— 一个会去读
+     *     `lane_publish` 那一格的 mod，在没有那一格的 loader 上只能读到越界内存。
+     *
+     * 换句话说：版本号管的是「语义变了」，`struct_size` 管的是「表长了」。这次
+     * 只有后者。
+     * 见文件上方 LeviRsLaneDesc 处的长注释。一句话版本：service 是跨语言的
+     * (名字, JSON) -> JSON；这条是「两边都是同一次工具链编出来的 Rust」时才成立
+     * 的直接函数表调用，指纹对不上就拿不到指针，消费方降级回 service。
+     *
+     * 全部服务器线程调用。 */
+
+    /** 发布一条车道。**独占**，和 service_register 同一条纪律：名字被占就返回 0
+     *  并在日志里点名占用者。返回发布 id (>0)，卸载时自动撤销。 */
+    uint64_t (*lane_publish)(LeviRsModHandle mod, LeviRsStr name, LeviRsLaneDesc const* desc);
+
+    /** 撤销自己的一条车道。会替所有未归还的租约补调 `release`，并把存活标志
+     *  清零 —— 消费方下一次检查就会看到车道没了，而不是跳进空指针。 */
+    bool (*lane_unpublish)(LeviRsModHandle mod, uint64_t pub_id);
+
+    /** 取一条车道。`want_fingerprint` 为 0 表示「不校验」——**只有诊断工具该这么
+     *  用**，普通消费方永远传自己算出来的那个值。返回 LEVI_RS_LANE_*。
+     *  拿到之后必须 `lane_release`，否则提供方的状态一直被 retain 着。 */
+    int32_t (*lane_acquire)(
+        LeviRsModHandle mod, LeviRsStr name, uint64_t want_fingerprint, LeviRsLaneRef* out);
+
+    /** 归还一条租约。只能归还自己的。提供方已经走掉时返回 false（那时 loader
+     *  已经替你调过 release 了，再调一次就是 double free）。 */
+    bool (*lane_release)(LeviRsModHandle mod, uint64_t lease);
+
+    /** 全部车道，JSON 数组：
+     *  `[{"name":…,"mod":…,"fingerprint":"0x…","protocol":1,"leases":N,"alive":true}]`。 */
+    void (*lane_list)(void* ctx, LeviRsStrSink sink);
+
+    /**
+     * 列出**已经注册过的全部自定义维度**，JSON 数组：
+     * `[{"name":"plot_world","dim":1000,"snbt":"{…}"}]`。
+     *
+     * # 为什么必须有这一格
+     *
+     * 在此之前 `md_*` 只能按名字问（`md_get_dimension_id`）——也就是说
+     * **你必须先知道名字才能问**。于是一个接管既有存档的世界管理器完全看不见
+     * 前一个插件建的维度：它们在 `dimension_config.json` 里，在引擎里活着，
+     * 玩家能传送进去，而管理器的表里一条都没有。
+     *
+     * 后果不是「少列几个世界」。是那些维度**不受任何规则管辖**，而且新建世界时
+     * 引擎分配的号可能和它们撞上——撞上之后两个世界共用一个维度号。
+     *
+     * 名字来自配置文件的键，`dim` 是引擎分配并持久化的号，`snbt` 是原样的
+     * 生成参数（地皮世界是 `{layout:{…},seed:N}`，简单世界是
+     * `{generatorType:Flat,seed:N}`），交给调用方自己解释。
+     *
+     * `md_is_available()` 为假时回调一次都不调。
+     */
+    void (*md_list_dimensions)(void* ctx, LeviRsStrSink sink);
+
+    /**
+     * Delete every save-file key belonging to one chunk, so the engine
+     * regenerates it from the generator on next load.
+     *
+     * # 为什么这一格值得存在
+     *
+     * 「把一块地恢复原状」用 set_block 逐格写是错的路：一块 32×32 的地皮
+     * 乘上世界高度是几十万格，几十万次跨 FFI；而且它**会漏** —— 方块实体、
+     * 生物、待办刻（红石、作物生长）都不在方块数据里，逐格写完之后箱子还在、
+     * 红石还在跑。
+     *
+     * 抹存档键没有这两个问题：一次 forEachKeyWithPrefix 拿到这个区块的全部
+     * 键（所有 tag、所有子区块、实体、方块实体、待办刻），一次删完，
+     * 引擎下次加载时按生成器重新生成。
+     *
+     * # 键的形状
+     *
+     * BDS 的区块键前缀是 `<chunkX:i32 LE><chunkZ:i32 LE>`，非主世界再跟一个
+     * `<dimension:i32 LE>`。前缀之后是 tag 字节和子区块序号，我们不解释 ——
+     * 按前缀全删就是「这个区块的一切」。
+     *
+     * # ⚠ 区块必须是**未加载**的
+     *
+     * 加载中的区块在内存里有一份 `LevelChunk`，引擎会在卸载时把它写回去 ——
+     * 那会把我们删掉的键原样重建。调用方要负责先让区块卸载（把人传走、
+     * 等它离开刻范围），否则这次删除会被静默覆盖。
+     *
+     * 这一格**不替调用方做这件事**：判断「谁在附近、什么时候能卸载」需要
+     * 调用方的业务知识（哪块地是谁的、能不能把人赶走），而这一层不该有。
+     *
+     * @return 删掉的键数；-1 = 存档层不可用。0 是正常结果（那个区块从没生成过）。
+     *
+     * 纯追加槽位 —— `LEVI_RS_ABI_VERSION` 不变，靠 `struct_size` 把关。
+     */
+    int32_t (*level_delete_chunk_keys)(int32_t dim, int32_t chunk_x, int32_t chunk_z);
+
+    /**
+     * Are the chunks covering [min..max] currently loaded in memory?
+     *
+     * 配 `level_delete_chunk_keys` 用：抹存档只对**未加载**的区块有效，
+     * 加载中的那份在内存里，卸载时会把删掉的键原样写回去 —— 而那次抹除
+     * 会「成功」并报出一个正的键数。没有这一格的话，调用方只能靠
+     * 「附近没人」去猜，而猜错的表现是静默失效。
+     *
+     * @return 1 = 全部加载着，0 = 至少有一块没加载，-1 = 维度不可用。
+     *
+     * 纯追加槽位 —— `LEVI_RS_ABI_VERSION` 不变，靠 `struct_size` 把关。
+     */
+    int32_t (*level_chunks_loaded)(int32_t dim, int32_t min_x, int32_t min_z, int32_t max_x, int32_t max_z);
+
+    /**
+     * This player's connection id — the same number packet interceptors see
+     * in the packet context.
+     *
+     * # 为什么需要它
+     *
+     * 拦包回调里只有 `conn_id`，**没有玩家**。于是任何「按玩家改写发出去的包」
+     * 都做不了：改天色要知道这条连接的人在哪个维度，而那要先知道他是谁。
+     *
+     * 没有这一格的话只剩一条路 —— 自己周期性地发包去盖掉服务器发的那些。
+     * 那条路是错的：服务器发真实时间、我们发锁定时间，两种包交替到达，
+     * 客户端的天色**一亮一暗地跳**。改写才是对的，而改写需要这一格。
+     *
+     * @return 连接号；0 = 这个人不在线，或者拿不到他的网络标识。
+     *
+     * 纯追加槽位 —— `LEVI_RS_ABI_VERSION` 不变，靠 `struct_size` 把关。
+     */
+    uint64_t (*player_conn_id)(LeviRsPlayerSel who);
+
+    /**
+     * List every save-file key belonging to one chunk. One callback per key.
+     *
+     * # 为什么拆成「列」和「删」两格
+     *
+     * 上一版是一格：C++ 里先把键收进 `std::vector<std::string>`，再逐个删。
+     * 那个函数**在真机上崩了** —— 崩在返回时销毁那个 vector，寄存器里能看到
+     * 字符串的内联缓冲被当成了堆指针。
+     *
+     * 根因没定位到（跨 DLL 的 `std::string` 生命周期，没有调试器查不出来）。
+     * 但那一整类问题的来源是**在 C++ 侧攒一个 `std::string` 容器并跨一次
+     * 虚调用**，所以这一版把容器搬到 Rust：C++ 每次只做一件不持有任何东西的事。
+     *
+     * 键是二进制的（含 0 字节），所以走 `LeviRsStr`（带长度）而不是 C 字符串。
+     *
+     * @return 报了几个键；-1 = 存档层不可用。
+     */
+    int32_t (*level_chunk_keys)(int32_t dim, int32_t chunk_x, int32_t chunk_z, void* ctx, LeviRsStrSink sink);
+
+    /**
+     * Delete one chunk-category key, verbatim.
+     *
+     * 配 [`level_chunk_keys`] 用。**不解释键的内容** —— 传什么删什么，
+     * 这正是它安全的原因：不需要懂子区块的格式。
+     */
+    bool (*level_delete_key)(LeviRsStr key);
+
+    /* ── 以下为追加槽（190）。只在表尾加，靠 struct_size 守卫。 ──
+     *
+     * 删实体和补血**已经有了** —— `actor_action` 的 `AACT_DESPAWN` /
+     * `AACT_HEAL`。加独立的槽只是把同一件事做两遍，而两份实现迟早分岔。
+     */
+
+    /* 实体枚举**已经有了** —— `list_actors`（按维度列出全部，带类型名），
+     * 配 `actor_get_num` 取坐标就能筛出一个盒子里的。加一个
+     * `actors_in_box` 只是把同一件事做两遍，而两份实现迟早分岔。
+     */
+
+    /**
+     * 设一片区域的生物群系。
+     *
+     * 按整列设（`setBiome3d` 逐 y 生效，但生物群系在基岩版是按列存的），
+     * 所以不收 y。`biome` 是生物群系名，如 `"minecraft:plains"`。
+     *
+     * 返回成功设置了几列。0 表示一列都没设上 —— 区块没加载或者名字不认识。
+     */
+    int32_t (*level_set_biome)(int32_t dim,
+                               int32_t minX, int32_t minZ,
+                               int32_t maxX, int32_t maxZ,
+                               LeviRsStr biome);
 } LeviRsApi;
 
 /**

@@ -1,19 +1,13 @@
-//! Scoreboard access. Score identities are "fake player" names — the same
-//! namespace vanilla `/scoreboard players` uses, so everything here lines up
-//! with what ops see in-game.
-
 use crate::error::{Error, Result};
 use crate::ffi::{call_out_str, s};
 use crate::{rt, sys};
 
-/// An objective's identity from [`Scoreboard::objectives`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Objective {
     pub name: String,
     pub display_name: String,
 }
 
-/// Display slots for [`Scoreboard::set_display`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplaySlot {
     Sidebar,
@@ -31,7 +25,6 @@ impl DisplaySlot {
     }
 }
 
-/// The world scoreboard. Zero-sized; all state lives in the engine.
 #[derive(Clone, Copy)]
 pub struct Scoreboard(());
 

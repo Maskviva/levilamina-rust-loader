@@ -1,6 +1,3 @@
-//! Player handles: selectors (name / xuid / uuid) resolved against the live
-//! player list on every call — never cached pointers.
-
 use crate::error::{Error, Result};
 use crate::ffi::{call_out_str, collect_strs, s};
 use crate::nbt::NbtValue;
@@ -21,23 +18,18 @@ enum Selector {
     Uuid(String),
 }
 
-/// A player handle. Cheap to clone; resolved on every call, so it can never
-/// dangle — calls after the player leaves simply return `Err`.
 #[derive(Debug, Clone)]
 pub struct Player {
     sel: Selector,
 }
 
 impl Player {
-    /// By account name (exact `getRealName()` match, falling back to the
-    /// display name). Prefer [`Player::by_xuid`] for long-lived storage.
     pub fn by_name(name: impl Into<String>) -> Player {
         Player {
             sel: Selector::Name(name.into()),
         }
     }
 
-    /// Alias for [`Player::by_name`], matching the docs' `Player::get`.
     pub fn get(name: impl Into<String>) -> Player {
         Player::by_name(name)
     }
@@ -54,7 +46,6 @@ impl Player {
         }
     }
 
-    /// Every online player: identity + position.
     pub fn list() -> Vec<PlayerInfo> {
         let lines = collect_strs(|ctx, sink| unsafe { (rt().api.list_players)(ctx, sink) });
         lines
@@ -84,12 +75,10 @@ impl Player {
             .collect()
     }
 
-    /// `sendMessage` to every online player.
     pub fn broadcast(msg: &str) {
         unsafe { (rt().api.broadcast_message)(s(msg)) }
     }
 
-    /// The selector value as text — for error messages only, never for logic.
     pub(crate) fn selector_hint(&self) -> &str {
         match &self.sel {
             Selector::Name(v) | Selector::Xuid(v) | Selector::Uuid(v) => v.as_str(),

@@ -1,10 +1,3 @@
-//! SNBT parser (internal): drives [`super::NbtValue::parse`].
-//!
-//! The recursive-descent `impl Parser` is split across sibling files by
-//! grammar concern so each fits under the 200-line ceiling:
-//!   - [`containers`] — compounds, lists, typed arrays
-//!   - [`scalars`]    — quoted strings, bare tokens, numeric/bool scalars
-
 use crate::error::{Error, Result};
 
 mod containers;
@@ -16,13 +9,11 @@ pub(super) struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    /// Construct a parser over SNBT bytes (used by [`super::super::NbtValue::parse`]).
     pub(super) fn new(bytes: &'a [u8]) -> Parser<'a> {
         Parser { bytes, pos: 0 }
     }
 
-    /// Parse the whole input, erroring on trailing bytes.
-    pub(super) fn parse_all(text: &'a str) -> Result<super::super::NbtValue> {
+    pub(super) fn parse_all(text: &'a str) -> Result<super::NbtValue> {
         let mut p = Parser::new(text.as_bytes());
         p.skip_ws();
         let v = p.value()?;
@@ -63,7 +54,6 @@ impl<'a> Parser<'a> {
     }
 }
 
-/// Leading-byte → UTF-8 sequence length, used by [`scalars::quoted_string`].
 pub(super) fn utf8_len(first: u8) -> usize {
     match first {
         b if b >= 0xF0 => 4,

@@ -7,7 +7,7 @@ export default defineConfig({
     themeConfig: {
         nav: [
             {text: '初级开发', link: '/guide/getting-started'},
-            {text: 'API 参考', link: '/api/overview'},
+            {text: 'API 参考', link: '/api/core/overview'},
             {text: '高级开发', link: '/advanced/architecture'},
             {text: 'GitHub', link: 'https://github.com/Maskviva/levilamina-rust-loader'},
         ],
@@ -27,7 +27,7 @@ export default defineConfig({
                 {
                     text: '继续深入',
                     items: [
-                        {text: 'API 参考总览', link: '/api/overview'},
+                        {text: 'API 参考总览', link: '/api/core/overview'},
                         {text: '高级开发', link: '/advanced/architecture'},
                     ],
                 },
@@ -36,61 +36,61 @@ export default defineConfig({
                 {
                     text: '总览',
                     items: [
-                        {text: 'API 参考总览', link: '/api/overview'},
+                        {text: 'API 参考总览', link: '/api/core/overview'},
                     ],
                 },
                 {
                     text: '事件与网络',
                     items: [
-                        {text: 'Event — 事件监听', link: '/api/event'},
-                        {text: 'Packet — 抓包 / 改包', link: '/api/packet'},
+                        {text: 'Event — 事件监听', link: '/api/infra/event'},
+                        {text: 'Packet — 抓包 / 改包', link: '/api/infra/packet'},
                     ],
                 },
                 {
                     text: '游戏对象',
                     items: [
-                        {text: 'Player — 玩家', link: '/api/player'},
-                        {text: 'Actor / Entity — 实体', link: '/api/entity'},
-                        {text: 'Block — 方块', link: '/api/block'},
-                        {text: 'Item — 物品', link: '/api/item'},
-                        {text: 'Container — 容器', link: '/api/container'},
-                        {text: 'ScoreBoard — 计分板', link: '/api/scoreboard'},
+                        {text: 'Player — 玩家', link: '/api/actor/player'},
+                        {text: 'Actor / Entity — 实体', link: '/api/actor/entity'},
+                        {text: 'Block — 方块', link: '/api/world/block'},
+                        {text: 'Item — 物品', link: '/api/world/item'},
+                        {text: 'Container — 容器', link: '/api/world/container'},
+                        {text: 'ScoreBoard — 计分板', link: '/api/infra/scoreboard'},
                     ],
                 },
                 {
                     text: '世界与服务端',
                     items: [
-                        {text: 'Server — 服务端', link: '/api/server'},
-                        {text: 'World — 世界扫描', link: '/api/world'},
-                        {text: 'Command — 命令', link: '/api/command'},
-                        {text: 'Dimensions — 自定义维度', link: '/api/dimensions'},
-                        {text: 'SimPlayer — 模拟玩家', link: '/api/sim'},
+                        {text: 'Server — 服务端', link: '/api/infra/server'},
+                        {text: 'World — 世界扫描', link: '/api/world/world'},
+                        {text: 'Command — 命令', link: '/api/actor/command'},
+                        {text: 'Dimensions — 自定义维度', link: '/api/world/dimensions'},
+                        {text: 'SimPlayer — 模拟玩家', link: '/api/actor/sim'},
                     ],
                 },
                 {
                     text: '跨模组',
                     items: [
-                        {text: 'Bus — 事件总线', link: '/api/bus'},
-                        {text: 'Service — 服务注册', link: '/api/service'},
+                        {text: 'Bus — 事件总线', link: '/api/core/bus'},
+                        {text: 'Service — 服务注册', link: '/api/core/service'}, { text: 'Lane — Rust 高速公路', link: '/api/core/lane' },
                     ],
                 },
                 {
                     text: '数据',
                     items: [
-                        {text: 'Nbt — NBT 读写', link: '/api/nbt'},
-                        {text: 'Data — 持久化', link: '/api/data'},
-                        {text: 'Money — 经济', link: '/api/money'},
+                        {text: 'Nbt — NBT 读写', link: '/api/world/nbt'},
+                        {text: 'Data — 持久化', link: '/api/infra/data'},
+                        {text: 'Money — 经济', link: '/api/actor/money'},
                     ],
                 },
                 {
                     text: '界面与运行时',
                     items: [
-                        {text: 'Gui — 表单', link: '/api/gui'},
-                        {text: 'Log — 日志', link: '/api/log'},
-                        {text: 'Scheduler — 调度', link: '/api/scheduler'},
-                        {text: 'System — 系统信息', link: '/api/system'},
-                        {text: 'Client — 客户端 API', link: '/api/client'},
-                        {text: 'Objects — 其他类型', link: '/api/objects'},
+                        {text: 'Gui — 表单', link: '/api/actor/gui'},
+                        {text: 'Log — 日志', link: '/api/rt/log'},
+                        {text: 'Scheduler — 调度', link: '/api/rt/scheduler'},
+                        {text: 'System — 系统信息', link: '/api/core/system'},
+                        {text: 'Client — 客户端 API', link: '/api/rt/client'},
+                        {text: 'Objects — 其他类型', link: '/api/core/objects'},
                     ],
                 },
             ],
@@ -108,7 +108,7 @@ export default defineConfig({
                 {
                     text: '回到',
                     items: [
-                        {text: 'API 参考总览', link: '/api/overview'},
+                        {text: 'API 参考总览', link: '/api/core/overview'},
                         {text: '初级开发', link: '/guide/getting-started'},
                     ],
                 },

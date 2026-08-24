@@ -44,26 +44,32 @@ end
 
 -- Source files shared by both targets (compile on server AND client).
 local shared_sources = {
-    "src/Entry.cpp",
-    "src/MemoryOperators.cpp",
-    "src/RustModManager.cpp",
-    "src/bridge/Common.cpp",
-    "src/bridge/LogScheduler.cpp",
-    "src/bridge/Events.cpp",
-    "src/bridge/Players.cpp",
-    "src/bridge/Actors.cpp",
-    "src/bridge/World.cpp",
-    "src/bridge/Items.cpp",
-    "src/bridge/Containers.cpp",
-    "src/bridge/NbtApi.cpp",
-    "src/bridge/KvDbApi.cpp",
-    "src/bridge/SysInfo.cpp",
+    "src/core/Entry.cpp",
+    "src/core/MemoryOperators.cpp",
+    "src/core/RustModManager.cpp",
+    "src/bridge/core/Common.cpp",
+    "src/bridge/core/LogScheduler.cpp",
+    "src/bridge/runtime/Events.cpp",
+    "src/bridge/actors/Players.cpp",
+    "src/bridge/actors/Actors.cpp",
+    -- 追加槽（190..192）：删实体、补血、设生物群系。
+    -- **单独一个文件**，因为它们要靠 struct_size 守卫，而且随时可能因为
+    -- BDS 改签名单独调整 —— 混进 Actors.cpp 的话，下次排查"哪些是新加的"
+    -- 要一行行看 git。
+    "src/bridge/runtime/Extras.cpp",
+    "src/bridge/world/World.cpp",
+    "src/bridge/world/Items.cpp",
+    "src/bridge/world/Containers.cpp",
+    "src/bridge/runtime/data/NbtApi.cpp",
+    "src/bridge/runtime/data/KvDbApi.cpp",
+    "src/bridge/runtime/SysInfo.cpp",
     -- 跨 mod 事件总线：不碰任何服务端专属头文件，客户端构建也编进去
     -- （客户端一样可以装多个 rust mod，互相通信的需求是一样的）。
-    "src/bridge/Bus.cpp",
+    "src/bridge/core/Bus.cpp",
     -- 跨 mod 服务注册（查询式调用）。和总线一样不碰服务端专属头文件。
-    "src/bridge/Services.cpp",
-    "src/bridge/ApiTable.cpp",
+    "src/bridge/core/Services.cpp",
+    "src/bridge/core/Lane.cpp",
+    "src/bridge/core/ApiTable.cpp",
 }
 
 -- Server-only source files (excluded from client build).
@@ -71,64 +77,65 @@ local shared_sources = {
 local server_only_sources = {
     -- Runtime rust-mod control (/llr list|load|unload|reload). Server only:
     -- it needs the command registrar.
-    "src/ModControl.cpp",
-    "src/bridge/Commands.cpp",
-    "src/bridge/Server.cpp",
-    "src/bridge/Money.cpp",
-    "src/bridge/MoneyGuard.cpp",
-    "src/bridge/SimPlayer.cpp",
-    "src/bridge/ScoreboardApi.cpp",
-    "src/bridge/Forms.cpp",
-    "src/bridge/WorldInfo.cpp",
-    "src/bridge/Packets.cpp",
-    "src/bridge/PacketHooks.cpp",
-    "src/bridge/GapFill.cpp",
-    "src/bridge/Edit.cpp",
-    "src/bridge/hooks/DestroyEvents.cpp",
-    "src/bridge/hooks/ContainerEvents.cpp",
-    "src/bridge/hooks/DimensionEvents.cpp",
-    "src/bridge/hooks/HopperEvents.cpp",
-    "src/bridge/hooks/HookEvents.cpp",
-    "src/bridge/hooks/Profiler.cpp",
-    "src/bridge/hooks/TickControl.cpp",
-    "src/bridge/hooks/UseItemOnEvent.cpp",
+    "src/core/ModControl.cpp",
+    "src/bridge/runtime/Commands.cpp",
+    "src/bridge/runtime/Server.cpp",
+    "src/bridge/actors/Money.cpp",
+    "src/bridge/actors/MoneyGuard.cpp",
+    "src/bridge/actors/SimPlayer.cpp",
+    "src/bridge/net/ScoreboardApi.cpp",
+    "src/bridge/actors/Forms.cpp",
+    "src/bridge/world/WorldInfo.cpp",
+    "src/bridge/net/Packets.cpp",
+    "src/bridge/net/PacketHooks.cpp",
+    "src/bridge/world/GapFill.cpp",
+    "src/bridge/world/Edit.cpp",
+    "src/bridge/hooks/player/AttackEvent.cpp",
+    "src/bridge/hooks/world/DestroyEvents.cpp",
+    "src/bridge/hooks/world/ContainerEvents.cpp",
+    "src/bridge/hooks/world/DimensionEvents.cpp",
+    "src/bridge/hooks/world/HopperEvents.cpp",
+    "src/bridge/hooks/engine/HookEvents.cpp",
+    "src/bridge/hooks/engine/Profiler.cpp",
+    "src/bridge/hooks/engine/TickControl.cpp",
+    "src/bridge/hooks/world/UseItemOnEvent.cpp",
     -- Protection hooks added to close the "guessed event id" holes: drop item,
     -- ride, interact-with-entity, throw projectile, pressure plate / tripwire.
     -- None of these had a subscribable event before, in LL or in vanilla.
-    "src/bridge/hooks/DropItemEvent.cpp",
-    "src/bridge/hooks/RideEvent.cpp",
-    "src/bridge/hooks/InteractEntityEvent.cpp",
-    "src/bridge/hooks/ProjectileEvent.cpp",
-    "src/bridge/hooks/PressurePlateEvent.cpp",
+    "src/bridge/hooks/protect/DropItemEvent.cpp",
+    "src/bridge/hooks/protect/RideEvent.cpp",
+    "src/bridge/hooks/protect/InteractEntityEvent.cpp",
+    "src/bridge/hooks/protect/ProjectileEvent.cpp",
+    "src/bridge/hooks/protect/PressurePlateEvent.cpp",
     -- Pushing entities is the one griefing method that survives a fully
     -- locked-down plot: no click, no log line. Its own TU so it can be
     -- dropped independently if PushableByEntityUtility drifts upstream.
-    "src/bridge/hooks/PushEntityEvent.cpp",
+    "src/bridge/hooks/protect/PushEntityEvent.cpp",
     -- 游戏模式强制。挂 Player::$setPlayerGameType —— 进世界时套一次只覆盖入口，
     -- 玩家进去之后 /gamemode 就绕过去了。
-    "src/bridge/hooks/GameModeEvent.cpp",
+    "src/bridge/hooks/player/GameModeEvent.cpp",
 }
 
 -- Client-only source files (excluded from server build).
 local client_only_sources = {
-    "src/bridge/Client.cpp",
-    "src/bridge/ClientStubs.cpp",
+    "src/bridge/net/Client.cpp",
+    "src/bridge/net/ClientStubs.cpp",
 }
 
 -- MoreDimensions source files (always compiled into server builds).
 local more_dims_sources = {
-    "src/more_dimensions/ChunkTrace.cpp",
-    "src/more_dimensions/CustomDimensionConfig.cpp",
-    "src/more_dimensions/CustomDimensionManager.cpp",
-    "src/more_dimensions/DimensionRules.cpp",
-    "src/more_dimensions/NativeDimensions.cpp",
-    "src/more_dimensions/MoreDimensionsBridge.cpp",
-    "src/more_dimensions/SimpleCustomDimension.cpp",
-    "src/more_dimensions/PlotDimension.cpp",
-    "src/more_dimensions/PlotGenerator.cpp",
+    "src/more_dimensions/rt/ChunkTrace.cpp",
+    "src/more_dimensions/dim/CustomDimensionConfig.cpp",
+    "src/more_dimensions/dim/CustomDimensionManager.cpp",
+    "src/more_dimensions/dim/DimensionRules.cpp",
+    "src/more_dimensions/dim/NativeDimensions.cpp",
+    "src/more_dimensions/rt/MoreDimensionsBridge.cpp",
+    "src/more_dimensions/dim/SimpleCustomDimension.cpp",
+    "src/more_dimensions/plot/PlotDimension.cpp",
+    "src/more_dimensions/plot/PlotGenerator.cpp",
     -- 地皮边界约束（活塞 / 实体不出地皮）。网格和合并表由 Rust 侧推过来。
-    "src/more_dimensions/PlotConfine.cpp",
-    "src/more_dimensions/Utils.cpp",
+    "src/more_dimensions/plot/PlotConfine.cpp",
+    "src/more_dimensions/rt/Utils.cpp",
 }
 
 local target_name = is_client and "levilamina-rust-loader-client" or "levilamina-rust-loader"

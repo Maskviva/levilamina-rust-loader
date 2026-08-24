@@ -1,9 +1,5 @@
-//! Region-scan value types: a [`Scan`] is layers of [`Cell`]s, each cell a
-//! [`BlockInfo`] plus any [`EntityInfo`]s; [`PlayerPos`] is a player's location.
-
 use crate::types::PositionI32;
 
-/// A connected player's feet position and dimension.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PlayerPos {
     pub x: f64,
@@ -13,7 +9,6 @@ pub struct PlayerPos {
 }
 
 impl PlayerPos {
-    /// The integer block cell the player is standing in.
     pub fn block(&self) -> PositionI32 {
         (
             self.x.floor() as i32,
@@ -23,8 +18,6 @@ impl PlayerPos {
     }
 }
 
-/// The block occupying a cell: its type name and full serialization SNBT.
-/// An empty cell has `name == "minecraft:air"`.
 #[derive(Debug, Clone, Default)]
 pub struct BlockInfo {
     pub name: String,
@@ -32,20 +25,17 @@ pub struct BlockInfo {
 }
 
 impl BlockInfo {
-    /// True if this cell holds no real block (air).
     pub fn is_air(&self) -> bool {
         self.name.is_empty() || self.name.ends_with("air")
     }
 }
 
-/// An entity found inside a cell: its type name and serialized NBT (SNBT).
 #[derive(Debug, Clone)]
 pub struct EntityInfo {
     pub kind: String,
     pub snbt: String,
 }
 
-/// Everything at one grid cell: the block plus any entities standing in it.
 #[derive(Debug, Clone, Default)]
 pub struct Cell {
     pub block: BlockInfo,
@@ -53,31 +43,23 @@ pub struct Cell {
 }
 
 impl Cell {
-    /// True if the cell is air with no entities.
     pub fn is_empty(&self) -> bool {
         self.block.is_air() && self.entities.is_empty()
     }
 }
 
-/// One horizontal layer (a single Y level) of a [`Scan`]: a 2-D grid of cells
-/// indexed `cells[x_index][z_index]`, where the indices are offsets from the
-/// region's minimum corner.
 #[derive(Debug, Clone)]
 pub struct ScanLayer {
     pub y: i32,
-    /// `cells[dx][dz]`, dx over X (west→east), dz over Z (north→south).
+
     pub cells: Vec<Vec<Cell>>,
 }
 
-/// The result of [`crate::Server::scan_region`]: a stack of [`ScanLayer`]s,
-/// one per Y level from the bottom of the region up. A six-block-tall
-/// selection yields six layers, each a 2-D array whose every element is a
-/// [`Cell`] describing the block and entities at that grid position.
 #[derive(Debug, Clone)]
 pub struct Scan {
     pub min: PositionI32,
     pub max: PositionI32,
-    /// One entry per Y level, from `min.1` (index 0) up to `max.1`.
+
     pub layers: Vec<ScanLayer>,
 }
 
@@ -101,7 +83,6 @@ impl Scan {
         self.layers.get_mut(dy)?.cells.get_mut(dx)?.get_mut(dz)
     }
 
-    /// Dimensions of the scanned box as `(size_x, size_y, size_z)`.
     pub fn size(&self) -> (usize, usize, usize) {
         (
             (self.max.0 - self.min.0 + 1) as usize,
@@ -110,7 +91,6 @@ impl Scan {
         )
     }
 
-    /// Total non-empty cells (a non-air block or at least one entity).
     pub fn non_empty_count(&self) -> usize {
         self.layers
             .iter()
@@ -119,7 +99,6 @@ impl Scan {
             .count()
     }
 
-    /// Total entities across the whole region.
     pub fn entity_count(&self) -> usize {
         self.layers
             .iter()

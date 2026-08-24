@@ -1,7 +1,3 @@
-//! Containers (decision #10): one code path for player inventories, ender
-//! chests, and block containers — the bridge resolves an "owner + which"
-//! reference through the engine's `Container` virtual interface per call.
-
 use crate::error::Error;
 use crate::ffi::s;
 use crate::player::Player;
@@ -16,7 +12,6 @@ enum Target {
     Block { dim: i32, x: i32, y: i32, z: i32 },
 }
 
-/// A container handle. Resolved per call; never dangles.
 #[derive(Debug, Clone)]
 pub struct Container {
     target: Target,
@@ -50,7 +45,6 @@ impl Container {
     }
 
     fn ffi_ref(&self) -> sys::LeviRsContainerRef {
-        // An unused player slot still needs a well-formed (empty) selector.
         let empty = sys::LeviRsPlayerSel {
             kind: 0,
             value: s(""),

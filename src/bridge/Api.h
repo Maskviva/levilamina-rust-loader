@@ -239,6 +239,16 @@ namespace levi_rs
         /** Drop every service provided by a mod that is going away. */
         void servicesOnRustModGone(RustMod* mod);
 
+        /* ── Lane.cpp — Rust 高速公路（Rust-to-Rust fast lane）── */
+        uint64_t api_lane_publish(LeviRsModHandle mod, LeviRsStr name, LeviRsLaneDesc const* desc);
+        bool api_lane_unpublish(LeviRsModHandle mod, uint64_t pubId);
+        int32_t api_lane_acquire(
+            LeviRsModHandle mod, LeviRsStr name, uint64_t wantFingerprint, LeviRsLaneRef* out);
+        bool api_lane_release(LeviRsModHandle mod, uint64_t leaseId);
+        void api_lane_list(void* ctx, LeviRsStrSink sink);
+        /** 归还它持有的租约，撤销它发布的车道。必须在 FreeLibrary 之前跑。 */
+        void laneOnRustModGone(RustMod* mod);
+
         /* MoreDimensionsBridge.cpp — plot-boundary confinement data.
          *
          * These live in `levi_rs::bridge` rather than `more_dimensions::bridge`
@@ -248,6 +258,9 @@ namespace levi_rs
          * server definition in a server-only TU, client stub in
          * ClientStubs.cpp. Putting the slots inside the md #ifdef block instead
          * would have shifted every field of the tail below it. */
+        /** 枚举已注册的自定义维度。槽位同样在公共追加尾部，所以声明在这里
+         *  而不是 `more_dimensions::bridge` —— 客户端构建也要有这个符号。 */
+        void api_md_list_dimensions(void* ctx, LeviRsStrSink sink);
         void api_md_set_plot_grid(int32_t dimension, int32_t plotSize, int32_t roadWidth);
         void api_md_clear_plot_grid(int32_t dimension);
         void api_md_set_plot_merges(int32_t dimension, int32_t const* entries, int32_t count);
@@ -365,6 +378,17 @@ namespace levi_rs
         bool api_level_get_default_spawn(int32_t* x, int32_t* y, int32_t* z);
         bool api_level_set_default_spawn(int32_t x, int32_t y, int32_t z);
         bool api_level_save();
+    int32_t api_level_delete_chunk_keys(int32_t dim, int32_t chunk_x, int32_t chunk_z);
+    int32_t api_level_chunks_loaded(int32_t dim, int32_t min_x, int32_t min_z, int32_t max_x, int32_t max_z);
+    uint64_t api_player_conn_id(LeviRsPlayerSel who);
+    int32_t api_level_chunk_keys(int32_t dim, int32_t chunk_x, int32_t chunk_z, void* ctx, LeviRsStrSink sink);
+    bool api_level_delete_key(LeviRsStr key);
+
+    /* ── 追加槽（190）── */
+    int32_t api_level_set_biome(int32_t dim,
+                                int32_t minX, int32_t minZ,
+                                int32_t maxX, int32_t maxZ,
+                                LeviRsStr biome);
         bool api_level_get_sleep_status(void* ctx, LeviRsStrSink sink);
         bool api_level_update_weather(float rain_level, int32_t rain_time, float lightning_level, int32_t lightning_time);
         bool api_level_find_path(LeviRsActorId id, int32_t x, int32_t y, int32_t z, void* ctx, LeviRsStrSink sink);

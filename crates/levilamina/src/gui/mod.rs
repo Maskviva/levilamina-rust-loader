@@ -1,11 +1,3 @@
-//! Forms: SimpleForm / CustomForm / ModalForm builders with async result
-//! callbacks.
-//!
-//! Callbacks are `FnOnce` and fire **exactly once, on the server thread** —
-//! or never, if the owning mod is disabled/unloaded before the player
-//! responds (in which case the boxed callback is intentionally leaked; a
-//! few dozen bytes per muted form beats a use-after-free every time).
-
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -25,21 +17,14 @@ pub use custom::CustomFormBuilder;
 pub use modal::ModalFormBuilder;
 pub use simple::SimpleFormBuilder;
 
-/// One value from a CustomForm submission.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FormValue {
-    /// Toggle (0/1).
     Int(i64),
-    /// Slider value.
+
     Float(f64),
-    /// Input text.
+
     Text(String),
-    /// Dropdown / step-slider: the selected index **and** its label.
-    ///
-    /// The bridge resolves this for us — LeviLamina hands back either the
-    /// index or the option text depending on version, and both arrive here
-    /// as the same thing. `as_i64` gives the index, `as_str` gives the label,
-    /// so callers never have to care which one the client sent.
+
     Choice { index: i64, text: String },
 }
 
@@ -70,8 +55,7 @@ impl FormValue {
             _ => None,
         }
     }
-    /// Selected index for a dropdown / step-slider, `None` for anything else
-    /// (including a dropdown whose value never made it back).
+
     pub fn as_index(&self) -> Option<usize> {
         match self {
             FormValue::Choice { index, .. } if *index >= 0 => Some(*index as usize),
@@ -80,24 +64,20 @@ impl FormValue {
     }
 }
 
-/// What came back from a form.
 #[derive(Debug, Clone)]
 pub enum FormResponse {
-    /// Player closed the form. `reason` is the raw `ModalFormCancelReason`
-    /// (-1 when the client didn't say).
     Cancelled { reason: i32 },
-    /// SimpleForm: index of the pressed button (declaration order).
+
     Button(usize),
-    /// CustomForm: values keyed by the element names you declared.
+
     Custom(HashMap<String, FormValue>),
-    /// ModalForm: `upper == true` for the primary button.
+
     Modal { upper: bool },
 }
 
 pub(super) type FormCallback = Box<dyn FnOnce(FormResponse)>;
 
 pub(super) unsafe extern "C" fn form_trampoline(user: *mut c_void, result_snbt: sys::LeviRsStr) {
-    // Exactly-once contract: the bridge either calls this once or never.
     let cb: FormCallback = *Box::from_raw(user.cast::<FormCallback>());
     let response = parse_response(r(result_snbt));
     if catch_unwind(AssertUnwindSafe(move || cb(response))).is_err() {
@@ -118,9 +98,6 @@ pub(super) fn parse_response(snbt: &str) -> FormResponse {
         };
     }
     if let Some(values) = v.get("values").and_then(|x| x.as_compound()) {
-        // `texts` carries the human-readable side of every value the bridge
-        // could produce one for: the label of the selected dropdown option,
-        // and input text. A key present in both is a choice.
         let texts = v.get("texts").and_then(|x| x.as_compound());
         let text_of = |key: &String| -> Option<String> {
             texts.and_then(|t| t.get(key)).and_then(|x| match x {
@@ -145,9 +122,7 @@ pub(super) fn parse_response(snbt: &str) -> FormResponse {
             };
             out.insert(key.clone(), fv);
         }
-        // A choice the bridge could not resolve to an index still arrives as
-        // text only. Surface it rather than dropping it — the caller at least
-        // gets `as_str()`, and `as_i64()` correctly reports "no index".
+
         if let Some(texts) = texts {
             for (key, value) in texts {
                 if out.contains_key(key) {
@@ -190,8 +165,6 @@ pub(super) fn send(
     if ok {
         Ok(())
     } else {
-        // Send failed synchronously → the bridge will never call back;
-        // reclaim the callback.
         unsafe { drop(Box::from_raw(user)) };
         Err(Error(
             "form_send failed (player offline / bad form?)".into(),

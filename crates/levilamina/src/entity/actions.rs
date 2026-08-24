@@ -1,7 +1,5 @@
-//! Entity actions (mutations).
-
 use super::*;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::sys;
 
 impl Entity {
@@ -9,7 +7,6 @@ impl Entity {
         self.action(sys::AACT_KILL, "", 0.0, 0.0, 0.0).map(|_| ())
     }
 
-    /// Remove without death animation or drops.
     pub fn despawn(&self) -> Result<()> {
         self.action(sys::AACT_DESPAWN, "", 0.0, 0.0, 0.0)
             .map(|_| ())
@@ -25,14 +22,25 @@ impl Entity {
             .map(|_| ())
     }
 
-    /// Teleport within the current dimension.
     pub fn teleport(&self, x: f64, y: f64, z: f64) -> Result<()> {
         self.action(sys::AACT_TELEPORT, "", x, y, z).map(|_| ())
     }
 
-    /// Teleport across dimensions (0=overworld 1=nether 2=the_end).
     pub fn teleport_to_dimension(&self, dimension: i32, x: f64, y: f64, z: f64) -> Result<()> {
         self.action(sys::AACT_TELEPORT, &dimension.to_string(), x, y, z)
+            .map(|_| ())
+    }
+
+    pub fn set_rotation(&self, pitch: f64, yaw: f64) -> Result<()> {
+        self.action(sys::AACT_SET_ROTATION, "", pitch, yaw, 0.0)
+            .map(|_| ())
+    }
+
+    pub fn execute_event(&self, event: &str) -> Result<()> {
+        if event.is_empty() {
+            return Err(Error("event name is empty".into()));
+        }
+        self.action(sys::AACT_EXECUTE_EVENT, event, 0.0, 0.0, 0.0)
             .map(|_| ())
     }
 
@@ -62,7 +70,6 @@ impl Entity {
             == Some("1"))
     }
 
-    /// `effect`: engine effect name ("speed", "regeneration", …).
     pub fn add_effect(
         &self,
         effect: &str,
@@ -90,8 +97,6 @@ impl Entity {
             .map(|_| ())
     }
 
-    /// Deal generic damage. v1.0.0 limitation: player targets only (routed
-    /// via `/damage`); other entities return `Err`.
     pub fn hurt(&self, amount: i32) -> Result<()> {
         self.action(sys::AACT_HURT, "", amount as f64, 0.0, 0.0)
             .map(|_| ())

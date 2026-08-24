@@ -1,5 +1,3 @@
-//! Command construction: [`CommandBuilder`] and per-overload [`OverloadBuilder`].
-
 use super::*;
 use crate::error::{Error, Result};
 use crate::ffi::{r, s};
@@ -17,7 +15,6 @@ struct ParamDecl {
     optional: bool,
 }
 
-/// One overload's parameter list, in declaration order.
 #[derive(Debug, Clone, Default)]
 pub struct OverloadBuilder {
     params: Vec<ParamDecl>,
@@ -44,8 +41,6 @@ impl OverloadBuilder {
         self
     }
 
-    /// A required enum / soft-enum parameter bound to a registered enum name
-    /// (see [`crate::Server::register_command_enum`]).
     pub fn required_enum(mut self, name: &str, kind: ParamType, enum_name: &str) -> Self {
         self.params.push(ParamDecl {
             name: name.into(),
@@ -67,20 +62,6 @@ impl OverloadBuilder {
     }
 }
 
-/// Builder for a parameterized command. Obtain via [`crate::Server::command`].
-///
-/// ```no_run
-/// # use levilamina::prelude::*;
-/// Server::get()
-///     .command("warp", "teleport to a named warp", CommandPermission::Any)
-///     .overload(|o| o.required("name", ParamType::String))
-///     .overload(|o| o.required("name", ParamType::String).optional("who", ParamType::Player))
-///     .register(|inv| {
-///         let warp = inv.arg("name").and_then(|v| v.as_str()).unwrap_or_default();
-///         inv.success(&format!("warping to {warp} (overload {})", inv.overload));
-///     })
-///     .unwrap();
-/// ```
 pub struct CommandBuilder {
     name: String,
     description: String,
@@ -103,15 +84,13 @@ impl CommandBuilder {
         self
     }
 
-    /// Register with the server. The handler lives for the whole server
-    /// lifetime (Bedrock cannot unregister commands). Call from `on_enable`.
     pub fn register(self, handler: impl FnMut(&CommandInvocationEx) + 'static) -> Result<()> {
         if self.overloads.is_empty() {
             return Err(Error(
                 "command builder: declare at least one overload".into(),
             ));
         }
-        // Encode the declaration: {overloads:[[{name,kind,enum?,optional}, …], …]}
+
         let mut overloads_list = Vec::new();
         for o in &self.overloads {
             let mut params = Vec::new();
@@ -205,7 +184,7 @@ impl CommandBuilder {
             )
         };
         if ok {
-            Ok(()) // callback intentionally leaked: commands live forever
+            Ok(())
         } else {
             unsafe { drop(Box::from_raw(cb)) };
             Err(Error(format!(

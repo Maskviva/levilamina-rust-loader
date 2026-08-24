@@ -1,5 +1,3 @@
-//! Client input: key binding registration. Wraps `ll::input::KeyRegistry`.
-
 use std::ffi::c_void;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
@@ -27,13 +25,11 @@ struct KeyUserData {
     up: Option<Cb>,
 }
 
-/// Registered key binding. Drop to unregister.
 pub struct KeyBinding {
     handle: sys::LeviRsKeyHandle,
 }
 
 impl KeyBinding {
-    /// `down` / `up` fire on the client thread. Either may be `None`.
     pub fn register(
         _client: &Client,
         name: &str,

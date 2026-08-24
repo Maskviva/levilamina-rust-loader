@@ -55,7 +55,7 @@ let n    = inv.arg("count").and_then(|v| v.as_i64()).unwrap_or(1);
 let on   = inv.arg("flag").and_then(|v| v.as_bool()).unwrap_or(false);
 ```
 
-常用 `ParamType`：`String` `Int` `Float` `Bool` `Player` `Actor` `BlockPos` `Vec3` `Item` `BlockName` `Effect` `Message` `Enum` `SoftEnum`。全表见 [Command API](/api/command#paramtype-全部取值)。
+常用 `ParamType`：`String` `Int` `Float` `Bool` `Player` `Actor` `BlockPos` `Vec3` `Item` `BlockName` `Effect` `Message` `Enum` `SoftEnum`。全表见 [Command API](/api/actor/command#paramtype-全部取值)。
 
 ## 谁在执行
 

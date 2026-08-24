@@ -21,7 +21,7 @@ ctx.server()
 
 用 `levilamina::event::names` 里的常量。上游改名时你会得到编译错误而不是运行时 `Err`。
 
-常量表全在 [Event API](/api/event#事件名常量表)。
+常量表全在 [Event API](/api/infra/event#事件名常量表)。
 
 不在表里的事件直接传字符串——**支持唯一后缀匹配**，写 `"PlayerAddExperienceEvent"` 就行，不用写全 `ll::event::PlayerAddExperienceEvent`。
 
@@ -127,7 +127,7 @@ ctx.server().subscribe_event(names::PLAYER_DESTROY_BLOCK, EventPriority::Highest
 })?.forget();
 ```
 
-对不可取消的事件调 `cancel()` 不报错也不生效。哪些能取消见 [常量表](/api/event#事件名常量表)。
+对不可取消的事件调 `cancel()` 不报错也不生效。哪些能取消见 [常量表](/api/infra/event#事件名常量表)。
 
 ## 写保护类模组的常见坑
 
@@ -170,7 +170,7 @@ ctx.server().subscribe_event(names::HOPPER_TRANSFER, EventPriority::Lowest, |ev|
 
 ## 别的模组的事件
 
-`subscribe_event` 订的是引擎总线。模组之间自己约定的消息走 [Bus](/api/bus)：
+`subscribe_event` 订的是引擎总线。模组之间自己约定的消息走 [Bus](/api/core/bus)：
 
 ```rust
 use levilamina::bus;
