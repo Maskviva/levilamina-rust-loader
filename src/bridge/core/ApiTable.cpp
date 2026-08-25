@@ -34,7 +34,7 @@ namespace levi_rs
         using namespace bridge;
 
         const LeviRsApi gApi{
-            /* abi_version        */ LEVI_RS_ABI_VERSION,
+            /* abi_version        */ LEVI_RS_ABI_TAGGED_VERSION,
             /* struct_size        */ sizeof(LeviRsApi),
 
             /* ── v1 ── */
@@ -278,6 +278,10 @@ namespace levi_rs
             /* level_chunk_keys           */ api_level_chunk_keys,
             /* level_delete_key           */ api_level_delete_key,
             /* level_set_biome            */ api_level_set_biome,
+
+            /* ── 液体层（含水方块）── */
+            /* get_extra_block           */ api_get_extra_block,
+            /* set_extra_block           */ api_set_extra_block,
         };
     } // namespace
 
@@ -309,6 +313,20 @@ namespace levi_rs
             bridge::kvdbOnRustModGone(mod);
             bridge::hookEventDropMod(mod);       // detach bridge-hook event subscribers
             bridge::packetHooksOnRustModGone(mod); // detach raw packet interceptors
+            // 没有 owner 的遗留槽位，靠模块地址反查恢复归属 —— 见 Money.cpp。
+            // 客户端构建里是空实现。
+            bridge::moneyOnRustModGone(mod);
+#ifdef LEVI_RS_TARGET_CLIENT
+            bridge::clientOnRustModGone(mod);
+#endif
+        }
+
+        char const* laneBusyName(RustMod* mod)
+        {
+            // 转发。声明在 BridgeApi.h（RustModManager.cpp 唯一能看到的桥接
+            // 头），实现在 Lane.cpp —— 这里只做转接，和 onRustModGone 同一个
+            // 位置、同一个理由。
+            return bridge::laneModBusyName(mod);
         }
     } // namespace detail
 } // namespace levi_rs

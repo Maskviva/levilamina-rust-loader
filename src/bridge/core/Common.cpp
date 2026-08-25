@@ -1,5 +1,12 @@
 #include "bridge/Common.h"
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
 #ifdef LEVI_RS_FEATURE_MORE_DIMENSIONS
 #include "more_dimensions/include/dim/CustomDimensionConfig.h"
 #include "more_dimensions/include/base/NativeDimensions.h"
@@ -289,6 +296,43 @@ namespace levi_rs
             return out;
         }
 
+        bool addressOwnedBy(void const* moduleBase, void const* fn)
+        {
+            if (!moduleBase || !fn) return false;
+#ifdef _WIN32
+            HMODULE owner = nullptr;
+            if (!::GetModuleHandleExW(
+                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                reinterpret_cast<LPCWSTR>(fn),
+                &owner
+            ))
+            {
+                return false;
+            }
+            return static_cast<void const*>(owner) == moduleBase;
+#else
+            (void)moduleBase;
+            (void)fn;
+            return false;
+#endif
+        }
+
+        std::uint64_t nextListenerId()
+        {
+            static std::uint64_t next = 1;
+            return next++;
+        }
+
+        LeviRsListenerHandle listenerHandleOf(std::uint64_t id)
+        {
+            return reinterpret_cast<LeviRsListenerHandle>(static_cast<uintptr_t>(id));
+        }
+
+        std::uint64_t listenerIdOf(LeviRsListenerHandle handle)
+        {
+            return static_cast<std::uint64_t>(reinterpret_cast<uintptr_t>(handle));
+        }
+
         std::string itemToSnbt(ItemStack const& item)
         {
             auto ctx = SaveContextFactory::createCloneSaveContext();
@@ -570,7 +614,7 @@ namespace levi_rs
                     for (auto const& [name, info] : known)
                     {
                         if (!list.empty()) list += ", ";
-                        list += name + "=" + std::to_string(info.dimId);
+                        list += name + "=" + snbtNum(info.dimId);
                     }
                     if (list.empty()) list = "(无)";
                     bridgeLogger().warn(
@@ -591,10 +635,10 @@ namespace levi_rs
             std::string out = "{name:\"" + snbtEscape(p.getRealName())
                 + "\",xuid:\"" + snbtEscape(p.getXuid())
                 + "\",uuid:\"" + snbtEscape(p.getUuid().asString())
-                + "\",dim:" + std::to_string(static_cast<int>(p.getDimensionId()))
-                + ",x:" + std::to_string(pos.x)
-                + ",y:" + std::to_string(pos.y)
-                + ",z:" + std::to_string(pos.z) + "d}";
+                + "\",dim:" + snbtNum(static_cast<int>(p.getDimensionId()))
+                + ",x:" + snbtNum(pos.x)
+                + ",y:" + snbtNum(pos.y)
+                + ",z:" + snbtNum(pos.z) + "d}";
             return out;
         }
     } // namespace bridge

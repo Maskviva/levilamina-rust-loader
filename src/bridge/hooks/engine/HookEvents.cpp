@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "bridge/Api.h"
+#include "bridge/Common.h"
 
 namespace levi_rs::bridge
 {
@@ -90,19 +91,22 @@ namespace levi_rs::bridge
                 def->install();
                 def->installed = true;
             }
-            def->subs.push_back(std::make_unique<HookSub>(HookSub{mod, cb, user}));
-            return static_cast<LeviRsListenerHandle>(def->subs.back().get());
+            std::uint64_t id = nextListenerId();
+            def->subs.push_back(std::make_unique<HookSub>(HookSub{mod, cb, user, id}));
+            return listenerHandleOf(id);
         }
         return nullptr; // not a bridge-hook event — caller falls through
     }
 
     bool hookEventUnsubscribe(RustMod* mod, LeviRsListenerHandle handle)
     {
+        auto wanted = listenerIdOf(handle);
+        if (wanted == 0) return false;
         for (auto* def : table())
         {
             for (auto it = def->subs.begin(); it != def->subs.end(); ++it)
             {
-                if (static_cast<LeviRsListenerHandle>(it->get()) == handle && (*it)->mod == mod)
+                if ((*it)->id == wanted && (*it)->mod == mod)
                 {
                     def->subs.erase(it);
                     return true;

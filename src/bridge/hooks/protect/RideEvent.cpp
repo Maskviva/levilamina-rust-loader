@@ -78,21 +78,14 @@ namespace levi_rs::bridge
             auto& p = *static_cast<Player*>(&passenger);
 
             std::string vehicleName;
-            try
-            {
-                vehicleName = this->getTypeName();
-            }
-            catch (...)
-            {
-                vehicleName.clear();
-            }
+            vehicleName = this->getTypeName();
 
             auto const& pos = this->getPosition();
             std::string snbt = "{\"eventId\":\"PlayerRideEvent\""
-                               ",\"x\":" + std::to_string(static_cast<int>(pos.x))
-                             + ",\"y\":" + std::to_string(static_cast<int>(pos.y))
-                             + ",\"z\":" + std::to_string(static_cast<int>(pos.z))
-                             + ",\"dim\":" + std::to_string(static_cast<int>(this->getDimensionId()))
+                               ",\"x\":" + snbtNum(static_cast<int>(pos.x))
+                             + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
+                             + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
+                             + ",\"dim\":" + snbtNum(static_cast<int>(this->getDimensionId()))
                              + ",\"vehicle\":\"" + snbtEscape(vehicleName)
                              + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
                              + "\",\"xuid\":\"" + snbtEscape(p.getXuid())

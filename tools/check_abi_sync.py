@@ -3,7 +3,7 @@
 Verify the three hand-synchronised ABI sites agree, in ORDER:
 
   1. src/LeviRsAbi.h            -- the C struct field declarations
-  2. src/bridge/ApiTable.cpp    -- the positional initialiser
+  2. src/bridge/core/ApiTable.cpp    -- the positional initialiser
   3. crates/levilamina-sys/src/api.rs -- the Rust #[repr(C)] mirror
 
 The table is positional: a field inserted in one place but not the others
@@ -52,7 +52,7 @@ for line in body_nc.splitlines():
     c_fields += re.findall(r'\(\s*\*\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)\s*\(', line)
 
 # ---- 2. ApiTable.cpp: the positional initialiser ----------------------------
-tbl = (root / 'src/bridge/ApiTable.cpp').read_text(encoding='utf-8')
+tbl = (root / 'src/bridge/core/ApiTable.cpp').read_text(encoding='utf-8')
 # every `/* name */ value,` comment marks one slot, in order
 t_fields = re.findall(r'/\*\s*([a-z_][a-z0-9_]*)\s*\*/', tbl)
 

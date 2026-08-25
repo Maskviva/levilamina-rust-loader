@@ -70,6 +70,7 @@ namespace levi_rs::bridge
     void api_money_clear_hist(int) {}
     void api_money_listen_before_event(LLMoneyCallback) {}
     void api_money_listen_after_event(LLMoneyCallback) {}
+    void moneyOnRustModGone(RustMod*) {}
     void api_money_ranking(unsigned short, void*, LeviRsStrSink) {}
 
     bool api_player_get_carried_item(LeviRsPlayerSel, void*, LeviRsStrSink) { return false; }

@@ -70,12 +70,12 @@ namespace levi_rs::bridge
         {
             auto const& pos = p.getPosition();
             return "{\"eventId\":\"PlayerChangeGameModeEvent\""
-                   ",\"x\":" + std::to_string(static_cast<int>(pos.x))
-                 + ",\"y\":" + std::to_string(static_cast<int>(pos.y))
-                 + ",\"z\":" + std::to_string(static_cast<int>(pos.z))
-                 + ",\"dim\":" + std::to_string(static_cast<int>(p.getDimensionId()))
-                 + ",\"from\":" + std::to_string(from)
-                 + ",\"to\":" + std::to_string(to)
+                   ",\"x\":" + snbtNum(static_cast<int>(pos.x))
+                 + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
+                 + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
+                 + ",\"dim\":" + snbtNum(static_cast<int>(p.getDimensionId()))
+                 + ",\"from\":" + snbtNum(from)
+                 + ",\"to\":" + snbtNum(to)
                  + ",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
                  + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
                  + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
@@ -96,14 +96,7 @@ namespace levi_rs::bridge
             }
 
             int from = -1;
-            try
-            {
-                from = static_cast<int>(this->getPlayerGameType());
-            }
-            catch (...)
-            {
-                from = -1;
-            }
+            from = static_cast<int>(this->getPlayerGameType());
             int const to = static_cast<int>(gameType);
 
             // 没变就别问。玩家每次重生、每次切维度，引擎都会把当前模式再设一遍;
@@ -114,16 +107,7 @@ namespace levi_rs::bridge
             }
 
             std::string snbt;
-            try
-            {
-                snbt = buildSnbt(*this, from, to);
-            }
-            catch (...)
-            {
-                // 拼不出 payload 就不拦。这是**强制**不是**保护**：拦错的代价
-                // （玩家被锁在一个模式里、连管理员都改不动）大于漏一次的代价。
-                return origin(gameType);
-            }
+            snbt = buildSnbt(*this, from, to);
 
             bool cancelled = false;
             {

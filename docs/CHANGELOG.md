@@ -81,17 +81,17 @@
       `level_update_weather`, `level_find_path`.
 - **Rust safe wrappers** for all 34 gap-fill functions, in 5 new files
   (each ≤200 lines): `player/gap_fill.rs`, `entity/gap_fill.rs`,
-      `block/gap_fill.rs`, `item/gap_fill.rs`, `server/world/gap_fill.rs`.
+  `block/gap_fill.rs`, `item/gap_fill.rs`, `server/world/gap_fill.rs`.
 - **NBT binary codec safe wrappers** (`nbt/binary.rs`): `NbtValue::to_binary`
-      and `NbtValue::from_binary` now expose the engine's `CompoundTag`
-      binary/network NBT codec to Rust mods (previously the FFI functions
-      `nbt_snbt_to_binary` / `nbt_binary_to_snbt` had no safe wrapper).
-      New `NbtBinaryFormat` enum (`Disk` / `Network`).
+  and `NbtValue::from_binary` now expose the engine's `CompoundTag`
+  binary/network NBT codec to Rust mods (previously the FFI functions
+  `nbt_snbt_to_binary` / `nbt_binary_to_snbt` had no safe wrapper).
+  New `NbtBinaryFormat` enum (`Disk` / `Network`).
 - **C++ bridge fixes**: corrected function signatures for `Actor::burn`,
-      `Actor::stopFire` (replaces non-existent `extinguishFire`),
-      `Actor::removeAllPassengers`, `Player::getNetworkStatus` (handles
-      `std::optional<NetworkPeer::NetworkStatus>`), `Block::getCollisionShape`,
-      `BlockSource::tryGetBiome`, and `PlayerSleepStatus` field access.
+  `Actor::stopFire` (replaces non-existent `extinguishFire`),
+  `Actor::removeAllPassengers`, `Player::getNetworkStatus` (handles
+  `std::optional<NetworkPeer::NetworkStatus>`), `Block::getCollisionShape`,
+  `BlockSource::tryGetBiome`, and `PlayerSleepStatus` field access.
 
 ### Changed (internal — no API/ABI impact)
 
@@ -103,7 +103,7 @@
     - `types.rs` (90 lines) — `#[repr(C)]` FFI types (`LeviRsStr`, `LeviRsPlayerSel`, …).
     - `vtable.rs` / `money.rs` — mod vtable + LLMoney callback types.
     - `consts/{player,actor,world}.rs` — enum constants split by domain.
-  Also removed a stale `LLMoneyEvent` import from `api.rs` (unused warning).
+      Also removed a stale `LLMoneyEvent` import from `api.rs` (unused warning).
 - **[safe crate] `levilamina` source files split to ≤200 lines each.** Same
   findability goal; no public API changed (all re-exports at the crate root and
   in `prelude` are byte-identical):

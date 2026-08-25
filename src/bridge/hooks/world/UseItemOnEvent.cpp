@@ -97,21 +97,14 @@ namespace levi_rs::bridge
             Player& p = this->mPlayer;
 
             std::string itemName;
-            try
-            {
-                itemName = item.getTypeName();
-            }
-            catch (...)
-            {
-                itemName.clear();
-            }
+            itemName = item.getTypeName();
 
             std::string snbt = "{\"eventId\":\"PlayerUseItemOnEvent\""
-                               ",\"x\":" + std::to_string(at.x)
-                             + ",\"y\":" + std::to_string(at.y)
-                             + ",\"z\":" + std::to_string(at.z)
-                             + ",\"dim\":" + std::to_string(static_cast<int>(p.getDimensionId()))
-                             + ",\"face\":" + std::to_string(static_cast<int>(face))
+                               ",\"x\":" + snbtNum(at.x)
+                             + ",\"y\":" + snbtNum(at.y)
+                             + ",\"z\":" + snbtNum(at.z)
+                             + ",\"dim\":" + snbtNum(static_cast<int>(p.getDimensionId()))
+                             + ",\"face\":" + snbtNum(static_cast<int>(face))
                              + ",\"isFirstEvent\":" + (isFirstEvent ? "1" : "0")
                              + ",\"item\":\"" + snbtEscape(itemName)
                              + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())

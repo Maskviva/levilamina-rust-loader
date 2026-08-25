@@ -105,14 +105,14 @@ namespace levi_rs::bridge
             BlockPos const& pos = this->getPosition();
 
             std::string snbt = "{\"eventId\":\"HopperTransferEvent\""
-                               ",\"x\":" + std::to_string(pos.x)
-                             + ",\"y\":" + std::to_string(pos.y)
-                             + ",\"z\":" + std::to_string(pos.z)
-                             + ",\"slot\":" + std::to_string(slot)
+                               ",\"x\":" + snbtNum(pos.x)
+                             + ",\"y\":" + snbtNum(pos.y)
+                             + ",\"z\":" + snbtNum(pos.z)
+                             + ",\"slot\":" + snbtNum(slot)
                              + ",\"item\":\"" + snbtEscape(newName)
-                             + "\",\"count\":" + std::to_string(newCount)
+                             + "\",\"count\":" + snbtNum(newCount)
                              + ",\"old_item\":\"" + snbtEscape(oldName)
-                             + "\",\"old_count\":" + std::to_string(oldCount) + "}";
+                             + "\",\"old_count\":" + snbtNum(oldCount) + "}";
             dispatchHookEvent(def, snbt);
         }
 

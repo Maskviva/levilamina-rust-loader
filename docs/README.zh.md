@@ -2,7 +2,7 @@
 
 ![levilamina-rust-loader](https://socialify.git.ci/Maskviva/levilamina-rust-loader/image?description=1&font=Raleway&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FLiteLDev%2FLeviLamina%2Frefs%2Fheads%2Fmain%2Fdocs%2Fmain%2Fcontents%2Flogo.svg&name=1&owner=1&pattern=Circuit+Board&pulls=1&stargazers=1&theme=Auto)
 
-[![English](https://img.shields.io/badge/English-inactive?style=for-the-badge)](../README.md)
+![English](https://img.shields.io/badge/English-inactive?style=for-the-badge)
 [![中文](https://img.shields.io/badge/简体中文-informational?style=for-the-badge)](README.zh.md)
 
 **让 [LeviLamina](https://github.com/LiteLDev/LeviLamina) 能够加载用 Rust 编写的 Minecraft 基岩版专用服务器 mod。**
@@ -57,7 +57,7 @@ src/                    C++ loader mod（编译出 levilamina-rust-loader.dll）
 crates/levilamina-sys/  对 src/LeviRsAbi.h 的裸 #[repr(C)] FFI 镜像
 crates/levilamina/      建立在 levilamina-sys 之上的安全 Rust API
 docs/DESIGN.md          ABI 与架构决策、演进规则
-docs/advanced/PORTING_NOTES.md   这个桥接层依赖的 LeviLamina API 调用点清单
+docs/PORTING_NOTES.md   这个桥接层依赖的 LeviLamina API 调用点清单
 xmake.lua               编译 C++ mod（仓库根目录同时也是 xmake 项目根目录）
 Cargo.toml              两个 Rust crate 的 workspace（仓库根目录同时也是 cargo workspace 根目录）
 ```
@@ -138,13 +138,13 @@ v0.1 有意做成一个**范围小但正确的核心**——事件/命令/调度
 `execute_command` 已经能覆盖大部分原版行为，其余功能都能在这个基础上搭出来。
 
 - [ ] **v0.2** —— 结构化 SNBT：基于 `serde` 的类型化事件视图，取代现在字符串
-      级别的 `cancel()`，实现真正的 NBT 编辑
+  级别的 `cancel()`，实现真正的 NBT 编辑
 - [ ] **v0.2** —— 直接访问世界的快速通道（`get_block`/`set_block`/区域快照），
-      绕开命令解析器的开销
+  绕开命令解析器的开销
 - [ ] **v0.3** —— 玩家句柄（发消息/toast/表单）、表单 API
 - [ ] **v0.3** —— Linux 支持（取决于 LeviLamina 自己的 Linux 目标进度）
 - [ ] **v0.x** —— async 优先的 API 面（调度器之上的 `ServerHandle::run(async fn)`）、
-      Tokio 集成示例、AI agent 示例
+  Tokio 集成示例、AI agent 示例
 - [ ] 过程宏语法糖：`#[levilamina::event]`、`#[levilamina::command]`
 
 欢迎贡献——ABI 演进规则记录在 [`docs/DESIGN.md`](docs/DESIGN.md) 里。

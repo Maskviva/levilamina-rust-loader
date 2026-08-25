@@ -3,7 +3,14 @@ mod misc;
 pub use misc::edit;
 pub use misc::{system, types};
 mod rt;
-pub(crate) use rt::{error, ffi, logger, registration, runtime};
+pub(crate) use rt::{error, ffi, logger, registration};
+pub(crate) use rt::runtime;
+/// Internal: reachable so the exported `require_slot!` / `has_slot!` macros
+/// can name it from downstream crates. Not part of the stable API.
+#[doc(hidden)]
+pub mod __rt {
+    pub use crate::rt::runtime::has_slot;
+}
 mod comms;
 #[cfg(all(feature = "server", feature = "more_dimensions"))]
 pub use comms::more_dimensions;

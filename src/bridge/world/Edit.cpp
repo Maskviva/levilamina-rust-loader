@@ -115,6 +115,23 @@ namespace levi_rs::bridge
         }
     } // namespace
 
+    // 这两个原来只在本文件的匿名 namespace 里。World.cpp 的 api_set_block 从
+    // 命令路径改成原生之后也要用，所以提出来共用 —— 两处解析方块的规则必须
+    // 是同一套，否则 `//set` 和 `setblock` 会对同一个名字给出不同结果。
+    Block const* blockFromSnbt(std::string_view snbt)
+    {
+        auto parsed = CompoundTag::fromSnbt(snbt);
+        if (!parsed) return nullptr;
+        return blockFromTag(*parsed);
+    }
+
+    Block const* defaultBlockNamed(std::string_view name) { return defaultBlockOf(name); }
+
+    // 同上，World.cpp 的 api_set_block / POP_RESOURCE 改成原生之后也要用。
+    // 保持和 //set 同一个变更来源很重要：别的插件挂在方块变更上的钩子看到的
+    // 东西不能因为我们换了实现就变。
+    BlockChangeContext blockEditContext() { return editContext(); }
+
     // ───────────────────────── 方块 ─────────────────────────
 
     bool api_edit_set_block_nbt(
@@ -264,12 +281,12 @@ namespace levi_rs::bridge
         // 方块的**面**上，所以 floor() 有一半概率落到隔壁那一格 —— 任何
         // 「照着准星选方块」的功能都因此做不了。mBlock 和 mFacing 一直都在
         // HitResult 里，只是没往外发。
-        std::string out = "{type:" + std::to_string(static_cast<int>(hr.mType));
-        out += ",block:[" + std::to_string(hr.mBlock.x) + "," + std::to_string(hr.mBlock.y) + ","
-            + std::to_string(hr.mBlock.z) + "]";
-        out += ",facing:" + std::to_string(static_cast<int>(hr.mFacing));
-        out += ",pos:[" + std::to_string(hr.mPos.x) + "," + std::to_string(hr.mPos.y) + ","
-            + std::to_string(hr.mPos.z) + "]";
+        std::string out = "{type:" + snbtNum(static_cast<int>(hr.mType));
+        out += ",block:[" + snbtNum(hr.mBlock.x) + "," + snbtNum(hr.mBlock.y) + ","
+            + snbtNum(hr.mBlock.z) + "]";
+        out += ",facing:" + snbtNum(static_cast<int>(hr.mFacing));
+        out += ",pos:[" + snbtNum(hr.mPos.x) + "," + snbtNum(hr.mPos.y) + ","
+            + snbtNum(hr.mPos.z) + "]";
 
         int64_t entityId = 0;
         if (hr.mType == HitResultType::Entity)
@@ -281,8 +298,42 @@ namespace levi_rs::bridge
                 entityId = hit->getOrCreateUniqueID().rawID;
             }
         }
-        out += ",entity:" + std::to_string(entityId) + "L}";
+        out += ",entity:" + snbtNum(entityId) + "L}";
         sink(ctx, out);
         return true;
     }
+
+    // ───────────────────────── 液体层（含水） ─────────────────────────
+    //
+    // Bedrock 的「含水」是同一格上的第二个方块，不是方块状态：主层放楼梯，
+    // 液体层放 water。get_block / set_block 只看主层，所以含水的方块复制过去
+    // 水会消失 —— 主层完全正确，缺的是另一层。
+
+    bool api_get_extra_block(
+        int32_t dim, int32_t x, int32_t y, int32_t z, void* ctx, LeviRsStrSink sink)
+    {
+        if (!sink) return false;
+        auto* bs = blockSourceOf(dim);
+        if (!bs) return false;
+        auto const& block = bs->getExtraBlock(BlockPos{x, y, z});
+        // 空液体层返回的是 air，如实传出去 —— 调用方据此判断「这格没有含水」。
+        sink(ctx, block.getTypeName());
+        return true;
+    }
+
+    bool api_set_extra_block(
+        int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr blockSpec, int32_t updateFlags)
+    {
+        auto* bs = blockSourceOf(dim);
+        if (!bs) return false;
+
+        std::string_view spec{blockSpec};
+        while (!spec.empty() && (spec.front() == ' ' || spec.front() == '\t')) spec.remove_prefix(1);
+        if (spec.empty()) return false;
+
+        Block const* block = spec.front() == '{' ? blockFromSnbt(spec) : defaultBlockNamed(spec);
+        if (!block) return false;
+        return bs->setExtraBlock(BlockPos{x, y, z}, *block, updateFlags);
+    }
+
 } // namespace levi_rs::bridge

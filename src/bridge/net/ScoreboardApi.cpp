@@ -90,21 +90,21 @@ namespace levi_rs::bridge
                 if (id.mRawID == ScoreboardId::INVALID().mRawID) return false;
                 auto info = obj->getPlayerScore(id);
                 if (!info.mValid) return false;
-                out(ctx, std::to_string(info.mValue));
+                out(ctx, snbtNum(info.mValue));
                 return true;
             }
         case LEVI_RS_SB_SET_SCORE:
             {
                 int nv = 0;
                 if (!modifyScore(board, sa, sb, static_cast<int>(n), PlayerScoreSetFunction::Set, &nv)) return false;
-                if (out) out(ctx, std::to_string(nv));
+                if (out) out(ctx, snbtNum(nv));
                 return true;
             }
         case LEVI_RS_SB_ADD_SCORE:
             {
                 int nv = 0;
                 if (!modifyScore(board, sa, sb, static_cast<int>(n), PlayerScoreSetFunction::Add, &nv)) return false;
-                if (out) out(ctx, std::to_string(nv));
+                if (out) out(ctx, snbtNum(nv));
                 return true;
             }
         case LEVI_RS_SB_REDUCE_SCORE:
@@ -112,7 +112,7 @@ namespace levi_rs::bridge
                 int nv = 0;
                 if (!modifyScore(board, sa, sb, static_cast<int>(n), PlayerScoreSetFunction::Subtract, &nv)) return
                     false;
-                if (out) out(ctx, std::to_string(nv));
+                if (out) out(ctx, snbtNum(nv));
                 return true;
             }
         case LEVI_RS_SB_RESET_SCORE:
@@ -124,11 +124,22 @@ namespace levi_rs::bridge
                 return board.resetPlayerScore(id, *obj);
             }
         case LEVI_RS_SB_SET_DISPLAY:
-            // Display slot names are engine strings ("sidebar"/"list"/"belowname");
-            // route through /scoreboard so sort-order defaults stay engine-defined.
-            return runConsoleCommand("scoreboard objectives setdisplay " + sa + " " + sb);
+            {
+                // 原生。原来走 /scoreboard 的理由是「让排序默认值留在引擎侧」，
+                // 但 setDisplayObjective 本来就收 ObjectiveSortOrder，显式传
+                // Ascending 就是命令不带 sortOrder 时的默认值 —— 绕命令并没有
+                // 换来什么，反而丢了失败原因（目标不存在？槽位名拼错？）。
+                //
+                // sa = 槽位名（"sidebar"/"list"/"belowname"），sb = 目标名。
+                auto* obj = board.getObjective(sb);
+                if (!obj) return false;
+                return board.setDisplayObjective(sa, *obj, ObjectiveSortOrder::Ascending) != nullptr;
+            }
         case LEVI_RS_SB_CLEAR_DISPLAY:
-            return runConsoleCommand("scoreboard objectives setdisplay " + sa);
+            // 返回被清掉的那个目标；本来就没有显示目标时返回 nullptr，那也算
+            // 成功（幂等），所以不看返回值。
+            board.clearDisplayObjective(sa);
+            return true;
         default:
             return false;
         }

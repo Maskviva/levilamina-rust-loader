@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -28,7 +29,20 @@ namespace levi_rs
         ll::sys_utils::DynamicLibrary lib;
         LeviRsModVTable vtable{};
         /** Keeps DynamicListeners alive; cleared on unload. */
-        std::vector<std::shared_ptr<ll::event::ListenerBase>> listeners;
+        /**
+         * 保持 DynamicListener 存活；卸载时清空。
+         *
+         * 用进程内单调 id 索引，**不是**监听器的地址。地址是最直觉的句柄，也
+         * 是不安全的那个：退订会释放监听器，下一次订阅完全可能落在同一块内存
+         * 上，于是一个 mod 忘了丢弃的过期句柄会匹配上另一条订阅 —— 悄无声息
+         * 地退掉别人的监听器。id 永不复用，过期句柄只会匹配失败。
+         */
+        struct ListenerSlot
+        {
+            std::uint64_t id;
+            std::shared_ptr<ll::event::ListenerBase> listener;
+        };
+        std::vector<ListenerSlot> listeners;
         /** Muted when disabled so already-registered commands become no-ops. */
         bool commandsMuted = false;
     };

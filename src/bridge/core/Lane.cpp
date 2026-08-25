@@ -53,6 +53,7 @@
 #include "bridge/Common.h"
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <mutex>
@@ -80,9 +81,44 @@ namespace levi_rs::bridge
          * 依然可读 —— 消费方就是靠读它来发现提供方走了的，如果这一格本身被释放
          * 了，那个检查自己就成了 use-after-free。
          */
+        /** 最小 JSON 字符串转义。lane_list 是手拼 JSON 的，名字是外部输入。 */
+        std::string jsonEscape(std::string_view s)
+        {
+            std::string out;
+            out.reserve(s.size() + 8);
+            for (char c : s)
+            {
+                switch (c)
+                {
+                case '"':  out += "\\\""; break;
+                case '\\': out += "\\\\"; break;
+                case '\n': out += "\\n"; break;
+                case '\r': out += "\\r"; break;
+                case '\t': out += "\\t"; break;
+                default:
+                    if (static_cast<unsigned char>(c) < 0x20)
+                    {
+                        char buf[8];
+                        std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+                        out += buf;
+                    }
+                    else
+                    {
+                        out.push_back(c);
+                    }
+                    break;
+                }
+            }
+            return out;
+        }
+
         struct AliveCell
         {
             std::atomic<uint32_t> flag{1};
+            /** 消费方正停在这条车道的表项里的次数。见 LeviRsLaneRef::busy。
+             *  和 flag 同住一格、同样永不释放 —— 卸载路径读它的时候，持有它
+             *  的那个消费方可能已经没了。 */
+            std::atomic<uint32_t> busy{0};
         };
 
         struct Lane
@@ -298,7 +334,11 @@ namespace levi_rs::bridge
     int32_t api_lane_acquire(
         LeviRsModHandle modHandle, LeviRsStr nameRaw, uint64_t wantFingerprint, LeviRsLaneRef* out)
     {
-        if (!out || out->struct_size < sizeof(LeviRsLaneRef)) return LEVI_RS_LANE_REFUSED;
+        // 只要求到 `alive` 为止 —— 那是这条车道能用的最小形状。要求
+        // sizeof(LeviRsLaneRef) 会让每次追加字段都把老消费方一刀切掉，正是
+        // LeviRsAbi.h 顶上那条「追加式变更不该收窄可加载范围」在说的事。
+        constexpr uint32_t kMinRefSize = offsetof(LeviRsLaneRef, alive) + sizeof(uint32_t const*);
+        if (!out || out->struct_size < kMinRefSize) return LEVI_RS_LANE_REFUSED;
 
         // 先清干净。半填的 out 加上一个被忽略的返回码，等于把野指针交出去。
         out->lease = 0;
@@ -306,6 +346,7 @@ namespace levi_rs::bridge
         out->data = nullptr;
         out->vtable = nullptr;
         out->alive = nullptr;
+        if (out->struct_size >= offsetof(LeviRsLaneRef, busy) + sizeof(uint32_t*)) out->busy = nullptr;
 
         if (!modHandle) return LEVI_RS_LANE_REFUSED;
         auto* consumer = asMod(modHandle);
@@ -335,7 +376,20 @@ namespace levi_rs::bridge
             // 指针都不能递出去。填 fingerprint 是为了让消费方能打出一条**能指导
             // 下一步**的日志 —— 「不匹配」四个字对服主没用。
             out->fingerprint = lane.desc.fingerprint;
-            if (wantFingerprint != 0 && wantFingerprint != lane.desc.fingerprint)
+
+            // 0 以前的含义是「不校验」，注释里写着「只有诊断工具该这么用」。
+            // 那个口子必须堵上，因为它给出去的不是诊断数据，是完整的
+            // vtable + data 裸指针 —— 消费方随后会把它当成自己的 C::Table
+            // 解引用、按自己的偏移调函数指针。布局没核对过就递指针，正是本
+            // 文件开头那句「布局没确认相同之前一个指针都不能递出去」要防的事，
+            // 而这是唯一能绕过它的路径。
+            //
+            // 诊断需求由 lane_list 覆盖（名字 / mod / 指纹 / 协议 / 租约数），
+            // 它一个指针都不用给。
+            //
+            // Rust 侧 fingerprint() 里那句 `if h == 0 { 1 }` 保证安全层永远
+            // 不会送 0 上来，所以这个拒绝对正常调用方不可见。
+            if (wantFingerprint == 0 || wantFingerprint != lane.desc.fingerprint)
             {
                 return LEVI_RS_LANE_FINGERPRINT;
             }
@@ -351,6 +405,11 @@ namespace levi_rs::bridge
             out->data = lane.desc.data;
             out->vtable = lane.desc.vtable;
             out->alive = lane.alive ? reinterpret_cast<uint32_t const*>(&lane.alive->flag) : nullptr;
+            // 追加字段：老消费方填的 struct_size 到不了这里，不写就是了。
+            if (out->struct_size >= offsetof(LeviRsLaneRef, busy) + sizeof(uint32_t*))
+            {
+                out->busy = lane.alive ? reinterpret_cast<uint32_t*>(&lane.alive->busy) : nullptr;
+            }
         }
 
         // 锁外，理由同 retireLane：retain 跳进提供方的 dylib。
@@ -399,16 +458,18 @@ namespace levi_rs::bridge
                 char fp[32];
                 std::snprintf(fp, sizeof(fp), "0x%016llx",
                               static_cast<unsigned long long>(lane.desc.fingerprint));
+                // 转义：车道名由提供方给，mod 名来自 manifest —— 两个都是外部
+                // 输入，直接拼进 JSON 里一个引号就能把这份输出撕开。
                 out += "{\"name\":\"";
-                out += lane.name;
+                out += jsonEscape(lane.name);
                 out += "\",\"mod\":\"";
-                out += lane.mod ? std::string(lane.mod->getName()) : std::string("?");
+                out += jsonEscape(lane.mod ? std::string(lane.mod->getName()) : std::string("?"));
                 out += "\",\"fingerprint\":\"";
                 out += fp;
                 out += "\",\"protocol\":";
-                out += std::to_string(lane.desc.protocol);
+                out += snbtNum(lane.desc.protocol);
                 out += ",\"leases\":";
-                out += std::to_string(lane.leases);
+                out += snbtNum(lane.leases);
                 out += ",\"alive\":";
                 out += (lane.alive && lane.alive->flag.load(std::memory_order_acquire)) ? "true" : "false";
                 out += '}';
@@ -416,6 +477,31 @@ namespace levi_rs::bridge
         }
         out += ']';
         if (sink) sink(ctx, out);
+    }
+
+    char const* laneModBusyName(RustMod* mod)
+    {
+        // 这个 mod 提供的车道里，有没有哪条正停在调用中。
+        //
+        // 「全部服务器线程调用」挡住了并发卸载，挡不住重入卸载：提供方的表项
+        // 自己触发一次命令派发、那条命令把提供方卸了，于是 FreeLibrary 发生在
+        // 一个仍然停在提供方代码里的栈帧下面。存活标志对此无能为力 —— 消费方
+        // 早就读过它了。
+        //
+        // 所以在这里拒绝，而不是先卸再崩。返回车道名给调用方拼错误信息用；
+        // 名字活在 gLanes 里，由 loader 持有，和提供方的 dylib 无关。
+        static std::string held;
+        std::lock_guard lock(gMutex);
+        for (auto const& [id, lane] : gLanes)
+        {
+            if (lane.mod != mod || !lane.alive) continue;
+            if (lane.alive->busy.load(std::memory_order_acquire) != 0)
+            {
+                held = lane.name;
+                return held.c_str();
+            }
+        }
+        return nullptr;
     }
 
     void laneOnRustModGone(RustMod* mod)

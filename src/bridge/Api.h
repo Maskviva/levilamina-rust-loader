@@ -12,9 +12,14 @@
 #include <vector>
 #include "LeviRsAbi.h"
 
+// BDS 的这两个在全局命名空间，不是 levi_rs:: 下的。
+class Block;
+class BlockChangeContext;
+
 namespace levi_rs
 {
     class RustMod;
+
 
     namespace bridge
     {
@@ -248,6 +253,9 @@ namespace levi_rs
         void api_lane_list(void* ctx, LeviRsStrSink sink);
         /** 归还它持有的租约，撤销它发布的车道。必须在 FreeLibrary 之前跑。 */
         void laneOnRustModGone(RustMod* mod);
+        /** 该 mod 是否有车道正停在调用中；返回车道名，没有则 nullptr。
+         *  卸载前必须查，见 Lane.cpp 里的说明。 */
+        char const* laneModBusyName(RustMod* mod);
 
         /* MoreDimensionsBridge.cpp — plot-boundary confinement data.
          *
@@ -320,6 +328,26 @@ namespace levi_rs
 
         void api_money_listen_before_event(LLMoneyCallback callback);
         void api_money_listen_after_event(LLMoneyCallback callback);
+        /** 摘掉这个 mod 名下的 money 监听器。从 onRustModGone 调。 */
+        void moneyOnRustModGone(RustMod* mod);
+
+        /** 序列化方块 NBT（`{name,states,version}`）→ Block const*，失败 nullptr。
+         *  会跑引擎的版本升级表，老存档里的方块能被正确升级。 */
+        Block const* blockFromSnbt(std::string_view snbt);
+
+        /** 方块名（可省 `minecraft:` 前缀）→ 默认状态，**认不出返回 nullptr**。
+         *  不返回占位方块 —— 否则 `//set 拼错的名字` 会安静地刷掉整片地区。 */
+        Block const* defaultBlockNamed(std::string_view name);
+
+        /** 方块编辑的变更来源，和 //set 用同一个（commandsChange）。
+         *  setBlock / destroyBlock 的最后一个参数要它，而且是**引用不是指针**。 */
+        BlockChangeContext blockEditContext();
+
+        /* ── 液体层（含水方块）── */
+        bool api_get_extra_block(int32_t dim, int32_t x, int32_t y, int32_t z,
+                                 void* ctx, LeviRsStrSink sink);
+        bool api_set_extra_block(int32_t dim, int32_t x, int32_t y, int32_t z,
+                                 LeviRsStr blockSpec, int32_t updateFlags);
 
         void api_money_ranking(unsigned short num, void* ctx, LeviRsStrSink sink);
 
@@ -439,6 +467,8 @@ namespace levi_rs
         );
         bool api_client_unregister_key(LeviRsKeyHandle handle);
         bool api_client_get_key_codes(LeviRsKeyHandle handle, void* ctx, LeviRsStrSink sink);
+        /** 解除并释放这个 mod 名下的按键绑定。从 onRustModGone 调。 */
+        void clientOnRustModGone(RustMod* mod);
 #endif
     } // namespace bridge
 } // namespace levi_rs

@@ -121,11 +121,11 @@ namespace levi_rs::bridge
         auto opt = p->getNetworkStatus();
         if (!opt) return false;
         auto const& ns = *opt;
-        std::string snbt = "{ping:" + std::to_string(ns.mCurrentPing->count());
-        snbt += ",avg_ping:" + std::to_string(ns.mAveragePing->count());
-        snbt += ",packet_loss:" + std::to_string(ns.mCurrentPacketLoss);
-        snbt += ",avg_packet_loss:" + std::to_string(ns.mAveragePacketLoss);
-        snbt += ",max_bps:" + std::to_string(ns.mApproximateMaxBps) + "}";
+        std::string snbt = "{ping:" + snbtNum(ns.mCurrentPing->count());
+        snbt += ",avg_ping:" + snbtNum(ns.mAveragePing->count());
+        snbt += ",packet_loss:" + snbtNum(ns.mCurrentPacketLoss);
+        snbt += ",avg_packet_loss:" + snbtNum(ns.mAveragePacketLoss);
+        snbt += ",max_bps:" + snbtNum(ns.mApproximateMaxBps) + "}";
         sink(ctx, snbt);
         return true;
     }
@@ -212,9 +212,9 @@ namespace levi_rs::bridge
             if (!first) out += ",";
             first = false;
             auto dur = e.getDuration().getValue();
-            out += "{id:" + std::to_string(e.getId());
-            out += ",amp:" + std::to_string(e.getAmplifier());
-            out += ",duration:" + (dur ? std::to_string(*dur) : "-1");
+            out += "{id:" + snbtNum(e.getId());
+            out += ",amp:" + snbtNum(e.getAmplifier());
+            out += ",duration:" + (dur ? snbtNum(*dur) : "-1");
             out += "}";
         }
         out += "]";
@@ -246,9 +246,9 @@ namespace levi_rs::bridge
         // Actor::traceRay(tMax, includeActor, includeBlock, blockCheckFn).
         // Returns HitResult with mType (Tile/Entity/NoHit), mPos, mEntity.
         auto hr = a->traceRay(max_dist, include_actors, include_blocks);
-        std::string out = "{type:" + std::to_string(static_cast<int>(hr.mType));
-        out += ",pos:[" + std::to_string(hr.mPos.x) + "," + std::to_string(hr.mPos.y)
-            + "," + std::to_string(hr.mPos.z) + "]";
+        std::string out = "{type:" + snbtNum(static_cast<int>(hr.mType));
+        out += ",pos:[" + snbtNum(hr.mPos.x) + "," + snbtNum(hr.mPos.y)
+            + "," + snbtNum(hr.mPos.z) + "]";
         out += "}";
         sink(ctx, out);
         return true;
@@ -271,9 +271,9 @@ namespace levi_rs::bridge
         Actor* a = resolveActor(id);
         if (!a || !sink) return false;
         auto aabb = a->getAABB();
-        std::string snbt = "{min:[" + std::to_string(aabb.min.x) + "," + std::to_string(aabb.min.y) + ","
-            + std::to_string(aabb.min.z) + "],max:[" + std::to_string(aabb.max.x) + ","
-            + std::to_string(aabb.max.y) + "," + std::to_string(aabb.max.z) + "]}";
+        std::string snbt = "{min:[" + snbtNum(aabb.min.x) + "," + snbtNum(aabb.min.y) + ","
+            + snbtNum(aabb.min.z) + "],max:[" + snbtNum(aabb.max.x) + ","
+            + snbtNum(aabb.max.y) + "," + snbtNum(aabb.max.z) + "]}";
         sink(ctx, snbt);
         return true;
     }
@@ -309,7 +309,7 @@ namespace levi_rs::bridge
         if (!state) return false;
         auto v = block.getState<int>(*state);
         if (!v) return false;
-        sink(ctx, std::to_string(*v));
+        sink(ctx, snbtNum(*v));
         return true;
     }
 
@@ -354,9 +354,9 @@ namespace levi_rs::bridge
         AABB aabb;
         bool has = block.getCollisionShape(aabb, *bs, pos, nullptr);
         if (!has) { sink(ctx, "[]"); return true; }
-        std::string out = "[{min:[" + std::to_string(aabb.min.x) + "," + std::to_string(aabb.min.y)
-            + "," + std::to_string(aabb.min.z) + "],max:[" + std::to_string(aabb.max.x) + ","
-            + std::to_string(aabb.max.y) + "," + std::to_string(aabb.max.z) + "]}]";
+        std::string out = "[{min:[" + snbtNum(aabb.min.x) + "," + snbtNum(aabb.min.y)
+            + "," + snbtNum(aabb.min.z) + "],max:[" + snbtNum(aabb.max.x) + ","
+            + snbtNum(aabb.max.y) + "," + snbtNum(aabb.max.z) + "]}]";
         sink(ctx, out);
         return true;
     }
@@ -379,8 +379,8 @@ namespace levi_rs::bridge
             if (!first) out += ",";
             first = false;
             // mEnchantType is Enchant::Type (uchar enum); mLevel is int.
-            out += "{type:" + std::to_string(static_cast<int>(static_cast<uchar>(e.mEnchantType)));
-            out += ",level:" + std::to_string(e.mLevel) + "}";
+            out += "{type:" + snbtNum(static_cast<int>(static_cast<uchar>(e.mEnchantType)));
+            out += ",level:" + snbtNum(e.mLevel) + "}";
         }
         out += "]";
         sink(ctx, out);
@@ -615,9 +615,9 @@ namespace levi_rs::bridge
         // PlayerSleepStatus has: mSleepingPlayerCount, mRequiredSleepingPlayerCount,
         // mAbleToSleep (all scalar — TypedStorage collapses to raw int/int/bool).
         auto ss = level->getSleepStatus();
-        std::string snbt = "{sleeping:" + std::to_string(ss.mSleepingPlayerCount);
-        snbt += ",required:" + std::to_string(ss.mRequiredSleepingPlayerCount);
-        snbt += ",able_to_sleep:" + std::to_string(ss.mAbleToSleep ? 1 : 0) + "}";
+        std::string snbt = "{sleeping:" + snbtNum(ss.mSleepingPlayerCount);
+        snbt += ",required:" + snbtNum(ss.mRequiredSleepingPlayerCount);
+        snbt += ",able_to_sleep:" + snbtNum(ss.mAbleToSleep ? 1 : 0) + "}";
         sink(ctx, snbt);
         return true;
     }

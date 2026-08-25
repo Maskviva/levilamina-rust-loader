@@ -94,14 +94,7 @@ namespace levi_rs::bridge
             auto& p = *static_cast<Player*>(&entity);
 
             std::string key;
-            try
-            {
-                key = p.getXuid();
-            }
-            catch (...)
-            {
-                key.clear();
-            }
+            key = p.getXuid();
             if (key.empty()) key = p.getRealName(); // offline-mode servers
 
             int const       dim = static_cast<int>(region.getDimensionId());
@@ -114,10 +107,10 @@ namespace levi_rs::bridge
             }
 
             std::string snbt = "{\"eventId\":\"PlayerStepOnPressurePlateEvent\""
-                               ",\"x\":" + std::to_string(pos.x)
-                             + ",\"y\":" + std::to_string(pos.y)
-                             + ",\"z\":" + std::to_string(pos.z)
-                             + ",\"dim\":" + std::to_string(dim)
+                               ",\"x\":" + snbtNum(pos.x)
+                             + ",\"y\":" + snbtNum(pos.y)
+                             + ",\"z\":" + snbtNum(pos.z)
+                             + ",\"dim\":" + snbtNum(dim)
                              + ",\"kind\":\"" + kind
                              + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
                              + "\",\"xuid\":\"" + snbtEscape(p.getXuid())

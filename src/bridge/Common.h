@@ -8,9 +8,14 @@
  */
 #pragma once
 
+#include <charconv>
+#include <cmath>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <type_traits>
 
 #include "LeviRsAbi.h"
 
@@ -65,6 +70,57 @@ namespace levi_rs
 
         /** SNBT-escape a string for embedding in hand-built SNBT ("..\"..\\.."). */
         std::string snbtEscape(std::string_view s);
+
+        /**
+         * 给手拼 SNBT 用的数值格式化：精确、最短往返、不看 locale。
+         *
+         * `std::to_string(double)` 是 `sprintf("%f")`，两个毛病都会**损坏
+         * SNBT**，而不只是难看：
+         *   - 固定六位小数，`1e-7` 变成 "0.000000"，大坐标直接丢掉小数部分；
+         *   - 小数点跟随全局 C locale，任何插件调一次 setlocale，浮点全变
+         *     "1,5"，对端解析器拒绝整个文档。
+         * `to_chars` 两个都没有。整型也走它，保证 emit 出来的数字只有一种拼法。
+         *
+         * 非有限值降级成 "0"：emit "nan"/"inf" 会让整条 payload 解析失败，
+         * 丢的是整个事件而不是一个字段。
+         */
+        template <typename T>
+            requires std::is_arithmetic_v<T>
+        std::string snbtNum(T v)
+        {
+            if constexpr (std::is_floating_point_v<T>)
+            {
+                if (!std::isfinite(v)) return "0";
+            }
+            char buf[40];
+            auto [end, ec] = std::to_chars(buf, buf + sizeof(buf), v);
+            if (ec != std::errc{}) return "0";
+            return std::string(buf, end);
+        }
+
+        /**
+         * `fn`（任意代码地址）是否落在 `moduleBase` 这个模块里。
+         *
+         * 这是那些「没有 owner 的遗留槽位」——早于 mod-scoped 约定、只收一个
+         * 裸函数指针的那些——在卸载时唯一能恢复归属的办法：问操作系统这个指针
+         * 属于哪个模块，和正在离开的 mod 的 dylib 基址比。没有它，这类回调会
+         * 活过 FreeLibrary，下一次派发跳进未映射内存。
+         */
+        bool addressOwnedBy(void const* moduleBase, void const* fn);
+
+        /**
+         * 事件订阅句柄的 id 源，由动态监听器路径（Events.cpp）和桥接钩子路径
+         * （hooks/）共用，两者因此永远不会发出同一个句柄。
+         *
+         * 两边原来都返回订阅对象的地址。那不安全：退订释放对象后，下一次订阅
+         * 完全可能拿到同一地址，于是一个过期句柄会匹配上另一条订阅——**退掉
+         * 别人的监听器，还不报错**。id 单调递增、永不复用，过期句柄只会匹配失败。
+         *
+         * 永不返回 0（ABI 的「失败」值）。和订阅本身一样，仅服务器/客户端线程。
+         */
+        std::uint64_t nextListenerId();
+        LeviRsListenerHandle listenerHandleOf(std::uint64_t id);
+        std::uint64_t listenerIdOf(LeviRsListenerHandle handle);
 
         /**
          * Item (de)serialization across the FFI boundary — items always cross as

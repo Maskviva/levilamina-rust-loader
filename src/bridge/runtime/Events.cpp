@@ -3,6 +3,7 @@
 #include "bridge/Common.h"
 
 #include <cctype>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -302,8 +303,9 @@ namespace levi_rs::bridge
                 );
                 return nullptr;
             }
-            mod->listeners.push_back(typedListener);
-            return static_cast<LeviRsListenerHandle>(typedListener.get());
+            std::uint64_t id = nextListenerId();
+            mod->listeners.push_back({id, typedListener});
+            return listenerHandleOf(id);
         }
 #endif // !LEVI_RS_TARGET_CLIENT
 
@@ -332,9 +334,9 @@ namespace levi_rs::bridge
 
                 struct WriteCtx
                 {
-                    CompoundTag* data;
-                    bool written = false;
-                } wctx{&data};
+                    CompoundTag*       data;
+                    std::string const* snapshot; // 正是交给 cb 的那一份
+                } wctx{&data, &snbt};
 
                 cb(
                     user,
@@ -344,10 +346,45 @@ namespace levi_rs::bridge
                     [](void* c, LeviRsStr newSnbt)
                     {
                         auto* w = static_cast<WriteCtx*>(c);
-                        if (auto tag = CompoundTag::fromSnbt(newSnbt); tag)
+                        auto edited = CompoundTag::fromSnbt(newSnbt);
+                        if (!edited) return;
+
+                        // 只写这个调用方相对**它自己拿到的那份快照**真正改动过
+                        // 的字段。
+                        //
+                        // 整棵树替换（原来的做法）会在两个 mod 订阅同一事件时
+                        // 丢更新：第二个回调拿到的是第一个编辑**之前**的样子，
+                        // 把自己那份写回去就把前一个的改动还原了。不报错、不打
+                        // 日志——一个聊天过滤和一个土地保护挂在同一个事件上，会
+                        // 按优先级顺序互相抵消。
+                        //
+                        // 按快照做差量让两者互不干扰：没碰过的字段永远不写，于
+                        // 是保留前一个监听器留下的值。同字段冲突仍是后写者赢，
+                        // 那是任何 merge 能做到的上限。
+                        //
+                        // 多解析一次快照的代价只在真的写回时才付；纯观察的监听
+                        // 器根本走不到这个 lambda。
+                        auto base = CompoundTag::fromSnbt(*w->snapshot);
+                        if (!base)
                         {
-                            *w->data = std::move(*tag);
-                            w->written = true;
+                            // 快照解析不了（它来自 toSnbt，基本不可能）。退回旧
+                            // 的整树语义，总比把这次编辑丢掉强。
+                            *w->data = std::move(*edited);
+                            return;
+                        }
+
+                        for (auto const& [key, value] : edited->mTags)
+                        {
+                            auto it = base->mTags.find(key);
+                            if (it == base->mTags.end() || !(it->second == value))
+                            {
+                                w->data->mTags[key] = value;
+                            }
+                        }
+                        for (auto const& [key, value] : base->mTags)
+                        {
+                            (void)value;
+                            if (!edited->mTags.contains(key)) w->data->erase(key);
                         }
                     }
                 );
@@ -360,9 +397,9 @@ namespace levi_rs::bridge
         {
             return nullptr;
         }
-        mod->listeners.push_back(listener);
-
-        return static_cast<LeviRsListenerHandle>(listener.get());
+        std::uint64_t id = nextListenerId();
+        mod->listeners.push_back({id, listener});
+        return listenerHandleOf(id);
     }
 
     bool api_unsubscribe_event(LeviRsModHandle modHandle, LeviRsListenerHandle handle)
@@ -370,11 +407,12 @@ namespace levi_rs::bridge
         auto* mod = asMod(modHandle);
         if (!mod || !handle) return false;
         if (hookEventUnsubscribe(mod, handle)) return true; // bridge-hook events first
+        auto wanted = listenerIdOf(handle);
         for (auto it = mod->listeners.begin(); it != mod->listeners.end(); ++it)
         {
-            if (it->get() == handle)
+            if (it->id == wanted)
             {
-                bool ok = ll::event::EventBus::getInstance().removeListener(*it);
+                bool ok = ll::event::EventBus::getInstance().removeListener(it->listener);
                 mod->listeners.erase(it);
                 return ok;
             }

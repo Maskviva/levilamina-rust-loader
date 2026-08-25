@@ -113,14 +113,7 @@ namespace levi_rs::bridge
             auto& p = *static_cast<Player*>(pusher);
 
             std::string key;
-            try
-            {
-                key = p.getXuid();
-            }
-            catch (...)
-            {
-                key.clear();
-            }
+            key = p.getXuid();
             if (key.empty()) key = p.getRealName(); // offline-mode servers
 
             auto const& tpos = target->getPosition();
@@ -137,20 +130,13 @@ namespace levi_rs::bridge
             }
 
             std::string targetName;
-            try
-            {
-                targetName = target->getTypeName();
-            }
-            catch (...)
-            {
-                targetName.clear();
-            }
+            targetName = target->getTypeName();
 
             std::string snbt = "{\"eventId\":\"PlayerPushEntityEvent\""
-                               ",\"x\":" + std::to_string(x)
-                             + ",\"y\":" + std::to_string(y)
-                             + ",\"z\":" + std::to_string(z)
-                             + ",\"dim\":" + std::to_string(dim)
+                               ",\"x\":" + snbtNum(x)
+                             + ",\"y\":" + snbtNum(y)
+                             + ",\"z\":" + snbtNum(z)
+                             + ",\"dim\":" + snbtNum(dim)
                              + ",\"target\":\"" + snbtEscape(targetName)
                              + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
                              + "\",\"xuid\":\"" + snbtEscape(p.getXuid())

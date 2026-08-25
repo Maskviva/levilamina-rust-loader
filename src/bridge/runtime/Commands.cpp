@@ -112,12 +112,12 @@ namespace levi_rs::bridge
         std::string originSnbt(CommandOrigin const& origin)
         {
             std::string out = "{name:\"" + snbtEscape(origin.getName()) + "\"";
-            out += ",type:" + std::to_string(static_cast<int>(origin.getOriginType()));
+            out += ",type:" + snbtNum(static_cast<int>(origin.getOriginType()));
             if (auto* entity = origin.getEntity())
             {
                 auto pos = entity->getPosition();
-                out += ",dim:" + std::to_string(static_cast<int>(entity->getDimensionId()));
-                out += ",x:" + std::to_string(pos.x) + ",y:" + std::to_string(pos.y) + ",z:" + std::to_string(pos.z) +
+                out += ",dim:" + snbtNum(static_cast<int>(entity->getDimensionId()));
+                out += ",x:" + snbtNum(pos.x) + ",y:" + snbtNum(pos.y) + ",z:" + snbtNum(pos.z) +
                     "d";
             }
             out += "}";
@@ -255,16 +255,16 @@ namespace levi_rs::bridge
             switch (decl.kind)
             {
             case K::Int:
-                if (p.hold(K::Int)) key(std::to_string(p.get<K::Int>()));
+                if (p.hold(K::Int)) key(snbtNum(p.get<K::Int>()));
                 break;
             case K::Bool:
                 if (p.hold(K::Bool)) key(p.get<K::Bool>() ? "1b" : "0b");
                 break;
             case K::Float:
-                if (p.hold(K::Float)) key(std::to_string(p.get<K::Float>()) + "f");
+                if (p.hold(K::Float)) key(snbtNum(p.get<K::Float>()) + "f");
                 break;
             case K::Dimension:
-                if (p.hold(K::Dimension)) key(std::to_string(static_cast<int>(p.get<K::Dimension>())));
+                if (p.hold(K::Dimension)) key(snbtNum(static_cast<int>(p.get<K::Dimension>())));
                 break;
             case K::String:
                 if (p.hold(K::String)) key("\"" + snbtEscape(p.get<K::String>()) + "\"");
@@ -288,7 +288,7 @@ namespace levi_rs::bridge
                         list += "{name:\"" + snbtEscape(pl->getRealName())
                             + "\",xuid:\"" + snbtEscape(pl->getXuid())
                             + "\",uuid:\"" + snbtEscape(pl->getUuid().asString())
-                            + "\",id:" + std::to_string(pl->getOrCreateUniqueID().rawID) + "l},";
+                            + "\",id:" + snbtNum(pl->getOrCreateUniqueID().rawID) + "l},";
                     }
                     if (list.back() == ',') list.pop_back();
                     list += "]";
@@ -302,7 +302,7 @@ namespace levi_rs::bridge
                     for (auto* a : p.get<K::Actor>().results(origin))
                     {
                         if (!a) continue;
-                        list += "{id:" + std::to_string(a->getOrCreateUniqueID().rawID)
+                        list += "{id:" + snbtNum(a->getOrCreateUniqueID().rawID)
                             + "l,type:\"" + snbtEscape(a->getTypeName()) + "\"},";
                     }
                     if (list.back() == ',') list.pop_back();
@@ -315,7 +315,7 @@ namespace levi_rs::bridge
                 {
                     // 0x7FFFFFFF selects the newest coordinate semantics.
                     auto bp = p.get<K::BlockPos>().getBlockPos(0x7FFFFFFF, origin, Vec3::ZERO());
-                    key("{x:" + std::to_string(bp.x) + ",y:" + std::to_string(bp.y) + ",z:" + std::to_string(bp.z) +
+                    key("{x:" + snbtNum(bp.x) + ",y:" + snbtNum(bp.y) + ",z:" + snbtNum(bp.z) +
                         "}");
                 }
                 break;
@@ -329,7 +329,7 @@ namespace levi_rs::bridge
                 if (p.hold(K::Vec3))
                 {
                     auto v = p.get<K::Vec3>().getPosition(0x7FFFFFFF, origin, Vec3::ZERO());
-                    key("{x:" + std::to_string(v.x) + "d,y:" + std::to_string(v.y) + "d,z:" + std::to_string(v.z) +
+                    key("{x:" + snbtNum(v.x) + "d,y:" + snbtNum(v.y) + "d,z:" + snbtNum(v.z) +
                         "d}");
                 }
                 break;
@@ -454,7 +454,7 @@ namespace levi_rs::bridge
                             output.error("command '" + cmdName + "' is not available (mod disabled)");
                             return;
                         }
-                        std::string args = "{overload:" + std::to_string(idx) + ",args:{";
+                        std::string args = "{overload:" + snbtNum(idx) + ",args:{";
                         for (auto const& d : decls)
                         {
                             appendParsedParam(args, d, rt, origin);

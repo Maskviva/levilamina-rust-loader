@@ -47,7 +47,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # not fine is mirroring a member under a different number.
 MIRRORED = {
     "GeneratorType": (
-        "crates/levilamina/src/more_dimensions.rs",
+        "crates/levilamina/src/comms/more_dimensions.rs",
         "GeneratorType.h",
     ),
     "GameMode": (
@@ -201,17 +201,27 @@ def check_dimension_rules() -> int:
 
     abi = parse(ROOT / "src/LeviRsAbi.h", r"enum LeviRsDimRule\s*\{([^}]*)\}", "LEVI_RS_DIMRULE_")
     cpp = parse(
-        ROOT / "src/more_dimensions/DimensionRules.h",
+        ROOT / "src/more_dimensions/include/dim/DimensionRules.h",
         r"enum class DimRule : int\s*\{([^}]*)\}",
     )
     rs = parse(
-        ROOT / "crates/levilamina/src/more_dimensions.rs",
+        ROOT / "crates/levilamina/src/comms/more_dimensions.rs",
         r"pub enum DimensionRule \{(.*?)\n\}",
     )
 
     if not (abi and cpp and rs):
-        print("   -- 跳过：三份定义里至少有一份没找到（功能可能还没落地）")
-        return 0
+        # 硬失败，不是跳过。
+        #
+        # 这条分支本来的意思是「功能还没落地」，但它同样会在**文件被挪走**时
+        # 触发 —— 而那正是最需要报警的时候。仓库重构过一次之后，这个检查器和
+        # ABI 检查器都在静默跳过，谁都没发现，因为它们退出码是 0。
+        # 一个检查不到东西的检查器必须吵，不能装作通过了。
+        missing = [
+            n for n, v in (("LeviRsAbi.h", abi), ("DimensionRules.h", cpp),
+                           ("more_dimensions.rs", rs)) if not v
+        ]
+        print(f"   FAIL 找不到定义：{', '.join(missing)} —— 文件被挪走了？路径需要更新")
+        return False
 
     if abi == cpp == rs:
         print(f"   ok       三方一致（{len(abi)} 条规则）")

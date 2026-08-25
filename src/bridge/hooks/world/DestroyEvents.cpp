@@ -45,10 +45,10 @@ namespace levi_rs::bridge
             Player& p = this->mPlayer;
 
             std::string snbt = "{\"eventId\":\"PlayerStartDestroyBlockEvent\""
-                               ",\"x\":" + std::to_string(pos.x)
-                             + ",\"y\":" + std::to_string(pos.y)
-                             + ",\"z\":" + std::to_string(pos.z)
-                             + ",\"face\":" + std::to_string(static_cast<int>(face))
+                               ",\"x\":" + snbtNum(pos.x)
+                             + ",\"y\":" + snbtNum(pos.y)
+                             + ",\"z\":" + snbtNum(pos.z)
+                             + ",\"face\":" + snbtNum(static_cast<int>(face))
                              + ",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
                              + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
                              + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";

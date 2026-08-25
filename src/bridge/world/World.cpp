@@ -21,6 +21,7 @@
 #include "mc/world/item/SaveContextFactory.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/BlockSource.h"
+#include "mc/world/level/block/BlockChangeContext.h"
 #include "mc/world/level/Level.h"
 #include "mc/deps/core/string/HashedString.h"
 #include "mc/world/level/block/Block.h"
@@ -131,19 +132,47 @@ namespace levi_rs::bridge
         return true;
     }
 
+    /**
+     * 原生写方块。**不再走 `/execute in … run setblock`。**
+     *
+     * 命令路径当初图的是「跨 BDS 版本稳定」，代价却一直在付：
+     *
+     *   - 失败只有一个 bool，没有任何原因。方块名拼错、维度没加载、坐标在未
+     *     生成的区块里 —— 全都长一样，出了问题无从查起。
+     *   - 走命令等于每次写方块都过一遍命令解析、权限检查和 origin 构造。
+     *     WorldEdit 一次操作几十万个方块，这层开销全是白付的。
+     *   - **控制不了 update flags**，所以「粘贴时不要产生掉落物」这类需求在
+     *     命令路径上根本无法表达。
+     *   - 命令的副作用还会被别的系统看见（命令事件、日志），一次批量编辑能
+     *     淹掉整个控制台。
+     *
+     * 现在直接走 `BlockSource::setBlock`，和 `api_edit_set_block_nbt` 同一条
+     * 路。`blockSpec` 两种写法都收：
+     *
+     *   - `minecraft:stone` / `stone` —— 取默认状态
+     *   - `{name:"minecraft:stone",states:{…}}` —— 完整序列化 NBT，会跑引擎的
+     *     版本升级表
+     *
+     * 认不出的方块名返回 false，**不会**像 getDefaultBlockState 那样安静地填一
+     * 个占位方块（那会让 `//set 拼错的名字` 把整片地区刷掉）。
+     */
     bool api_set_block(int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr blockSpec)
     {
-        if (!blockSourceOf(dim)) return false;
-        // Dimension-targeted via /execute in — the command path keeps this stable
-        // across BDS versions (decision #3).
-        //
-        // Custom dimensions (MoreDimensions, ids >= 3) used to be rejected here,
-        // so nothing could ever write a block into one.
-        auto const target = dimensionSelector(dim);
-        if (target.empty()) return false;
-        std::string cmd = "execute in " + target + " run setblock " + std::to_string(x) + " "
-            + std::to_string(y) + " " + std::to_string(z) + " " + std::string{blockSpec};
-        return runConsoleCommand(cmd);
+        auto* bs = blockSourceOf(dim);
+        if (!bs) return false;
+
+        std::string_view spec{blockSpec};
+        while (!spec.empty() && (spec.front() == ' ' || spec.front() == '\t')) spec.remove_prefix(1);
+        if (spec.empty()) return false;
+
+        Block const* block = spec.front() == '{' ? blockFromSnbt(spec) : defaultBlockNamed(spec);
+        if (!block) return false;
+
+        // DEFAULT = NEIGHBORS | NETWORK，和 /setblock 的观感一致：邻居会更新，
+        // 变更会同步给客户端。要别的行为用 edit_set_block_nbt，那个收 flags。
+        // 第 5 个参数是 BlockChangeContext 的**引用**，不能传 nullptr。
+        // 用和 //set 同一个来源，别的插件挂在方块变更上的钩子看到的东西才不变。
+        return bs->setBlock(BlockPos{x, y, z}, *block, 3, nullptr, blockEditContext());
     }
 
     // ───────────────────────── v5 §D: block properties ─────────────────────────
@@ -317,9 +346,9 @@ namespace levi_rs::bridge
                 AABB aabb;
                 bool has = block->getCollisionShape(aabb, *bs, BlockPos{x, y, z}, nullptr);
                 std::string out = has
-                    ? ("[{min:[" + std::to_string(aabb.min.x) + "," + std::to_string(aabb.min.y)
-                        + "," + std::to_string(aabb.min.z) + "],max:[" + std::to_string(aabb.max.x)
-                        + "," + std::to_string(aabb.max.y) + "," + std::to_string(aabb.max.z) + "]}]")
+                    ? ("[{min:[" + snbtNum(aabb.min.x) + "," + snbtNum(aabb.min.y)
+                        + "," + snbtNum(aabb.min.z) + "],max:[" + snbtNum(aabb.max.x)
+                        + "," + snbtNum(aabb.max.y) + "," + snbtNum(aabb.max.z) + "]}]")
                     : "[]";
                 sink(ctx, out);
                 return true;
@@ -331,9 +360,9 @@ namespace levi_rs::bridge
                 // when the buffer is on the stack).
                 AABB buffer;
                 auto const& aabb = block->getOutline(*bs, BlockPos{x, y, z}, buffer);
-                std::string out = "[{min:[" + std::to_string(aabb.min.x) + "," + std::to_string(aabb.min.y) + ","
-                    + std::to_string(aabb.min.z) + "],max:[" + std::to_string(aabb.max.x) + ","
-                    + std::to_string(aabb.max.y) + "," + std::to_string(aabb.max.z) + "]}]";
+                std::string out = "[{min:[" + snbtNum(aabb.min.x) + "," + snbtNum(aabb.min.y) + ","
+                    + snbtNum(aabb.min.z) + "],max:[" + snbtNum(aabb.max.x) + ","
+                    + snbtNum(aabb.max.y) + "," + snbtNum(aabb.max.z) + "]}]";
                 sink(ctx, out);
                 return true;
             }
@@ -377,14 +406,14 @@ namespace levi_rs::bridge
             }
         case LEVI_RS_BACT_POP_RESOURCE:
             {
-                // Pop a resource at the block position via /setblock air destroy
-                // which drops the block's resources. The sarg (item SNBT) is
-                // ignored — the engine handles the drop table.
-                auto const target = dimensionSelector(dim);
-                if (target.empty()) return false;
-                return runConsoleCommand(
-                    "execute in " + target + " run setblock "
-                    + std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(z) + " air destroy"
+                // 原生掉落，不再走 `/setblock … air destroy`。
+                //
+                // Level::destroyBlock 就是命令背后做的事，而且它返回是否真的
+                // 破坏成功 —— 命令路径只能给一个「命令跑过了」。
+                auto* level = levelReady();
+                if (!level) return false;
+                return level->destroyBlock(
+                    *bs, BlockPos{x, y, z}, /*dropResources=*/true, blockEditContext()
                 );
             }
         case LEVI_RS_BACT_AS_ITEM:

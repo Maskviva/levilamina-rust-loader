@@ -133,34 +133,20 @@ namespace levi_rs::bridge
             // 整台服务器在一次攻击上崩掉，所以和另外两个 hook 一样吞掉 ——
             // 订阅方读到空字符串会退回粗动作，不会更松。
             std::string targetName;
-            try
-            {
-                targetName = actor.getTypeName();
-            }
-            catch (...)
-            {
-                targetName.clear();
-            }
+            targetName = actor.getTypeName();
 
             bool isPlayerTarget = false;
-            try
-            {
-                isPlayerTarget = actor.isPlayer();
-            }
-            catch (...)
-            {
-                isPlayerTarget = false;
-            }
+            isPlayerTarget = actor.isPlayer();
 
             auto const& pos = actor.getPosition();
             return std::string{"{\"eventId\":\"PlayerAttackTargetEvent\""}
-                 + ",\"x\":" + std::to_string(static_cast<int>(pos.x))
-                 + ",\"y\":" + std::to_string(static_cast<int>(pos.y))
-                 + ",\"z\":" + std::to_string(static_cast<int>(pos.z))
-                 + ",\"dim\":" + std::to_string(static_cast<int>(actor.getDimensionId()))
+                 + ",\"x\":" + snbtNum(static_cast<int>(pos.x))
+                 + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
+                 + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
+                 + ",\"dim\":" + snbtNum(static_cast<int>(actor.getDimensionId()))
                  + ",\"targetIsPlayer\":" + (isPlayerTarget ? "1" : "0")
                  + ",\"target\":\"" + snbtEscape(targetName)
-                 + "\",\"cause\":" + std::to_string(cause)
+                 + "\",\"cause\":" + snbtNum(cause)
                  + ",\"_player\":{\"name\":\"" + snbtEscape(self.getRealName())
                  + "\",\"xuid\":\"" + snbtEscape(self.getXuid())
                  + "\",\"uuid\":\"" + snbtEscape(self.getUuid().asString()) + "\"}}";

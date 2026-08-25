@@ -63,8 +63,8 @@ namespace levi_rs::bridge
             int const to   = changeRequest.mToDimensionId->value();
 
             std::string snbt = "{\"eventId\":\"PlayerChangeDimensionEvent\""
-                               ",\"from\":" + std::to_string(from)
-                             + ",\"to\":" + std::to_string(to)
+                               ",\"from\":" + snbtNum(from)
+                             + ",\"to\":" + snbtNum(to)
                              + ",\"_player\":{\"name\":\"" + snbtEscape(player.getRealName())
                              + "\",\"xuid\":\"" + snbtEscape(player.getXuid())
                              + "\",\"uuid\":\"" + snbtEscape(player.getUuid().asString()) + "\"}}";

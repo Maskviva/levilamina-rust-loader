@@ -79,32 +79,18 @@ namespace levi_rs::bridge
             }
 
             std::string targetName;
-            try
-            {
-                targetName = actor.getTypeName();
-            }
-            catch (...)
-            {
-                targetName.clear();
-            }
+            targetName = actor.getTypeName();
 
             std::string itemName;
-            try
-            {
-                ::ItemStack const& held = this->getSelectedItem();
-                if (!held.isNull()) itemName = held.getTypeName();
-            }
-            catch (...)
-            {
-                itemName.clear();
-            }
+            ::ItemStack const& held = this->getSelectedItem();
+            if (!held.isNull()) itemName = held.getTypeName();
 
             auto const& pos = actor.getPosition();
             std::string snbt = "{\"eventId\":\"PlayerInteractEntityEvent\""
-                               ",\"x\":" + std::to_string(static_cast<int>(pos.x))
-                             + ",\"y\":" + std::to_string(static_cast<int>(pos.y))
-                             + ",\"z\":" + std::to_string(static_cast<int>(pos.z))
-                             + ",\"dim\":" + std::to_string(static_cast<int>(actor.getDimensionId()))
+                               ",\"x\":" + snbtNum(static_cast<int>(pos.x))
+                             + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
+                             + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
+                             + ",\"dim\":" + snbtNum(static_cast<int>(actor.getDimensionId()))
                              + ",\"targetIsPlayer\":" + (actor.isPlayer() ? "1" : "0")
                              + ",\"target\":\"" + snbtEscape(targetName)
                              + "\",\"item\":\"" + snbtEscape(itemName)

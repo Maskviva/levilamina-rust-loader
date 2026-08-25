@@ -82,7 +82,22 @@ namespace levi_rs
         //
         // The opposite skew (older loader, newer mod) is caught on the mod
         // side by __init_runtime's `struct_size` check, so we don't need to.
-        const uint32_t modAbi = mod->vtable.abi_version;
+        const uint32_t modTagged = mod->vtable.abi_version;
+        const uint32_t modTarget = modTagged & LEVI_RS_ABI_TARGET_MASK;
+        const uint32_t modAbi = modTagged & ~LEVI_RS_ABI_TARGET_MASK;
+
+        // 目标优先。跨目标的表根本不是我们这张表的前缀（条件块 client_*/md_*
+        // 在结构体中段），下面的版本/尺寸比较等于在比两套无关的布局。
+        if (modTarget != LEVI_RS_ABI_TARGET_TAG)
+        {
+            (void)mod->lib.free();
+            return ll::makeStringError(
+                "'" + mod->getName() + "' 是按 "
+                + (modTarget ? "客户端" : "服务端") + " 目标编译的，而这个 loader 是 "
+                + (LEVI_RS_ABI_TARGET_TAG ? "客户端" : "服务端")
+                + " 构建 —— 请用匹配的 cargo feature 重新编译该 mod"
+            );
+        }
         if (modAbi > LEVI_RS_ABI_VERSION)
         {
             (void)mod->lib.free();
@@ -144,6 +159,20 @@ namespace levi_rs
         if (!mod)
         {
             return ll::makeStringError("mod not found");
+        }
+        // 在 on_unload 之前查，而不是之后：这个检查的意义是「现在根本不能卸」，
+        // 那就不该先让 mod 跑完自己的收尾逻辑再告诉它卸不掉。
+        //
+        // 非 0 意味着此刻有个栈帧正停在这个 mod 提供的车道表项里 —— 十有八九
+        // 就是当前这一层调用链自己（提供方的表项触发了命令派发，那条命令要卸
+        // 载提供方）。这时候 FreeLibrary 会把仍在执行的代码段 unmap 掉。
+        if (char const* busyLane = detail::laneBusyName(mod.get()))
+        {
+            return ll::makeStringError(
+                "'" + std::string(name) + "' 现在不能卸载：车道 '" + busyLane
+                + "' 正停在调用中（多半是从这条车道自己的表项里触发了卸载）。"
+                "等这次调用返回之后再试。"
+            );
         }
         if (mod->vtable.on_unload && !mod->vtable.on_unload(mod->vtable.instance))
         {

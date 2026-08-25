@@ -665,4 +665,25 @@ pub struct LeviRsApi {
         max_z: i32,
         biome: LeviRsStr,
     ) -> i32,
+
+    // ── 液体层（含水方块）──
+    //
+    // Bedrock 的「含水」是同一格上的第二个方块，不是方块状态。get_block /
+    // set_block 只看主层，所以含水方块复制过去水会消失。
+    pub get_extra_block: unsafe extern "C" fn(
+        dim: i32,
+        x: i32,
+        y: i32,
+        z: i32,
+        ctx: *mut c_void,
+        sink: LeviRsStrSink,
+    ) -> bool,
+    pub set_extra_block: unsafe extern "C" fn(
+        dim: i32,
+        x: i32,
+        y: i32,
+        z: i32,
+        block_spec: LeviRsStr,
+        update_flags: i32,
+    ) -> bool,
 }

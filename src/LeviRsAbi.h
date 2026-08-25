@@ -46,6 +46,44 @@
 #include <string_view>
 
 extern "C" {
+/**
+ * ══════════════════════════════════════════════════════════════════════════
+ *  DO NOT BUMP THIS FOR AN ADDITIVE CHANGE. Appending a function to the end
+ *  of LeviRsApi does NOT get a version bump.
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * This number defines the *loadable compatibility range*, not "how new the
+ * API is". It feeds two gates:
+ *
+ *     loader: LEVI_RS_ABI_MIN_SUPPORTED <= mod_abi <= LEVI_RS_ABI_VERSION
+ *     mod:    loader_abi >= the version the mod was compiled against
+ *
+ * Moving it *narrows what can be loaded*: every mod compiled afterwards
+ * refuses every loader released before it, whether or not the change had
+ * anything to do with them.
+ *
+ * Additive changes need none of that. The table is append-only, so an older
+ * loader's table is a byte-identical PREFIX of a newer one, and the only
+ * real question is per-slot: "is the function I am about to call present?"
+ * `struct_size` answers that exactly, and the Rust side checks it at each
+ * call site (see `require_slot!`).
+ *
+ * We have already paid for getting this wrong. Some historical additive
+ * bumps advanced this number too, which is why __init_runtime must compare
+ * with `<` and not `!=` — otherwise a v4-built mod rejects a perfectly
+ * compatible v5 loader. That `<` is a workaround for a rule that should
+ * simply be followed.
+ *
+ * So:
+ *   - append a function to the end of LeviRsApi  → change NOTHING here
+ *   - reorder / remove a field, or change an existing field's signature
+ *                                                → bump this AND
+ *                                                  LEVI_RS_ABI_MIN_SUPPORTED
+ *                                                  to the same number
+ *
+ * The second case is the only case. If you are unsure which one you are in,
+ * you are in the first one.
+ */
 #define LEVI_RS_ABI_VERSION 5u
 
 /**
@@ -66,11 +104,59 @@ extern "C" {
  * signature), bump this to that version — it's the single knob that says
  * "tables below here are NOT a prefix of mine, refuse them."
  *
- * The reverse direction (older loader, newer mod) is guarded on the mod
- * side: __init_runtime compares the loader's `struct_size` against the
- * mod's own compiled size and refuses a loader whose table is too small.
+ * It moves together with LEVI_RS_ABI_VERSION, never on its own.
+ *
+ * The reverse direction (older loader, newer mod) is guarded on the mod side
+ * by `struct_size`, PER SLOT rather than per struct. __init_runtime only
+ * requires the table to reach the end of the v1 core
+ * (LEVI_RS_API_CORE_SIZE); each later slot is checked where it is called,
+ * via `require_slot!`.
+ *
+ * It used to refuse the whole loader when
+ * `struct_size < sizeof(the mod's LeviRsApi)`. That compared the size of the
+ * struct *definition*, not the slots the mod calls, so merely rebuilding a
+ * mod against a newer crate made it reject every older loader even when it
+ * touched nothing new — the same over-broad refusal a version bump causes,
+ * arrived at from the other direction.
  */
 #define LEVI_RS_ABI_MIN_SUPPORTED 1u
+
+/**
+ * 目标标记，放在每个 `abi_version` 的最高位。
+ *
+ * `LeviRsApi` 中段有两个互斥的条件块：`client_*`（客户端构建）和 `md_*`
+ * （服务端构建）。它们后面的整条 common additive tail —— 包括
+ * `schedule_for` 和 bus / service / lane / edit 那几族 —— 的偏移因此**随目标
+ * 而变**。
+ *
+ * `struct_size` 单独挡不住跨目标配对。客户端构建的 mod，表比服务端 loader 少
+ * 一槽，于是 `loader.struct_size >= mod 的 sizeof` 恰好成立，然后这个 mod 把
+ * 整条尾部错开一槽来调：`schedule_for` 落到 `container_refresh` 上，如此类推。
+ * 没有任何诊断，纯属乱调。
+ *
+ * 给版本打标记让配对变成显式的：两侧先比标记是否**完全相等**，再比数值。
+ * 不匹配时报错拒载，而不是静默错调。
+ *
+ * 服务端构建标记为 0，所以每个现存的服务端 mod 的 `abi_version` 值原封不动，
+ * 对它们什么都没变。客户端目标的 mod 需要重编一次。
+ *
+ * **这个修复的边界（要如实说）**：标记只保护**重编过**的 mod。旧客户端 mod 写
+ * 的是裸的版本号、标记位为 0，服务端 loader 读出来和自己的 TAG 相同，照样放
+ * 行。而这在 loader 侧无解 —— `LeviRsModVTable` 里没有 mod 的 `struct_size`，
+ * loader 永远看不到尺寸差。结构性的解法是把两个条件块都挪到结构体真正的末
+ * 尾，让 core + tail 在所有目标下字节一致；那属于**非追加式变更**，按上面那
+ * 条规则要同时推进 LEVI_RS_ABI_VERSION 和 LEVI_RS_ABI_MIN_SUPPORTED，是下一
+ * 次真正的大版本才该做的事。
+ */
+#define LEVI_RS_ABI_TARGET_MASK 0x80000000u
+#ifdef LEVI_RS_TARGET_CLIENT
+#define LEVI_RS_ABI_TARGET_TAG LEVI_RS_ABI_TARGET_MASK
+#else
+#define LEVI_RS_ABI_TARGET_TAG 0u
+#endif
+
+/** 两侧填进 `abi_version` 的值：版本号 OR 上标记。 */
+#define LEVI_RS_ABI_TAGGED_VERSION (LEVI_RS_ABI_VERSION | LEVI_RS_ABI_TARGET_TAG)
 
 /**
  * UTF-8 string view — an alias for std::string_view, not a custom struct.
@@ -380,12 +466,28 @@ typedef struct LeviRsLaneRef
      * **loader 拥有的存活标志**，非 0 = 提供方还在。
      *
      * 这一格永不释放，所以提供方卸载之后读它仍然是合法的 —— 那正是它存在的
-     * 理由。消费方每次调用前读一次（`Relaxed` 就够：写 0 发生在服务器线程上的
-     * 卸载路径里，而所有调用也在服务器线程上）。
+     * 理由。消费方每次调用前读一次，用 **acquire**（写端是 release store；
+     * relaxed load 配 release store 不构成 synchronizes-with）。
      *
      * 指纹不匹配时为 NULL。
      */
     uint32_t const* alive;
+    /**
+     * **调用中计数**，同样由 loader 拥有、永不释放。消费方在进入提供方的表项
+     * 之前 +1，返回之后 -1。
+     *
+     * 为什么需要它：`alive` 只能挡住「调用之前提供方已经走了」，挡不住检查与
+     * 调用之间的那个窗口。全部服务器线程调用挡住了**并发**卸载，但挡不住
+     * **重入**卸载 —— 提供方的表项自己触发了一次命令派发，那条命令把提供方
+     * 卸了，于是 `FreeLibrary` 发生在一个仍然停在提供方代码里的栈帧下面。
+     *
+     * loader 在 `unload` 的最前面读这个计数：非 0 就直接拒绝卸载并说明原因，
+     * 而不是先卸再崩。
+     *
+     * 追加字段，受 `struct_size` 保护：老消费方填的 struct_size 到不了这里，
+     * loader 就不写，它们的行为和以前一模一样。
+     */
+    uint32_t* busy;
 } LeviRsLaneRef;
 
 /* ═════════════════ Packet interception FFI types ═════════════════
@@ -1897,9 +1999,16 @@ typedef struct LeviRsApi
      *  清零 —— 消费方下一次检查就会看到车道没了，而不是跳进空指针。 */
     bool (*lane_unpublish)(LeviRsModHandle mod, uint64_t pub_id);
 
-    /** 取一条车道。`want_fingerprint` 为 0 表示「不校验」——**只有诊断工具该这么
-     *  用**，普通消费方永远传自己算出来的那个值。返回 LEVI_RS_LANE_*。
-     *  拿到之后必须 `lane_release`，否则提供方的状态一直被 retain 着。 */
+    /** 取一条车道。`want_fingerprint` 必须是消费方自己算出来的那个值。
+     *
+     *  **0 是非法值，一律返回 LEVI_RS_LANE_FINGERPRINT。** 它曾经表示「不
+     *  校验」并注明「只有诊断工具该这么用」，那是个洞：这个调用给出去的不是
+     *  诊断数据，是完整的 vtable + data 裸指针，消费方随后按自己的
+     *  `C::Table` 偏移去调它们。跳过校验 = 类型混淆。想看车道有哪些、指纹是
+     *  多少，用 `lane_list`，它一个指针都不用给。
+     *
+     *  返回 LEVI_RS_LANE_*。拿到之后必须 `lane_release`，否则提供方的状态一直
+     *  被 retain 着。 */
     int32_t (*lane_acquire)(
         LeviRsModHandle mod, LeviRsStr name, uint64_t want_fingerprint, LeviRsLaneRef* out);
 
@@ -2052,6 +2161,24 @@ typedef struct LeviRsApi
                                int32_t minX, int32_t minZ,
                                int32_t maxX, int32_t maxZ,
                                LeviRsStr biome);
+
+    /* ═══════════ 追加 —— 液体层（含水方块） ═══════════
+     *
+     * Bedrock 的「含水」不是方块状态，而是**同一格上的第二个方块**：主层放
+     * 楼梯/栅栏/珊瑚，液体层放 water。`get_block` / `set_block` 只看主层，所以
+     * 复制一片含水的楼梯再粘出来，水会全部消失 —— 主层完全正确，缺的是另一层。
+     *
+     * 这两个槽位把液体层暴露出来。空的液体层返回 "minecraft:air"。
+     */
+
+    /** 读液体层。写进 sink 的是方块名（如 "minecraft:water"），空层为 air。 */
+    bool (*get_extra_block)(int32_t dim, int32_t x, int32_t y, int32_t z,
+                            void* ctx, LeviRsStrSink sink);
+
+    /** 写液体层。`block_spec` 收裸方块名或完整 SNBT，写 "minecraft:air" 清空。
+     *  `update_flags` 同 edit_set_block_nbt：位 1 = 邻居更新，位 2 = 同步客户端。 */
+    bool (*set_extra_block)(int32_t dim, int32_t x, int32_t y, int32_t z,
+                            LeviRsStr block_spec, int32_t update_flags);
 } LeviRsApi;
 
 /**

@@ -118,7 +118,7 @@ namespace levi_rs::bridge
         std::string cancelledSnbt(ll::form::FormCancelReason reason)
         {
             int code = reason.has_value() ? static_cast<int>(*reason) : -1;
-            return "{cancelled:1b,reason:" + std::to_string(code) + "}";
+            return "{cancelled:1b,reason:" + snbtNum(code) + "}";
         }
 
         /** Pull a string field with a default. */
@@ -201,8 +201,8 @@ namespace levi_rs::bridge
 
         std::string variantText(ll::form::CustomFormElementResult const& v)
         {
-            if (std::holds_alternative<uint64_t>(v)) return std::to_string(std::get<uint64_t>(v));
-            if (std::holds_alternative<double>(v)) return std::to_string(std::get<double>(v));
+            if (std::holds_alternative<uint64_t>(v)) return snbtNum(std::get<uint64_t>(v));
+            if (std::holds_alternative<double>(v)) return snbtNum(std::get<double>(v));
             if (std::holds_alternative<std::string>(v)) return std::get<std::string>(v);
             return "<none>";
         }
@@ -270,7 +270,7 @@ namespace levi_rs::bridge
                 }
                 else
                 {
-                    completeTicket(weakMod, ticket, "{button:" + std::to_string(button) + "}");
+                    completeTicket(weakMod, ticket, "{button:" + snbtNum(button) + "}");
                 }
             });
             return true;
@@ -444,7 +444,7 @@ namespace levi_rs::bridge
                 for (auto const& [k, v] : *choices)
                 {
                     if (!names.empty()) names += ", ";
-                    names += k + "(" + std::to_string(v.size()) + ")";
+                    names += k + "(" + snbtNum(v.size()) + ")";
                 }
                 bridgeLogger().info("[form] custom ticket={} 选择型控件: [{}]", ticket,
                                     names.empty() ? std::string{"无"} : names);
@@ -512,18 +512,18 @@ namespace levi_rs::bridge
                                 idx.reset();
                             }
 
-                            if (idx) values.put(key, std::to_string(*idx) + "l");
+                            if (idx) values.put(key, snbtNum(*idx) + "l");
                             if (!text.empty()) texts.putString(key, text);
                             continue;
                         }
 
                         if (std::holds_alternative<uint64_t>(value))
                         {
-                            values.put(key, std::to_string(std::get<uint64_t>(value)) + "l");
+                            values.put(key, snbtNum(std::get<uint64_t>(value)) + "l");
                         }
                         else if (std::holds_alternative<double>(value))
                         {
-                            values.put(key, std::to_string(std::get<double>(value)) + "d");
+                            values.put(key, snbtNum(std::get<double>(value)) + "d");
                         }
                         else if (std::holds_alternative<std::string>(value))
                         {

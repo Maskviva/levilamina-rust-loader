@@ -7,6 +7,8 @@
  */
 #include "bridge/Api.h"
 #include "bridge/Common.h"
+#include "mc/network/packet/SetTitlePacket.h"
+#include "mc/network/packet/SetTitlePacketPayload.h"
 #include "ll/api/io/Logger.h"
 #ifdef LEVI_RS_FEATURE_MORE_DIMENSIONS
 #include "more_dimensions/include/base/NativeDimensions.h"
@@ -17,6 +19,7 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -64,6 +67,28 @@ namespace levi_rs::bridge
         /// Split on '\n'. Used by the sidebar opcodes, whose whole payload is
         /// one newline-joined string — one FFI string beats N calls, and the
         /// sidebar is rebuilt as a unit anyway.
+        /**
+         * objective 名 → 一段独占的 ScoreboardId 槽位号。
+         *
+         * 侧边栏的每一行是一个 FakePlayer 计分条目，键是 ScoreboardId。id 段
+         * 原来对所有 objective 是同一个常量，于是两个插件的第 N 行是同一个条
+         * 目，互相覆盖 —— 屏幕上两套内容穿插、右侧两组分数。
+         *
+         * 用 FNV-1a 把名字散到 [0, 2^18) 上，乘以 4096 行的间距。同名必定同段
+         * （幂等，重复设置不会漂移），不同名几乎必定不同段。
+         */
+        uint32_t objectiveSlotHash(std::string_view name)
+        {
+            uint32_t h = 2166136261u;
+            for (char c : name)
+            {
+                h ^= static_cast<unsigned char>(c);
+                h *= 16777619u;
+            }
+            // 2^18 段 × 4096 行 = 2^30，正好填满 0x40000000 之上的一个象限。
+            return h & 0x3FFFFu;
+        }
+
         std::vector<std::string> splitLines(std::string_view text)
         {
             std::vector<std::string> out;
@@ -158,25 +183,23 @@ namespace levi_rs::bridge
     {
         Player* p = resolvePlayer(sel);
         if (!p) return false;
-        char const* name;
+        // mode 用的就是引擎的 GameType 判别值（0=生存 1=创造 2=冒险 6=旁观），
+        // 这里只做白名单校验，不再翻译成命令里的名字。
+        //
+        // 顺带修掉命令路径藏着的一个坑：玩家名原来直接拼进带引号的命令，名字
+        // 里有引号或反斜杠就能把命令撕开。
         switch (mode)
         {
         case 0:
-            name = "survival";
-            break;
         case 1:
-            name = "creative";
-            break;
         case 2:
-            name = "adventure";
-            break;
         case 6:
-            name = "spectator";
             break;
         default:
             return false;
         }
-        return runConsoleCommand("gamemode " + std::string{name} + " \"" + p->getRealName() + "\"");
+        p->setPlayerGameType(static_cast<::GameType>(mode));
+        return true;
     }
 
     /**
@@ -424,8 +447,8 @@ namespace levi_rs::bridge
                     sink(ctx, "");
                     return true;
                 }
-                std::string snbt = "{x:" + std::to_string(pos->x) + ",y:" + std::to_string(pos->y)
-                    + ",z:" + std::to_string(pos->z) + "}";
+                std::string snbt = "{x:" + snbtNum(pos->x) + ",y:" + snbtNum(pos->y)
+                    + ",z:" + snbtNum(pos->z) + "}";
                 sink(ctx, snbt);
                 return true;
             }
@@ -437,7 +460,7 @@ namespace levi_rs::bridge
                     sink(ctx, "");
                     return true;
                 }
-                sink(ctx, std::to_string(static_cast<int>(*dim)));
+                sink(ctx, snbtNum(static_cast<int>(*dim)));
                 return true;
             }
         case LEVI_RS_PSTR_NETWORK_STATUS:
@@ -448,11 +471,11 @@ namespace levi_rs::bridge
                 auto opt = p->getNetworkStatus();
                 if (!opt) return false;
                 auto const& ns = *opt;
-                std::string snbt = "{ping:" + std::to_string(ns.mCurrentPing->count());
-                snbt += ",avg_ping:" + std::to_string(ns.mAveragePing->count());
-                snbt += ",packet_loss:" + std::to_string(ns.mCurrentPacketLoss);
-                snbt += ",avg_packet_loss:" + std::to_string(ns.mAveragePacketLoss);
-                snbt += ",max_bps:" + std::to_string(ns.mApproximateMaxBps) + "}";
+                std::string snbt = "{ping:" + snbtNum(ns.mCurrentPing->count());
+                snbt += ",avg_ping:" + snbtNum(ns.mAveragePing->count());
+                snbt += ",packet_loss:" + snbtNum(ns.mCurrentPacketLoss);
+                snbt += ",avg_packet_loss:" + snbtNum(ns.mAveragePacketLoss);
+                snbt += ",max_bps:" + snbtNum(ns.mApproximateMaxBps) + "}";
                 sink(ctx, snbt);
                 return true;
             }
@@ -605,25 +628,33 @@ namespace levi_rs::bridge
                         return false;
                     }
                 }
-                auto const target = dimensionSelector(dim);
-                if (target.empty()) return false;
-                return runConsoleCommand(
-                    "execute in " + target + " run spawnpoint \"" + p->getRealName() + "\" "
-                    + std::to_string(static_cast<int>(a)) + " " + std::to_string(static_cast<int>(b)) + " "
-                    + std::to_string(static_cast<int>(c))
+                // 原生。同上，不再把玩家名拼进命令字符串。
+                p->setRespawnPosition(
+                    BlockPos{static_cast<int>(a), static_cast<int>(b), static_cast<int>(c)},
+                    static_cast<::DimensionType>(dim)
                 );
+                return true;
             }
         case LEVI_RS_PACT_CLEAR_TITLE:
-            return runConsoleCommand("title \"" + p->getRealName() + "\" clear");
+            {
+                // 原生数据包。命令路径要把玩家名拼进带引号的字符串里，名字含
+                // 引号就撕开命令；而且 /title 会走一遍命令解析和权限检查，对一
+                // 个「给这个玩家发个包」的动作来说全是白付的。
+                SetTitlePacketPayload payload{SetTitlePacketPayload::TitleType::Clear};
+                SetTitlePacket{std::move(payload)}.sendTo(*p);
+                return true;
+            }
         case LEVI_RS_PACT_SET_TITLE:
             {
-                char const* slot = "title";
-                int kind = static_cast<int>(a);
-                if (kind == 1) slot = "subtitle";
-                else if (kind == 2) slot = "actionbar";
-                return runConsoleCommand(
-                    "title \"" + p->getRealName() + "\" " + slot + " " + std::string{sarg}
-                );
+                auto kind = static_cast<int>(a);
+                auto type = kind == 1   ? SetTitlePacketPayload::TitleType::Subtitle
+                          : kind == 2   ? SetTitlePacketPayload::TitleType::Actionbar
+                                        : SetTitlePacketPayload::TitleType::Title;
+                // filteredTitleText 传 nullopt：那是给聊天过滤用的备用文本，
+                // 这条链路上的文本来自 mod 而不是玩家输入，没有可过滤的东西。
+                SetTitlePacketPayload payload{type, std::string{sarg}, std::nullopt};
+                SetTitlePacket{std::move(payload)}.sendTo(*p);
+                return true;
             }
         /* ── v5 additive ── */
         case LEVI_RS_PACT_ADD_EXPERIENCE:
@@ -740,17 +771,6 @@ namespace levi_rs::bridge
                     return false;
                 }
 
-                // 一次性的到达证明。侧边栏每秒都在刷，真按次打就把日志淹了；
-                // 而唯一需要确认的其实只有「这个 loader 认不认得 24 号操作码」——
-                // 认得就有这一行，没有这一行说明跑的是旧 DLL。
-                static bool announced = false;
-                if (!announced)
-                {
-                    announced = true;
-                    bridgeLogger().info(
-                        "sidebar: 已启用（objective='{}'，首次 {} 行）",
-                        objective, lines.size() - 2);
-                }
 
                 // Rebuild from scratch every time: the client keys entries by
                 // scoreboard id, and reusing ids across a changed line set is
@@ -783,7 +803,20 @@ namespace levi_rs::bridge
 
                 if (lines.size() == 2) return true;
 
-                constexpr int64_t kSidebarIdBase = INT64_C(0x40000000);
+                // ScoreboardId 段按 objective 名分开。
+                //
+                // 这里原来是一个写死的常量 0x40000000，**所有插件共用**。两个
+                // 插件同时开侧边栏时，各自的第 1 行都落在 0x40000001 —— 那是
+                // 同一个 scoreboard 条目，谁后发谁覆盖。屏幕上就是两套内容穿插
+                // 在一起、右侧出现两组分数，而且谁都清不掉对方的。
+                //
+                // 按名字哈希出各自的段位。段间距 4096 行，远超 MAX_ROWS，所以
+                // 不会有实际重叠；哈希冲突的概率是 1/(2^30/4096)，而且真撞上也
+                // 只影响同时开两个侧边栏的场景 —— 比现在这个必然冲突好得多。
+                //
+                // 高位固定 0x4 是为了避开原版计分板真实用到的低位 id 段。
+                int64_t const kSidebarIdBase = INT64_C(0x40000000)
+                    + (static_cast<int64_t>(objectiveSlotHash(objective)) * INT64_C(4096));
                 std::vector<ScorePacketInfo> infos;
                 infos.reserve(lines.size() - 2);
                 int score = static_cast<int>(lines.size()) - 2;
@@ -810,22 +843,62 @@ namespace levi_rs::bridge
                 sp->mScoreInfo  = std::move(infos);
                 p->sendNetworkPacket(*scores);
 
-                static bool rowsAnnounced = false;
-                if (!rowsAnnounced)
+                // 每个 objective 打一次到达证明，不是全局一次 —— 全局一次的话
+                // 第二个插件的侧边栏有没有真的发出去，日志里根本看不出来。
+                // 到达证明：每个 objective 打一次。
+                //
+                // 原来是全局一次（static bool），于是第二个插件的侧边栏有没有真的
+                // 发出去、用的是哪一段 id，日志里完全看不出来 —— 而那正是两个侧
+                // 边栏互相覆盖时唯一需要知道的事。
+                static std::set<std::string> announcedObjectives;
+                if (announcedObjectives.insert(objective).second)
                 {
-                    rowsAnnounced = true;
                     bridgeLogger().info(
-                        "sidebar: SetScore 已发出（{} 行，FakePlayer，id 基址 0x40000000）", rows);
+                        "sidebar: '{}' 已发出 {} 行（FakePlayer，id 段 0x{:x}..0x{:x}）",
+                        objective, rows,
+                        static_cast<uint64_t>(kSidebarIdBase + 1),
+                        static_cast<uint64_t>(kSidebarIdBase + static_cast<int64_t>(rows)));
                 }
                 return true;
             }
         case LEVI_RS_PACT_SIDEBAR_CLEAR:
             {
                 if (sarg.empty()) return false;
+
+                // **先解绑显示槽，再删 objective。** 顺序反了等于没清。
+                //
+                // SIDEBAR_SET 是三步：RemoveObjective → 建 objective →
+                // SetDisplayObjective 把它挂到 "sidebar" 槽。而这里原来只做了
+                // 删 objective 这一步 —— 客户端会删掉计分项，但**槽位仍然绑在
+                // 这个名字上**，屏幕上的旧内容不会消失。
+                //
+                // 更麻烦的是它把槽位占着不放：另一个插件随后调 SIDEBAR_SET，
+                // 它发的 RemoveObjective 移除的是**自己的**名字，动不了这条陈
+                // 旧绑定，于是它的侧边栏也显示不出来。两个插件轮流用一个槽位时
+                // （起床战争维度进出）表现就是「出来之后卡在旧内容，别的插件也
+                // 抢不回来」。
+                //
+                // SetDisplayObjective 带空的 mObjectiveName 就是「这个槽不显示
+                // 任何东西」—— 这是原版 `/scoreboard objectives setdisplay
+                // sidebar`（不带目标名）走的同一条线。
+                if (auto blank =
+                        MinecraftPackets::createPacket(MinecraftPacketIds::SetDisplayObjective))
+                {
+                    auto* d                  = static_cast<SetDisplayObjectivePacket*>(blank.get());
+                    d->mDisplaySlotName      = std::string{"sidebar"};
+                    d->mObjectiveName        = std::string{};
+                    d->mObjectiveDisplayName = std::string{};
+                    d->mCriteriaName         = std::string{"dummy"};
+                    d->mSortOrder            = ObjectiveSortOrder::Descending;
+                    p->sendNetworkPacket(*d);
+                }
+
                 auto gone = MinecraftPackets::createPacket(MinecraftPacketIds::RemoveObjective);
                 if (!gone) return false;
                 static_cast<RemoveObjectivePacket*>(gone.get())->mObjectiveName = std::string{sarg};
                 p->sendNetworkPacket(*gone);
+
+                bridgeLogger().debug("sidebar: 已清除 '{}'（解绑槽位 + 删 objective）", sarg);
                 return true;
             }
 

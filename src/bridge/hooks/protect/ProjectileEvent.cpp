@@ -123,10 +123,10 @@ namespace levi_rs::bridge
         std::string buildSnbt(Player& p, std::string const& projectile, ::Vec3 const& at, int dim)
         {
             return "{\"eventId\":\"PlayerSpawnProjectileEvent\""
-                   ",\"x\":" + std::to_string(static_cast<int>(at.x))
-                 + ",\"y\":" + std::to_string(static_cast<int>(at.y))
-                 + ",\"z\":" + std::to_string(static_cast<int>(at.z))
-                 + ",\"dim\":" + std::to_string(dim)
+                   ",\"x\":" + snbtNum(static_cast<int>(at.x))
+                 + ",\"y\":" + snbtNum(static_cast<int>(at.y))
+                 + ",\"z\":" + snbtNum(static_cast<int>(at.z))
+                 + ",\"dim\":" + snbtNum(dim)
                  + ",\"projectile\":\"" + snbtEscape(projectile)
                  + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
                  + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
@@ -186,14 +186,7 @@ namespace levi_rs::bridge
             }
 
             std::string shooterName;
-            try
-            {
-                if (!shooterStack.isNull()) shooterName = shooterStack.getTypeName();
-            }
-            catch (...)
-            {
-                shooterName.clear();
-            }
+            if (!shooterStack.isNull()) shooterName = shooterStack.getTypeName();
 
             if (refuseLaunch(
                     *player,
@@ -225,14 +218,7 @@ namespace levi_rs::bridge
             }
 
             std::string projName;
-            try
-            {
-                projName = ::VanillaActorRendererId::trident().getString();
-            }
-            catch (...)
-            {
-                projName = "minecraft:thrown_trident";
-            }
+            projName = ::VanillaActorRendererId::trident().getString();
 
             if (refuseLaunch(
                     *player,
@@ -263,14 +249,7 @@ namespace levi_rs::bridge
             }
 
             std::string projName;
-            try
-            {
-                projName = projectileInstance.getTypeName();
-            }
-            catch (...)
-            {
-                projName = "minecraft:firework_rocket";
-            }
+            projName = projectileInstance.getTypeName();
 
             if (refuseLaunch(
                     player,
@@ -314,14 +293,7 @@ namespace levi_rs::bridge
             auto& p = *static_cast<Player*>(spawner);
 
             std::string projName;
-            try
-            {
-                projName = id.mCanonicalName->getString();
-            }
-            catch (...)
-            {
-                projName.clear();
-            }
+            projName = id.mCanonicalName->getString();
 
             if (refuseLaunch(p, projName, position, static_cast<int>(region.getDimensionId())))
             {

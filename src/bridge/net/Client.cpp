@@ -6,6 +6,7 @@
 #include "bridge/Api.h"
 #include "bridge/Common.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -33,7 +34,33 @@ namespace levi_rs::bridge
             LeviRsKeyCb up_cb;
             void* user;
             std::shared_ptr<bool> alive;
+            /** 只作身份用，绝不解引用——用来在它的 mod 卸载时摘掉这个绑定。 */
+            RustMod* owner = nullptr;
         };
+
+        /**
+         * 所有还活着的绑定，好让卸载能够到那些 mod 忘了反注册的。
+         *
+         * KeyRegistry 的 handler 比 mod 的 dylib 活得久：它捕获的是裸的
+         * down_cb/up_cb 函数指针，而且注册之后没有任何办法摘掉。`alive` 是让
+         * 它们变成 no-op 的唯一手段，而在这张表之前，除了显式
+         * client_unregister_key 之外没有任何东西会把它置 false。一个注册了热
+         * 键然后被卸载的 mod，会留下一个仍然武装着、指向未映射内存的 handler。
+         *
+         * 仅客户端线程（KeyRegistry 在那里派发，注册也来自同一线程），无需加锁。
+         */
+        std::vector<ClientKeyEntry*>& liveEntries()
+        {
+            static std::vector<ClientKeyEntry*> entries;
+            return entries;
+        }
+
+        /** 拆一个：让 handler 变 no-op，释放条目。 */
+        void destroyEntry(ClientKeyEntry* entry)
+        {
+            *entry->alive = false;
+            delete entry;
+        }
 
         LeviRsFocusImpact toAbiFocus(::FocusImpact fi)
         {
@@ -118,16 +145,36 @@ namespace levi_rs::bridge
             }
         );
 
-        return reinterpret_cast<LeviRsKeyHandle>(entry.release());
+        entry->owner = mod;
+        auto* raw = entry.release();
+        liveEntries().push_back(raw);
+        return reinterpret_cast<LeviRsKeyHandle>(raw);
     }
 
     bool api_client_unregister_key(LeviRsKeyHandle handle)
     {
         if (!handle) return false;
         auto* entry = reinterpret_cast<ClientKeyEntry*>(handle);
-        *entry->alive = false;
-        delete entry;
+        auto& live = liveEntries();
+        auto it = std::find(live.begin(), live.end(), entry);
+        // 不在表里说明已经拆过了（重复反注册，或者它的 mod 先卸载了）。
+        // 原来这里是无条件 delete —— 重复反注册就是 double free。
+        if (it == live.end()) return false;
+        live.erase(it);
+        destroyEntry(entry);
         return true;
+    }
+
+    void clientOnRustModGone(RustMod* mod)
+    {
+        if (!mod) return;
+        auto& live = liveEntries();
+        for (auto it = live.begin(); it != live.end();)
+        {
+            if ((*it)->owner != mod) { ++it; continue; }
+            destroyEntry(*it);
+            it = live.erase(it);
+        }
     }
 
     bool api_client_get_key_codes(LeviRsKeyHandle handle, void* ctx, LeviRsStrSink sink)
@@ -140,7 +187,7 @@ namespace levi_rs::bridge
         for (size_t i = 0; i < codes.size(); ++i)
         {
             if (i) out += ',';
-            out += std::to_string(codes[i]);
+            out += snbtNum(codes[i]);
         }
         out += "]";
         sink(ctx, out);

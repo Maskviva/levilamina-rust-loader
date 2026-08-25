@@ -33,6 +33,32 @@ jobs:
           path: |
             bin/
 
+  abi-sync:
+    name: ABI & enum sync + logic tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # C 头、ApiTable 初始化列表、Rust 镜像是同一张**位置对应**函数表的三份
+      # 手工副本，外加约 300 个手工镜像的枚举常量。对不上不会是任何一侧的编译
+      # 错误：Rust mod 只是调到了相邻那个槽位，或者读到一个含义不同的常量。
+      # 这两个检查器一直躺在 tools/ 里没接线，于是仓库重构把它们的路径弄坏之
+      # 后，它们静默跳过了好一阵子而退出码还是 0。
+      - run: python tools/check_abi_sync.py
+
+      - run: python tools/check_enum_sync.py
+
+      # 宿主上就能编的那部分桥接逻辑的单元测试：SNBT 数值格式化、事件写回
+      # merge、ABI 兼容闸门、lane 指纹与 busy 计数。C++ loader 本身只能在
+      # Windows 上对着 LL SDK 构建，没有这一步这几块一个测试都没有。
+      - run: |
+          g++ -std=c++20 -Wall -Wextra -Werror -o /tmp/verify_logic tests/verify_logic.cpp
+          /tmp/verify_logic
+
   crates:
     name: Build & test Rust crates
     runs-on: ubuntu-latest

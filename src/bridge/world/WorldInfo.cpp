@@ -84,13 +84,13 @@ namespace levi_rs::bridge
             Vec3 c = v.getCenter();
 
             std::string snbt = "{\"uuid\":\"" + snbtEscape(v.getUniqueID().asString())
-                             + "\",\"center\":[" + std::to_string(c.x) + "," + std::to_string(c.y)
-                             + "," + std::to_string(c.z) + "]"
-                             + ",\"bounds\":{\"min\":[" + std::to_string(b.min.x) + ","
-                             + std::to_string(b.min.y) + "," + std::to_string(b.min.z)
-                             + "],\"max\":[" + std::to_string(b.max.x) + ","
-                             + std::to_string(b.max.y) + "," + std::to_string(b.max.z) + "]}"
-                             + ",\"poi_count\":" + std::to_string(v.getPOICount()) + "}";
+                             + "\",\"center\":[" + snbtNum(c.x) + "," + snbtNum(c.y)
+                             + "," + snbtNum(c.z) + "]"
+                             + ",\"bounds\":{\"min\":[" + snbtNum(b.min.x) + ","
+                             + snbtNum(b.min.y) + "," + snbtNum(b.min.z)
+                             + "],\"max\":[" + snbtNum(b.max.x) + ","
+                             + snbtNum(b.max.y) + "," + snbtNum(b.max.z) + "]}"
+                             + ",\"poi_count\":" + snbtNum(v.getPOICount()) + "}";
             snbtSink(ctx, snbt);
         }
     }
@@ -129,10 +129,10 @@ namespace levi_rs::bridge
                     // value). BoundingBox min/max are BlockPos (integers).
                     BoundingBox const& bb = area.aabb.get();
                     std::string snbt = "{\"type\":\"" + hsaTypeName(area.type)
-                                     + "\",\"bounds\":{\"min\":[" + std::to_string(bb.min.x) + ","
-                                     + std::to_string(bb.min.y) + "," + std::to_string(bb.min.z)
-                                     + "],\"max\":[" + std::to_string(bb.max.x) + ","
-                                     + std::to_string(bb.max.y) + "," + std::to_string(bb.max.z) + "]}}";
+                                     + "\",\"bounds\":{\"min\":[" + snbtNum(bb.min.x) + ","
+                                     + snbtNum(bb.min.y) + "," + snbtNum(bb.min.z)
+                                     + "],\"max\":[" + snbtNum(bb.max.x) + ","
+                                     + snbtNum(bb.max.y) + "," + snbtNum(bb.max.z) + "]}}";
                     snbtSink(ctx, snbt);
                 }
             }

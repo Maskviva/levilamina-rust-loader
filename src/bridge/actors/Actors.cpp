@@ -329,19 +329,19 @@ namespace levi_rs::bridge
             return true;
         case LEVI_RS_AACT_HURT:
             {
-                // Generic damage without a typed ActorDamageSource: route through
-                // /damage so cause bookkeeping stays engine-side (decision #3).
-                // Target by runtime id is impossible in vanilla commands; use the
-                // engine hurt() with a default source instead when that lands. For
-                // players we can fall back to /damage by name.
-                if (actor->isPlayer())
-                {
-                    auto* p = static_cast<Player*>(actor);
-                    return runConsoleCommand(
-                        "damage \"" + p->getRealName() + "\" " + std::to_string(static_cast<int>(a))
-                    );
-                }
-                return false; // non-player hurt: unsupported in v5.0 (needs ActorDamageSource plumbing)
+                // 原生。LeviLamina 的 Actor::hurtByCause 就是我们要的东西：
+                // 它接受一个 ActorDamageCause，引擎侧的伤害记账照常走。
+                //
+                // 这一并修掉了原来的两个限制：
+                //   - 命令路径只能按**名字**打，所以非玩家实体直接不支持
+                //     （原来就是 return false）。现在按 Actor* 打，任何实体都行。
+                //   - 玩家名原来直接拼进带引号的命令，名字里有引号就撕开命令。
+                //
+                // Override 是「不归因于任何具体来源」的通用伤害，正是这个槽位
+                // 的语义（调用方只给了一个伤害值）。
+                return actor->hurtByCause(
+                    static_cast<float>(a), ::SharedTypes::Legacy::ActorDamageCause::Override
+                );
             }
         case LEVI_RS_AACT_ATTRIBUTE_GET:
             return false; // reserved: generic attribute-by-name (post-v1.0.0)

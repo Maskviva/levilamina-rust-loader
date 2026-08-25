@@ -194,9 +194,9 @@ namespace levi_rs::bridge
         case LEVI_RS_ISTR_COLOR:
             {
                 auto color = item->getColor();
-                std::string snbt = "{r:" + std::to_string(color.r);
-                snbt += ",g:" + std::to_string(color.g);
-                snbt += ",b:" + std::to_string(color.b) + "}";
+                std::string snbt = "{r:" + snbtNum(color.r);
+                snbt += ",g:" + snbtNum(color.g);
+                snbt += ",b:" + snbtNum(color.b) + "}";
                 sink(ctx, snbt);
                 return true;
             }

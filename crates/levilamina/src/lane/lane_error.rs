@@ -47,9 +47,31 @@ pub trait LaneContract: 'static {
 
     const VERSION: u32;
 
+    /// 定义 `Table` 的那个 crate 的版本，几乎总是写
+    /// `env!("CARGO_PKG_VERSION")`。
+    ///
+    /// 为什么不能省：指纹里代表「表的类型」的那一项是
+    /// `core::any::type_name::<Table>()`，而 `type_name` **明确不保证唯一**。
+    /// 契约 crate 从 1.x 升到 2.x 把 `Table` 改了，两边的 `type_name` 仍然
+    /// 是同一个字符串 —— NAME 相同、VERSION 如果作者忘了改也相同、
+    /// size/align 只要碰巧一样就都一样。于是指纹判定「匹配」，两个布局不同
+    /// 的表被直接对接。
+    ///
+    /// `VERSION` 是人工纪律，漏改就是静默 UB；这一项由 `env!` 自动填，漏不掉。
+    const CRATE_VERSION: &'static str;
+
     type Table: Copy + 'static;
 }
 
+/// 类型身份的近似值。
+///
+/// `core::any::type_name` 的文档明确说了输出**不保证唯一、不保证稳定**，
+/// 所以这一项只是指纹的一部分而不是全部：它和 size / align /
+/// `LaneContract::VERSION` / `LaneContract::CRATE_VERSION` 一起用，靠的是
+/// 「同时撞上」的概率而不是任何一项自身的保证。
+///
+/// 特别地，它区分不出同名不同版本的类型 —— 那正是 `CRATE_VERSION` 存在的
+/// 理由。
 pub(crate) fn type_ident_hash<T: 'static>() -> u64 {
     mix_bytes(FNV_OFFSET, core::any::type_name::<T>().as_bytes())
 }
@@ -63,6 +85,7 @@ pub fn fingerprint<C: LaneContract>() -> u64 {
     h = mix_u64(h, size_of::<C::Table>() as u64);
     h = mix_u64(h, align_of::<C::Table>() as u64);
     h = mix_u64(h, type_ident_hash::<C::Table>());
+    h = mix_bytes(h, C::CRATE_VERSION.as_bytes());
 
     if h == 0 {
         1
@@ -91,11 +114,25 @@ impl LaneStr {
         }
     }
 
+    /// 空串与非法 UTF-8 都会得到 `""`，两者无法区分。热路径用它，出错要诊断
+    /// 用 [`LaneStr::try_as_str`]。
     pub unsafe fn as_str<'a>(self) -> &'a str {
-        if self.len == 0 || self.ptr.is_null() {
-            return "";
+        self.try_as_str().unwrap_or("")
+    }
+
+    /// 非法 UTF-8 时返回 `None` 而不是空串。
+    ///
+    /// 原来只有 `unwrap_or("")` 一种行为：跨 dylib 传来的字节坏掉时静默变成
+    /// 空串，和「对方本来就传了空串」完全分不开。这条车道存在的理由就是类型
+    /// 信息不丢，静默降级是它最不该有的失败方式。
+    pub unsafe fn try_as_str<'a>(self) -> Option<&'a str> {
+        if self.ptr.is_null() {
+            return None;
         }
-        core::str::from_utf8(core::slice::from_raw_parts(self.ptr, self.len)).unwrap_or("")
+        if self.len == 0 {
+            return Some("");
+        }
+        core::str::from_utf8(core::slice::from_raw_parts(self.ptr, self.len)).ok()
     }
 }
 
@@ -163,6 +200,15 @@ pub fn guard<R>(fallback: R, f: impl FnOnce() -> R) -> R {
 
 pub struct Publication {
     pub(crate) id: u64,
+    /// 让 `Publication` 变成 `!Send` / `!Sync`。
+    ///
+    /// 结构体本身只有一个 `u64`，所以默认是 `Send + Sync` —— 于是它可以被搬
+    /// 进 tokio 任务、在工作线程上 drop，而 `Drop` 会调 `lane_unpublish`：那
+    /// 个函数拿 loader 的全局锁、遍历租约表、**跨 dylib 调提供方的
+    /// `release`**，全都是服务器线程专属的动作。
+    ///
+    /// `Lane<C>` 因为含裸指针天然就是 `!Send`，`Publication` 只是漏了。
+    pub(crate) _not_send: PhantomData<*const ()>,
 }
 
 impl Publication {
@@ -218,7 +264,10 @@ pub fn publish<C: LaneContract, S: Send + Sync + 'static>(
             C::NAME
         )));
     }
-    Ok(Publication { id })
+    Ok(Publication {
+        id,
+        _not_send: PhantomData,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -271,8 +320,30 @@ pub struct Lane<C: LaneContract> {
     pub(crate) data: LaneData,
     pub(crate) table: *const C::Table,
     pub(crate) alive: *const AtomicU32,
+    /// 调用中计数，loader 拥有、永不释放。老 loader 不填，为空指针。
+    pub(crate) busy: *const AtomicU32,
     pub(crate) fingerprint: u64,
     pub(crate) _p: PhantomData<(*const C, C)>,
+}
+
+/// 在提供方的表项里停留期间把 busy +1，无论怎么离开都 -1（含 panic 展开）。
+struct BusyGuard(*const AtomicU32);
+
+impl BusyGuard {
+    fn enter(cell: *const AtomicU32) -> BusyGuard {
+        if !cell.is_null() {
+            unsafe { (*cell).fetch_add(1, Ordering::AcqRel) };
+        }
+        BusyGuard(cell)
+    }
+}
+
+impl Drop for BusyGuard {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe { (*self.0).fetch_sub(1, Ordering::AcqRel) };
+        }
+    }
 }
 
 impl<C: LaneContract> Lane<C> {
@@ -281,15 +352,38 @@ impl<C: LaneContract> Lane<C> {
             return false;
         }
 
-        unsafe { (*self.alive).load(Ordering::Relaxed) != 0 }
+        // Acquire，不是 Relaxed。写端是
+        // `flag.store(0, std::memory_order_release)`（Lane.cpp:retireLane），
+        // release store 配 relaxed load **不构成 synchronizes-with** —— 读到
+        // 1 的时候，对 vtable / data 的写入没有可见性保证。x86 上基本观察不
+        // 到，但这是一格跨 dylib 共享的原子量，不该靠平台强序活着。
+        unsafe { (*self.alive).load(Ordering::Acquire) != 0 }
     }
 
     pub fn fingerprint(&self) -> u64 {
         self.fingerprint
     }
 
+    /// 借出提供方的函数表跑一段代码。提供方已经走了就返回 `None`。
+    ///
+    /// 单靠 `is_alive()` 是不够的：它只能证明「检查的那一刻提供方还在」，管不
+    /// 到检查与调用之间。全部服务器线程调用挡住了**并发**卸载，挡不住**重入**
+    /// 卸载 —— `f` 里的提供方代码触发一次命令派发，那条命令把提供方卸了，
+    /// `FreeLibrary` 就发生在一个仍然停在提供方代码里的栈帧下面。
+    ///
+    /// 所以进入之前把 loader 那格 busy 计数 +1，离开时 -1（`BusyGuard` 保证
+    /// panic 展开也会减）。`RustModManager::unload` 在最前面读它，非 0 就拒绝
+    /// 卸载并说明是哪条车道 —— 报一条错，而不是先卸再崩。
     pub fn with<R>(&self, f: impl FnOnce(&C::Table, LaneData) -> R) -> Option<R> {
         if !self.is_alive() || self.table.is_null() {
+            return None;
+        }
+
+        let _busy = BusyGuard::enter(self.busy);
+
+        // 二次确认。上面那次读之后、计数生效之前仍有一个窗口；先占住计数再复
+        // 查，才能保证「读到还活着」和「卸载被挡下」这两件事有交叠。
+        if !self.is_alive() {
             return None;
         }
 
@@ -320,6 +414,7 @@ pub fn acquire<C: LaneContract>() -> std::result::Result<Lane<C>, LaneError> {
             data: LaneData(out.data),
             table: out.vtable.cast::<C::Table>(),
             alive: out.alive.cast::<AtomicU32>(),
+            busy: out.busy.cast::<AtomicU32>(),
             fingerprint: out.fingerprint,
             _p: PhantomData,
         }),

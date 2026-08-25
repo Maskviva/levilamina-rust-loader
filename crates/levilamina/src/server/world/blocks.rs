@@ -1,8 +1,9 @@
 use super::*;
 use crate::error::{Error, Result};
-use crate::ffi::{collect_bytes, r, s};
+use crate::ffi::{call_out_str, collect_bytes, r, s};
 use crate::types::PositionI32;
 use crate::world::{BlockInfo, EntityInfo, Scan};
+use crate::require_slot;
 use crate::{rt, sys};
 
 impl Server {
@@ -92,6 +93,43 @@ impl Server {
             return Err(Error("get_block: level/dimension not ready".into()));
         }
         out.ok_or_else(|| Error("get_block: no result".into()))
+    }
+
+    /// 读这一格的**液体层**。
+    ///
+    /// Bedrock 的「含水」不是方块状态，而是同一格上的第二个方块：主层放楼梯，
+    /// 液体层放 water。[`Server::get_block`] 只看主层，所以只用它复制一片含水的
+    /// 楼梯，粘出来水会全部消失 —— 主层完全正确，缺的是另一层。
+    ///
+    /// 没有含水时返回 `"minecraft:air"`，不是错误。
+    pub fn get_extra_block(&self, dim: i32, x: i32, y: i32, z: i32) -> Result<String> {
+        require_slot!(get_extra_block, "Server::get_extra_block（含水方块）");
+        call_out_str(|ctx, sink| unsafe {
+            (rt().api.get_extra_block)(dim, x, y, z, ctx, sink)
+        })
+        .ok_or_else(|| Error("get_extra_block: 维度未就绪".into()))
+    }
+
+    /// 写这一格的液体层。写 `"minecraft:air"` 清空含水。
+    ///
+    /// `update_flags` 同 [`crate::BlockUpdate`]：位 1 = 邻居更新（会让水流动、
+    /// 让观察者触发），位 2 = 同步给客户端。粘贴时通常只要位 2。
+    pub fn set_extra_block(
+        &self,
+        dim: i32,
+        x: i32,
+        y: i32,
+        z: i32,
+        spec: &str,
+        update: crate::BlockUpdate,
+    ) -> Result<()> {
+        require_slot!(set_extra_block, "Server::set_extra_block（含水方块）");
+        let ok = unsafe { (rt().api.set_extra_block)(dim, x, y, z, s(spec), update.0) };
+        if ok {
+            Ok(())
+        } else {
+            Err(Error(format!("set_extra_block 失败：'{spec}'")))
+        }
     }
 
     pub fn set_block(&self, dim: i32, x: i32, y: i32, z: i32, spec: &str) -> Result<()> {

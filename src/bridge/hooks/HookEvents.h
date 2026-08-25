@@ -22,6 +22,7 @@
  */
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -40,6 +41,10 @@ namespace levi_rs
             RustMod* mod;
             LeviRsEventCb cb;
             void* user;
+            /** 来自共享的 id 源（bridge::nextListenerId）—— 订阅为什么不能用
+             *  地址做身份，见 Common.h。和 Events.cpp 共用同一个空间，两条
+             *  路径因此永远不会发出同一个句柄。 */
+            std::uint64_t id;
         };
 
         struct HookEventDef

@@ -29,13 +29,13 @@ namespace levi_rs::bridge
             {
                 auto t = ll::sys_utils::getLocalTime();
                 // std::tm fields + ms, normalized to human values.
-                std::string out = "{year:" + std::to_string(t.tm_year + 1900)
-                    + ",month:" + std::to_string(t.tm_mon + 1)
-                    + ",day:" + std::to_string(t.tm_mday)
-                    + ",hour:" + std::to_string(t.tm_hour)
-                    + ",minute:" + std::to_string(t.tm_min)
-                    + ",second:" + std::to_string(t.tm_sec)
-                    + ",ms:" + std::to_string(t.ms) + "}";
+                std::string out = "{year:" + snbtNum(t.tm_year + 1900)
+                    + ",month:" + snbtNum(t.tm_mon + 1)
+                    + ",day:" + snbtNum(t.tm_mday)
+                    + ",hour:" + snbtNum(t.tm_hour)
+                    + ",minute:" + snbtNum(t.tm_min)
+                    + ",second:" + snbtNum(t.tm_sec)
+                    + ",ms:" + snbtNum(t.ms) + "}";
                 sink(ctx, out);
                 return true;
             }

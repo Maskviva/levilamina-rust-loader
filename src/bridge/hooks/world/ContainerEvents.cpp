@@ -61,15 +61,8 @@ namespace levi_rs::bridge
             // mPlayer is a WeakEntityRef; it may already be dead by the time we
             // look, so tryUnwrap and bail out quietly if so.
             Actor* actor = nullptr;
-            try
-            {
-                auto opt = ev.mPlayer->tryUnwrap<Actor>();
-                actor = opt ? &*opt : nullptr;
-            }
-            catch (...)
-            {
-                actor = nullptr;
-            }
+            auto opt = ev.mPlayer->tryUnwrap<Actor>();
+            actor = opt ? &*opt : nullptr;
             if (!actor || !actor->isType(::ActorType::Player))
             {
                 return origin(ev);
@@ -78,11 +71,11 @@ namespace levi_rs::bridge
 
             auto const& pos = ev.mBlockPos.get();
             std::string snbt = "{\"eventId\":\"PlayerOpenContainerEvent\""
-                               ",\"x\":" + std::to_string(pos.x)
-                             + ",\"y\":" + std::to_string(pos.y)
-                             + ",\"z\":" + std::to_string(pos.z)
-                             + ",\"dim\":" + std::to_string(static_cast<int>(actor->getDimensionId()))
-                             + ",\"containerType\":" + std::to_string(static_cast<int>(ev.mContainerType))
+                               ",\"x\":" + snbtNum(pos.x)
+                             + ",\"y\":" + snbtNum(pos.y)
+                             + ",\"z\":" + snbtNum(pos.z)
+                             + ",\"dim\":" + snbtNum(static_cast<int>(actor->getDimensionId()))
+                             + ",\"containerType\":" + snbtNum(static_cast<int>(ev.mContainerType))
                              + ",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
                              + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
                              + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";

@@ -77,14 +77,7 @@ namespace levi_rs::bridge
         /** Item type name, or "" if the stack can't be read. */
         std::string safeTypeName(::ItemStack const& item)
         {
-            try
-            {
-                return item.isNull() ? std::string{} : item.getTypeName();
-            }
-            catch (...)
-            {
-                return {};
-            }
+            return item.isNull() ? std::string{} : item.getTypeName();
         }
 
         /** Shared payload builder — both hooks report the same event shape. */
@@ -92,10 +85,10 @@ namespace levi_rs::bridge
         {
             auto const& pos = p.getPosition();
             return "{\"eventId\":\"PlayerDropItemEvent\""
-                   ",\"x\":" + std::to_string(static_cast<int>(pos.x))
-                 + ",\"y\":" + std::to_string(static_cast<int>(pos.y))
-                 + ",\"z\":" + std::to_string(static_cast<int>(pos.z))
-                 + ",\"dim\":" + std::to_string(static_cast<int>(p.getDimensionId()))
+                   ",\"x\":" + snbtNum(static_cast<int>(pos.x))
+                 + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
+                 + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
+                 + ",\"dim\":" + snbtNum(static_cast<int>(p.getDimensionId()))
                  + ",\"randomly\":" + (randomly ? "1" : "0")
                  + ",\"viaInventoryUi\":" + (viaUi ? "1" : "0")
                  + ",\"item\":\"" + snbtEscape(itemName)
@@ -182,14 +175,7 @@ namespace levi_rs::bridge
             }
 
             std::string itemName;
-            try
-            {
-                itemName = safeTypeName(player.mInventory.get()->getItem(actions[0].mSlot, ::ContainerID::Inventory));
-            }
-            catch (...)
-            {
-                itemName.clear();
-            }
+            itemName = safeTypeName(player.mInventory.get()->getItem(actions[0].mSlot, ::ContainerID::Inventory));
 
             if (dispatchHookEventCancellable(def, buildSnbt(player, itemName, false, true)))
             {

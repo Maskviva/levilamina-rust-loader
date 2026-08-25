@@ -31,15 +31,27 @@ namespace levi_rs::bridge
 
     bool api_set_time(int64_t t)
     {
-        if (!levelReady()) return false;
-        return runConsoleCommand("time set " + std::to_string(t));
+        // 原生。读取侧本来就是 level->getTime()，写入侧却绕一圈命令 ——
+        // 同一个属性两条路，失败方式还不一样。
+        auto* level = levelReady();
+        if (!level) return false;
+        level->setTime(static_cast<int>(t));
+        return true;
     }
 
     bool api_set_weather(int32_t weather)
     {
-        if (!levelReady()) return false;
-        char const* name = weather == 1 ? "rain" : weather == 2 ? "thunder" : "clear";
-        return runConsoleCommand(std::string{"weather "} + name);
+        auto* level = levelReady();
+        if (!level) return false;
+        // updateWeather(雨强度, 雨持续, 雷强度, 雷持续)。持续时间给 0 表示由
+        // 引擎自己按默认规则续 —— 和 /weather 不带秒数时的行为一致。
+        switch (weather)
+        {
+        case 1: level->updateWeather(1.0f, 0, 0.0f, 0); return true;
+        case 2: level->updateWeather(1.0f, 0, 1.0f, 0); return true;
+        case 0: level->updateWeather(0.0f, 0, 0.0f, 0); return true;
+        default: return false;
+        }
     }
 
     bool api_get_difficulty(int32_t* out)
@@ -52,9 +64,11 @@ namespace levi_rs::bridge
 
     bool api_set_difficulty(int32_t d)
     {
-        if (!levelReady()) return false;
+        auto* level = levelReady();
+        if (!level) return false;
         if (d < 0 || d > 3) return false;
-        return runConsoleCommand("difficulty " + std::to_string(d));
+        level->setDifficulty(static_cast<::SharedTypes::Legacy::Difficulty>(d));
+        return true;
     }
 
     bool api_get_seed(int64_t* out)
@@ -84,14 +98,14 @@ namespace levi_rs::bridge
             out = std::string{"{type:\"bool\",value:"} + (rule.getBool() ? "1b" : "0b") + "}";
             break;
         case GameRule::Type::Int:
-            out = "{type:\"int\",value:" + std::to_string(rule.getInt()) + "}";
+            out = "{type:\"int\",value:" + snbtNum(rule.getInt()) + "}";
             break;
         case GameRule::Type::Float:
             {
                 // No getFloat() accessor in this LL version; read the public variant.
                 auto const& var = rule.mValue.get();
                 float f = std::holds_alternative<float>(var) ? std::get<float>(var) : 0.0f;
-                out = "{type:\"float\",value:" + std::to_string(f) + "f}";
+                out = "{type:\"float\",value:" + snbtNum(f) + "f}";
                 break;
             }
         default:
@@ -103,9 +117,23 @@ namespace levi_rs::bridge
 
     bool api_game_rule_set(LeviRsStr name, LeviRsStr value)
     {
-        if (!levelReady()) return false;
-        // /gamerule validates the name and value; invalid input just fails.
-        return runConsoleCommand("gamerule " + std::string{name} + " " + std::string{value});
+        auto* level = levelReady();
+        if (!level) return false;
+        // 这一条**故意保留命令路径**。
+        //
+        // GameRules 只暴露了 getBool/getInt/getFloat 和 nameToGameRuleIndex，
+        // 写入侧公开的只有带下划线的 _setGameRule —— 那是内部接口，签名跨版本
+        // 不稳，而且绕过它会漏掉 GameRulesChangedPacket 的广播（客户端不会知道
+        // 规则变了）。`/gamerule` 会把这些都做对。
+        //
+        // 先用 nameToGameRuleIndex 验一次名字，这样至少「规则名拼错」能和
+        // 「命令执行失败」区分开 —— 那正是命令路径最难查的地方。
+        std::string const rule{name};
+        if (!level->getGameRules().hasRule(level->getGameRules().nameToGameRuleIndex(rule)))
+        {
+            return false;
+        }
+        return runConsoleCommand("gamerule " + rule + " " + std::string{value});
     }
 
     bool api_server_info_str(int32_t prop, void* ctx, LeviRsStrSink sink)
@@ -117,7 +145,7 @@ namespace levi_rs::bridge
             sink(ctx, Common::getGameVersionString());
             return true;
         case LEVI_RS_SRV_PROTOCOL_VERSION:
-            sink(ctx, std::to_string(SharedConstants::NetworkProtocolVersion()));
+            sink(ctx, snbtNum(SharedConstants::NetworkProtocolVersion()));
             return true;
         default:
             return false;
