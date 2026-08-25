@@ -3,8 +3,8 @@ mod misc;
 pub use misc::edit;
 pub use misc::{system, types};
 mod rt;
-pub(crate) use rt::{error, ffi, logger, registration};
 pub(crate) use rt::runtime;
+pub(crate) use rt::{error, ffi, logger, registration};
 /// Internal: reachable so the exported `require_slot!` / `has_slot!` macros
 /// can name it from downstream crates. Not part of the stable API.
 #[doc(hidden)]
