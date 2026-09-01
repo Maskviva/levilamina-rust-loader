@@ -19,9 +19,12 @@
 
 #include "LeviRsAbi.h"
 
-#include "ll/api/io/Logger.h" 
+#include "ll/api/io/Logger.h"
 
-namespace ll::io { class Logger; }
+namespace ll::io
+{
+    class Logger;
+}
 
 class Actor;
 class BlockSource;
@@ -173,3 +176,43 @@ namespace levi_rs
         ll::io::Logger& bridgeLogger();
     } // namespace bridge
 } // namespace levi_rs
+
+// W12：每一个 `api_*` 入口都是一条 Rust 的 `extern "C"` 帧的下面一层。C++ 异常穿过它是 UB
+//（实际表现是 abort，而且没有任何日志）。原来 185 个入口里只有命令注册、表单、KvDb 几处包了 try。
+// 用法：函数体第一行 LEVI_RS_API_GUARD_BEGIN，最后一行 LEVI_RS_API_GUARD_END（void 函数用 _VOID）。
+// `return {};` 对 bool / 整数 / 指针 / 句柄 / 按值返回的结构体都是「零值」——恰好是每个入口的失败值。
+#include "ll/api/utils/ErrorUtils.h"
+#define LEVI_RS_API_GUARD_BEGIN try {
+#define LEVI_RS_API_GUARD_END                                                                       \
+    }                                                                                              \
+    catch (...)                                                                                    \
+    {                                                                                              \
+        ll::error_utils::printCurrentException(::levi_rs::bridge::bridgeLogger());                 \
+        return {};                                                                                 \
+    }
+// 失败值不是「零」的入口用这个：LEVI_RS_SERVICE_OK / LEVI_RS_LANE_OK **都是 0**，
+// 对它们 `return {};` 等于把异常报成「调用成功」——那正是这道屏障要防的反面。
+// 同理 -1 是 cooldown / chunk 系列约定的失败值。
+#define LEVI_RS_API_GUARD_END_VAL(failure)                                                          \
+    }                                                                                              \
+    catch (...)                                                                                    \
+    {                                                                                              \
+        ll::error_utils::printCurrentException(::levi_rs::bridge::bridgeLogger());                 \
+        return (failure);                                                                          \
+    }
+// 失败值不是「零」的入口用这个：LEVI_RS_SERVICE_OK / LEVI_RS_LANE_OK **都是 0**，
+// 对它们 `return {};` 等于把异常报成「调用成功」——那正是这道屏障要防的反面。
+// 同理 -1 / -1.0 是 cooldown、chunk、tick-delta 这几族约定的失败值。
+#define LEVI_RS_API_GUARD_END_VAL(failure)                                                          \
+    }                                                                                              \
+    catch (...)                                                                                    \
+    {                                                                                              \
+        ll::error_utils::printCurrentException(::levi_rs::bridge::bridgeLogger());                 \
+        return (failure);                                                                          \
+    }
+#define LEVI_RS_API_GUARD_END_VOID                                                                  \
+    }                                                                                              \
+    catch (...)                                                                                    \
+    {                                                                                              \
+        ll::error_utils::printCurrentException(::levi_rs::bridge::bridgeLogger());                 \
+    }

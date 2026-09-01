@@ -16,17 +16,17 @@ namespace more_dimensions
      */
     enum class DimRule : int
     {
-        SpawnMonster  = 0,
-        SpawnAnimal   = 1,
-        SpawnSpawner  = 2,
+        SpawnMonster = 0,
+        SpawnAnimal = 1,
+        SpawnSpawner = 2,
         ExplodeBlocks = 3,
-        FireSpread    = 4,
-        MobGriefing   = 5,
-        Projectile    = 6,
-        PistonPush    = 7,
-        LiquidFlow    = 8,
+        FireSpread = 4,
+        MobGriefing = 5,
+        Projectile = 6,
+        PistonPush = 7,
+        LiquidFlow = 8,
         FarmlandDecay = 9,
-        Ride          = 10,
+        Ride = 10,
         /**
          * 活塞把方块推**过地皮边界**。
          *

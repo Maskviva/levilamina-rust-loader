@@ -174,7 +174,7 @@ impl CommandBuilder {
 
         let ok = unsafe {
             (rt().api.register_command_ex)(
-                rt().handle,
+                rt().handle(),
                 s(&self.name),
                 s(&self.description),
                 self.permission as i32,

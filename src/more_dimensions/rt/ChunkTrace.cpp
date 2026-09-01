@@ -19,9 +19,6 @@
 #include "mc/network/packet/SubChunkPacket.h"
 #include "mc/network/packet/SubChunkRequestPacket.h"
 #include "mc/platform/Result.h"
-#include "mc/world/level/SubChunkPos.h"
-#include "mc/world/level/dimension/DimensionHeightRange.h"
-#include "mc/world/level/dimension/DimensionDefinitionGroup.h"
 #include "mc/server/ChunkPositionAndDimension.h"
 #include "mc/server/NetworkChunkPublisher.h"
 #include "mc/world/level/BlockPos.h"
@@ -119,22 +116,22 @@ namespace more_dimensions
         {
             switch (s)
             {
-            case ChunkState::Unloaded:                   return "Unloaded";
-            case ChunkState::Generating:                 return "Generating";
-            case ChunkState::Generated:                  return "Generated";
-            case ChunkState::StructurePostProcessing:    return "StructurePostProcessing";
-            case ChunkState::StructurePostProcessed:     return "StructurePostProcessed";
-            case ChunkState::DecorationPostProcessing:   return "DecorationPostProcessing";
-            case ChunkState::DecorationPostProcessed:    return "DecorationPostProcessed";
+            case ChunkState::Unloaded: return "Unloaded";
+            case ChunkState::Generating: return "Generating";
+            case ChunkState::Generated: return "Generated";
+            case ChunkState::StructurePostProcessing: return "StructurePostProcessing";
+            case ChunkState::StructurePostProcessed: return "StructurePostProcessed";
+            case ChunkState::DecorationPostProcessing: return "DecorationPostProcessing";
+            case ChunkState::DecorationPostProcessed: return "DecorationPostProcessed";
             case ChunkState::CheckingForReplacementData: return "CheckingForReplacementData";
             case ChunkState::NeighborAwareUpgradeNeeded: return "NeighborAwareUpgradeNeeded";
-            case ChunkState::NeighborAwareUpgrading:     return "NeighborAwareUpgrading";
-            case ChunkState::NeedsLighting:              return "NeedsLighting";
-            case ChunkState::Lighting:                   return "Lighting";
-            case ChunkState::LightingFinished:           return "LightingFinished";
-            case ChunkState::Loaded:                     return "Loaded";
-            case ChunkState::Invalid:                    return "Invalid";
-            default:                                     return "?";
+            case ChunkState::NeighborAwareUpgrading: return "NeighborAwareUpgrading";
+            case ChunkState::NeedsLighting: return "NeedsLighting";
+            case ChunkState::Lighting: return "Lighting";
+            case ChunkState::LightingFinished: return "LightingFinished";
+            case ChunkState::Loaded: return "Loaded";
+            case ChunkState::Invalid: return "Invalid";
+            default: return "?";
             }
         }
 
@@ -190,11 +187,11 @@ namespace more_dimensions
         LevelChunk,
         &LevelChunk::$ctor,
         void*,
-        ::Dimension&                                dimension,
-        ::ChunkPos const&                           cp,
-        bool                                        readOnly,
-        ::SubChunkInitMode                          initBlocks,
-        bool                                        initializeMetaData,
+        ::Dimension& dimension,
+        ::ChunkPos const& cp,
+        bool readOnly,
+        ::SubChunkInitMode initBlocks,
+        bool initializeMetaData,
         ::LevelChunkBlockActorStorage::TrackingMode blockActorTrackingMode
     )
     {
@@ -235,9 +232,9 @@ namespace more_dimensions
         int const dimId = dimIdOf(*this);
         if (wanted(dimId))
         {
-            auto const& cp  = mPosition.get();
-            auto const  cur = mLoadState->load();
-            auto const  n   = gTransitions.fetch_add(1) + 1;
+            auto const& cp = mPosition.get();
+            auto const cur = mLoadState->load();
+            auto const n = gTransitions.fetch_add(1) + 1;
             if (to == ChunkState::Loaded) gLoaded.fetch_add(1);
             logger().info(
                 "[state ] dim={} chunk=({}, {}) {} -> {}（当前 {}）累计={}",
@@ -264,9 +261,9 @@ namespace more_dimensions
         ::ChunkState to
     )
     {
-        int const   dimId = dimIdOf(*this);
-        auto const  cur   = mLoadState->load();
-        bool const  ok    = origin(from, to);
+        int const dimId = dimIdOf(*this);
+        auto const cur = mLoadState->load();
+        bool const ok = origin(from, to);
         if (wanted(dimId))
         {
             auto const& cp = mPosition.get();
@@ -312,7 +309,7 @@ namespace more_dimensions
         NetworkChunkPublisher,
         &NetworkChunkPublisher::_sendQueuedChunk,
         bool,
-        ::ChunkPositionAndDimension const&          queuedChunk,
+        ::ChunkPositionAndDimension const& queuedChunk,
         ::ClientBlobCache::Server::TransferBuilder* cachedTransfer
     )
     {
@@ -355,9 +352,9 @@ namespace more_dimensions
         &NetworkChunkPublisher::moveRegion,
         void,
         ::BlockPos const& position,
-        uint              blockRadius,
-        ::Vec3 const&     direction,
-        float             minDistance
+        uint blockRadius,
+        ::Vec3 const& direction,
+        float minDistance
     )
     {
         // 不用 getChunksSentSinceStart()：那个方法在头文件里被 LL_PLAT_S 包着，
@@ -466,8 +463,8 @@ namespace more_dimensions
         try
         {
             int const dimId = mDimensionType->value();
-            static std::mutex          mtx;
-            static std::map<int, int>  shown;
+            static std::mutex mtx;
+            static std::map<int, int> shown;
             {
                 std::lock_guard lock{mtx};
                 if (shown[dimId] >= 6) return result;
@@ -476,7 +473,7 @@ namespace more_dimensions
 
             auto const& absList = mSubChunkPos.get();
             auto const& offList = mSubChunkPosOffsets.get();
-            auto const& centre  = mCenterPos.get();
+            auto const& centre = mCenterPos.get();
 
             std::string absY;
             for (auto const& p : absList) absY += std::to_string(p.y) + " ";
@@ -533,7 +530,7 @@ namespace more_dimensions
         try
         {
             int const dimId = getDimensionId().value();
-            static std::mutex                       mtx;
+            static std::mutex mtx;
             static std::set<std::tuple<int, int, bool>> seen;
             {
                 std::lock_guard lock{mtx};
@@ -654,7 +651,7 @@ namespace more_dimensions
             // 结论就不需要再推理了。一个包一行，量不大。
             {
                 auto const& data = mSubChunkData.get();
-                int         cnt[8]{};
+                int cnt[8]{};
                 for (auto const& d : data)
                 {
                     auto const r = static_cast<int>(d.mResult);
@@ -693,12 +690,12 @@ namespace more_dimensions
 
     // 这个是单独注册的：它不属于「区块追踪」，量极小，默认就该开着。
     using DimensionDataHookReg =
-        ll::memory::HookRegistrar<
-            DimensionDataPacketWriteTraceHook,
-            LevelChunkPacketWriteTraceHook,
-            SubChunkPacketWriteTraceHook,
-            SubChunkRequestReadTraceHook,
-            DimensionSubChunkRangeTraceHook>;
+    ll::memory::HookRegistrar<
+        DimensionDataPacketWriteTraceHook,
+        LevelChunkPacketWriteTraceHook,
+        SubChunkPacketWriteTraceHook,
+        SubChunkRequestReadTraceHook,
+        DimensionSubChunkRangeTraceHook>;
 
     void registerChunkTraceHooks()
     {
@@ -710,9 +707,11 @@ namespace more_dimensions
         logger().warn(
             "区块追踪已开启（MORE_DIMENSIONS_TRACE_CHUNK=1，维度过滤 {}）。"
             "日志量很大，排查完记得关掉。",
-            traceDimFilter() == -2 ? std::string{"仅自定义维度(>=3)"}
-            : traceDimFilter() == -1 ? std::string{"全部"}
-                                     : std::to_string(traceDimFilter())
+            traceDimFilter() == -2
+                ? std::string{"仅自定义维度(>=3)"}
+                : traceDimFilter() == -1
+                ? std::string{"全部"}
+                : std::to_string(traceDimFilter())
         );
     }
 

@@ -85,16 +85,16 @@ namespace levi_rs::bridge
         {
             auto const& pos = p.getPosition();
             return "{\"eventId\":\"PlayerDropItemEvent\""
-                   ",\"x\":" + snbtNum(static_cast<int>(pos.x))
-                 + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
-                 + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
-                 + ",\"dim\":" + snbtNum(static_cast<int>(p.getDimensionId()))
-                 + ",\"randomly\":" + (randomly ? "1" : "0")
-                 + ",\"viaInventoryUi\":" + (viaUi ? "1" : "0")
-                 + ",\"item\":\"" + snbtEscape(itemName)
-                 + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
-                 + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
-                 + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
+                ",\"x\":" + snbtNum(static_cast<int>(pos.x))
+                + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
+                + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
+                + ",\"dim\":" + snbtNum(static_cast<int>(p.getDimensionId()))
+                + ",\"randomly\":" + (randomly ? "1" : "0")
+                + ",\"viaInventoryUi\":" + (viaUi ? "1" : "0")
+                + ",\"item\":\"" + snbtEscape(itemName)
+                + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
+                + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
+                + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
         }
 
         /** Hook 1: Q key / drop held item. */
@@ -166,7 +166,8 @@ namespace levi_rs::bridge
             ::InventorySource source{
                 ::InventorySourceType::ContainerInventory,
                 ::ContainerID::Inventory,
-                ::InventorySource::InventorySourceFlags::NoFlag};
+                ::InventorySource::InventorySourceFlags::NoFlag
+            };
 
             auto const& actions = mTransaction->getActions(source);
             if (actions.size() != 1)
@@ -199,7 +200,7 @@ namespace levi_rs::bridge
                 int r1 = PlayerDropItemHook::hook();
                 int r2 = InventoryUiDropHook::hook();
                 auto& log = bridgeLogger();
-                log.info(
+                log.debug(
                     "[DropItemEvent] 安装 detour：PlayerDropItemHook={} (code={})，"
                     "InventoryUiDropHook={} (code={})",
                     r1 == 0 ? "成功" : "失败", r1,
@@ -214,7 +215,8 @@ namespace levi_rs::bridge
                         "解析错误。结果：丢弃物品保护完全不生效（物品照常掉落，且不触发任何"
                         "拦截日志）。请用服务器实际运行的 LeviLamina/BDS 版本重新编译本 loader。");
                 }
-            }};
+            }
+        };
         HookEventDef& dropItemDef() { return gDef; }
 
         HookEventRegistrar gReg{gDef};

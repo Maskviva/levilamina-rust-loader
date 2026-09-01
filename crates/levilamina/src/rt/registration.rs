@@ -6,7 +6,9 @@ use crate::logger::Logger;
 use crate::runtime::ModContext;
 use crate::sys;
 
-pub trait LeviMod: Sized + 'static {
+/// S1：`Send` 是 `ModSlot<T>`（`Mutex<Option<T>>`）真正 `Sync` 的前提；
+/// 生命周期回调可能在不同线程上进入（loader 允许 unload 与 service 调用跨线程）。
+pub trait LeviMod: Sized + Send + 'static {
     fn on_load(ctx: &ModContext) -> Result<Self>;
     fn on_enable(&mut self, _ctx: &ModContext) -> Result<()> {
         Ok(())
@@ -22,8 +24,6 @@ pub trait LeviMod: Sized + 'static {
 #[doc(hidden)]
 pub struct ModSlot<T: LeviMod>(pub Mutex<Option<T>>);
 
-unsafe impl<T: LeviMod> Sync for ModSlot<T> {}
-
 #[doc(hidden)]
 pub unsafe fn __init_runtime(api: *const sys::LeviRsApi, handle: sys::LeviRsModHandle) -> bool {
     if api.is_null() {
@@ -32,14 +32,6 @@ pub unsafe fn __init_runtime(api: *const sys::LeviRsApi, handle: sys::LeviRsModH
 
     let api: &'static sys::LeviRsApi = &*api;
 
-    // Generation check. `abi_version` moves ONLY on a non-additive change (a
-    // field reordered, removed, or re-signed) -- see the rule at the top of
-    // LeviRsAbi.h. A loader below our version therefore speaks a table that is
-    // genuinely not a prefix of ours, and nothing can be safely called.
-    // 目标标记优先于一切数值比较：跨目标的 loader 的表根本不是我们这张表的
-    // 前缀（条件块 client_*/md_* 在结构体中段，它们之后的整条尾部都会平移）。
-    // 下面的 struct_size 检查抓不到这件事 —— 客户端构建的 mod 比服务端 loader
-    // 小一槽，尺寸比较恰好通过，然后每一次尾部调用都错开一槽。
     if (api.abi_version & sys::LEVI_RS_ABI_TARGET_MASK) != sys::LEVI_RS_ABI_TARGET_TAG {
         return false;
     }
@@ -48,19 +40,6 @@ pub unsafe fn __init_runtime(api: *const sys::LeviRsApi, handle: sys::LeviRsModH
         return false;
     }
 
-    // Core floor, and nothing more.
-    //
-    // This deliberately does NOT require `struct_size >= size_of::<LeviRsApi>()`.
-    // That check compared the size of the struct *definition* against the
-    // loader's table, so merely rebuilding a mod against a newer crate made it
-    // refuse every older loader -- even when the mod called nothing new. The
-    // table is append-only and therefore prefix-compatible, so the honest
-    // question is per-slot ("is the function I am about to call present?"),
-    // not per-struct. `has_slot` answers it, and `require_slot!` enforces it
-    // at each late-added call site.
-    //
-    // What still has to hold is that the core exists at all: a table that
-    // doesn't even reach the v1 slots is not a levilamina table.
     if (api.struct_size as usize) < sys::LEVI_RS_API_CORE_SIZE {
         return false;
     }

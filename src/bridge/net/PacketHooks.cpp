@@ -59,6 +59,7 @@
  */
 #include "bridge/Api.h"
 #include "bridge/Common.h"
+#include "ll/api/utils/ErrorUtils.h"
 
 #include <atomic>
 #include <chrono>
@@ -268,8 +269,8 @@ namespace levi_rs::bridge
         void encodeHeader(std::string& out, LeviRsPacketEdit const& edit)
         {
             uint32_t const raw = (static_cast<uint32_t>(edit.packet_id) & kPacketIdMask)
-                               | ((static_cast<uint32_t>(edit.sender_sub_id) & kSubIdMask) << 10)
-                               | ((static_cast<uint32_t>(edit.target_sub_id) & kSubIdMask) << 12);
+                | ((static_cast<uint32_t>(edit.sender_sub_id) & kSubIdMask) << 10)
+                | ((static_cast<uint32_t>(edit.target_sub_id) & kSubIdMask) << 12);
             writeUVarInt(out, raw);
         }
 
@@ -423,7 +424,18 @@ namespace levi_rs::bridge
                     {
                         // A throwing callback is a bug on the mod's side, but
                         // it must not take the connection with it.
+                        // W11: ...and it must not be invisible either. The exception is
+                        // printed every time; the "forced to PASS" warning once per process.
                         verdict = LEVI_RS_PKT_PASS;
+                        ll::error_utils::printCurrentException(bridgeLogger());
+                        static std::atomic<bool> warned{false};
+                        if (!warned.exchange(true))
+                        {
+                            bridgeLogger().warn(
+                                "rust packet hook: a mod callback threw; its verdict was forced to PASS. "
+                                "This warning prints once; the exception above prints every time."
+                            );
+                        }
                     }
 
                     if (verdict == LEVI_RS_PKT_DROP) return Verdict::Drop;
@@ -471,6 +483,8 @@ namespace levi_rs::bridge
                 {
                     // Same rule as the packet path: never let a mod's
                     // exception escape into the network stack.
+                    // W11: but log it — a silent catch(...) makes the bug permanently invisible.
+                    ll::error_utils::printCurrentException(bridgeLogger());
                 }
             }
         }
@@ -608,7 +622,8 @@ namespace levi_rs::bridge
          */
         void ensureInstalled()
         {
-            static bool const installed = [] {
+            static bool const installed = []
+            {
                 LeviRsPacketSendHook::hook();
                 LeviRsPacketReceiveHook::hook();
                 LeviRsConnOpenHook::hook();
@@ -643,52 +658,58 @@ namespace levi_rs::bridge
 
     bool api_packet_hook_unregister(LeviRsModHandle mod, LeviRsPacketHookHandle handle)
     {
-        if (!handle) return false;
-        auto* target = static_cast<PacketSub*>(handle);
-        std::unique_lock<std::shared_mutex> g{registryLock()};
-        auto& subs = packetSubs();
-        for (auto it = subs.begin(); it != subs.end(); ++it)
-        {
-            if (it->get() != target) continue;
-            // Ownership check: a mod may only drop its own interceptors.
-            if ((*it)->mod != asMod(mod)) return false;
-            subs.erase(it);
-            refreshGatesLocked();
-            return true;
-        }
-        return false;
+        LEVI_RS_API_GUARD_BEGIN
+            if (!handle) return false;
+            auto* target = static_cast<PacketSub*>(handle);
+            std::unique_lock<std::shared_mutex> g{registryLock()};
+            auto& subs = packetSubs();
+            for (auto it = subs.begin(); it != subs.end(); ++it)
+            {
+                if (it->get() != target) continue;
+                // Ownership check: a mod may only drop its own interceptors.
+                if ((*it)->mod != asMod(mod)) return false;
+                subs.erase(it);
+                refreshGatesLocked();
+                return true;
+            }
+            return false;
+        LEVI_RS_API_GUARD_END
     }
 
     LeviRsPacketHookHandle api_packet_conn_hook_register(LeviRsModHandle mod, LeviRsConnCb cb, void* user)
     {
-        if (!cb) return nullptr;
+        LEVI_RS_API_GUARD_BEGIN
+            if (!cb) return nullptr;
 
-        auto sub = std::make_shared<ConnSub>(ConnSub{asMod(mod), cb, user});
-        ConnSub* raw = sub.get();
-        {
-            std::unique_lock<std::shared_mutex> g{registryLock()};
-            connSubs().push_back(std::move(sub));
-            refreshGatesLocked();
-        }
-        ensureInstalled();
-        return static_cast<LeviRsPacketHookHandle>(raw);
+            auto sub = std::make_shared<ConnSub>(ConnSub{asMod(mod), cb, user});
+            ConnSub* raw = sub.get();
+            {
+                std::unique_lock<std::shared_mutex> g{registryLock()};
+                connSubs().push_back(std::move(sub));
+                refreshGatesLocked();
+            }
+            ensureInstalled();
+            return static_cast<LeviRsPacketHookHandle>(raw);
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_packet_conn_hook_unregister(LeviRsModHandle mod, LeviRsPacketHookHandle handle)
     {
-        if (!handle) return false;
-        auto* target = static_cast<ConnSub*>(handle);
-        std::unique_lock<std::shared_mutex> g{registryLock()};
-        auto& subs = connSubs();
-        for (auto it = subs.begin(); it != subs.end(); ++it)
-        {
-            if (it->get() != target) continue;
-            if ((*it)->mod != asMod(mod)) return false;
-            subs.erase(it);
-            refreshGatesLocked();
-            return true;
-        }
-        return false;
+        LEVI_RS_API_GUARD_BEGIN
+            if (!handle) return false;
+            auto* target = static_cast<ConnSub*>(handle);
+            std::unique_lock<std::shared_mutex> g{registryLock()};
+            auto& subs = connSubs();
+            for (auto it = subs.begin(); it != subs.end(); ++it)
+            {
+                if (it->get() != target) continue;
+                if ((*it)->mod != asMod(mod)) return false;
+                subs.erase(it);
+                refreshGatesLocked();
+                return true;
+            }
+            return false;
+        LEVI_RS_API_GUARD_END
     }
 
     void packetHooksOnRustModGone(RustMod* mod)

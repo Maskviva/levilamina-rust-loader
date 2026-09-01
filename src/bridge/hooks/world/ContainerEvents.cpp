@@ -71,14 +71,14 @@ namespace levi_rs::bridge
 
             auto const& pos = ev.mBlockPos.get();
             std::string snbt = "{\"eventId\":\"PlayerOpenContainerEvent\""
-                               ",\"x\":" + snbtNum(pos.x)
-                             + ",\"y\":" + snbtNum(pos.y)
-                             + ",\"z\":" + snbtNum(pos.z)
-                             + ",\"dim\":" + snbtNum(static_cast<int>(actor->getDimensionId()))
-                             + ",\"containerType\":" + snbtNum(static_cast<int>(ev.mContainerType))
-                             + ",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
-                             + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
-                             + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
+                ",\"x\":" + snbtNum(pos.x)
+                + ",\"y\":" + snbtNum(pos.y)
+                + ",\"z\":" + snbtNum(pos.z)
+                + ",\"dim\":" + snbtNum(static_cast<int>(actor->getDimensionId()))
+                + ",\"containerType\":" + snbtNum(static_cast<int>(ev.mContainerType))
+                + ",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
+                + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
+                + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
 
             if (dispatchHookEventCancellable(def, snbt))
             {

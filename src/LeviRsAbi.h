@@ -620,21 +620,21 @@ enum LeviRsPlayerNumProp
     LEVI_RS_PPROP_CAN_USE_ABILITY = 20,
     /* (G) Player::canUseAbility; ability index passed via player_action GET path — see LEVI_RS_PACT_CAN_USE_ABILITY */
     /* ── v5 additive: player gap fill ── */
-    LEVI_RS_PPROP_DIRECTION = 21,          /* (G) Player::getDirection (0=S,1=W,2=N,3=E) */
-    LEVI_RS_PPROP_CHUNK_RADIUS = 22,        /* (G) Player::getChunkRadius */
-    LEVI_RS_PPROP_NETWORK_RTT = 23,         /* (G) getNetworkStatus().mPing (ms) */
-    LEVI_RS_PPROP_PLATFORM = 24,            /* (G) Player::getPlatform */
-    LEVI_RS_PPROP_ENCHANTMENT_SEED = 25,    /* (G) Player::getEnchantmentSeed */
-    LEVI_RS_PPROP_IS_USING_ITEM = 26,       /* (G) Player::isUsingItem */
-    LEVI_RS_PPROP_IS_BLOCKING = 27,         /* (G) Player::isBlocking */
-    LEVI_RS_PPROP_IS_GLIDING = 28,          /* (G) Player::isGliding */
-    LEVI_RS_PPROP_IS_SWIMMING = 29,         /* (G) Player::isSwimming */
-    LEVI_RS_PPROP_PERMISSION_LEVEL = 30,    /* (G) Player::getPlayerPermissionLevel */
-    LEVI_RS_PPROP_SCORE = 31,               /* (G) Player::getScore */
-    LEVI_RS_PPROP_FALL_DISTANCE = 32,       /* (G) Actor::getFallDistance */
-    LEVI_RS_PPROP_IS_DEAD = 33,             /* (G) Actor::isDead */
-    LEVI_RS_PPROP_HAS_DIED_BEFORE = 34,     /* (G) Player::hasDiedBefore */
-    LEVI_RS_PPROP_DIMENSION = 35,           /* (G) Actor::getDimensionId */
+    LEVI_RS_PPROP_DIRECTION = 21, /* (G) Player::getDirection (0=S,1=W,2=N,3=E) */
+    LEVI_RS_PPROP_CHUNK_RADIUS = 22, /* (G) Player::getChunkRadius */
+    LEVI_RS_PPROP_NETWORK_RTT = 23, /* (G) getNetworkStatus().mPing (ms) */
+    LEVI_RS_PPROP_PLATFORM = 24, /* (G) Player::getPlatform */
+    LEVI_RS_PPROP_ENCHANTMENT_SEED = 25, /* (G) Player::getEnchantmentSeed */
+    LEVI_RS_PPROP_IS_USING_ITEM = 26, /* (G) Player::isUsingItem */
+    LEVI_RS_PPROP_IS_BLOCKING = 27, /* (G) Player::isBlocking */
+    LEVI_RS_PPROP_IS_GLIDING = 28, /* (G) Player::isGliding */
+    LEVI_RS_PPROP_IS_SWIMMING = 29, /* (G) Player::isSwimming */
+    LEVI_RS_PPROP_PERMISSION_LEVEL = 30, /* (G) Player::getPlayerPermissionLevel */
+    LEVI_RS_PPROP_SCORE = 31, /* (G) Player::getScore */
+    LEVI_RS_PPROP_FALL_DISTANCE = 32, /* (G) Actor::getFallDistance */
+    LEVI_RS_PPROP_IS_DEAD = 33, /* (G) Actor::isDead */
+    LEVI_RS_PPROP_HAS_DIED_BEFORE = 34, /* (G) Player::hasDiedBefore */
+    LEVI_RS_PPROP_DIMENSION = 35, /* (G) Actor::getDimensionId */
 };
 
 /** player_get_str keys. */
@@ -647,10 +647,10 @@ enum LeviRsPlayerStrProp
     LEVI_RS_PSTR_LOCALE_CODE = 4, /* Player::getLocaleCode */
     LEVI_RS_PSTR_NAME_TAG = 5, /* Actor::getNameTag (display name) */
     /* ── v5 additive ── */
-    LEVI_RS_PSTR_LAST_DEATH_POS = 6,       /* SNBT {x,y,z} or "" if none */
+    LEVI_RS_PSTR_LAST_DEATH_POS = 6, /* SNBT {x,y,z} or "" if none */
     LEVI_RS_PSTR_LAST_DEATH_DIMENSION = 7, /* dimension id as string */
-    LEVI_RS_PSTR_NETWORK_STATUS = 8,       /* SNBT {ping,avg_ping,packet_loss,max_ping} */
-    LEVI_RS_PSTR_PLATFORM_ONLINE_ID = 9,   /* Player::getPlatformOnlineId */
+    LEVI_RS_PSTR_NETWORK_STATUS = 8, /* SNBT {ping,avg_ping,packet_loss,max_ping} */
+    LEVI_RS_PSTR_PLATFORM_ONLINE_ID = 9, /* Player::getPlatformOnlineId */
 };
 
 /**
@@ -659,7 +659,12 @@ enum LeviRsPlayerStrProp
  */
 enum LeviRsPlayerAction
 {
-    LEVI_RS_PACT_SET_ABILITY = 0, /* a=AbilitiesIndex, b=0/1 (bool slots) or float (FlySpeed etc.) Player::setAbility */
+    LEVI_RS_PACT_SET_ABILITY = 0,
+    /* a=AbilitiesIndex, b=0/1 (bool slots) or float (FlySpeed etc.) Player::setAbility.
+       写完会把 PlayerPermissionLevel 还原成写之前那个值 —— 引擎的
+       LayeredAbilities::setAbility 是「切成自定义权限」那条路，会把玩家推到
+       Custom 上，而那个等级和能力层一起装在 UpdateAbilitiesPacket 里发给客户端。
+       要改等级请显式用 LEVI_RS_PACT_SET_PERMISSION_LEVEL。 */
     LEVI_RS_PACT_CAN_USE_ABILITY = 1, /* a=AbilitiesIndex → out "0"/"1" Player::canUseAbility */
     LEVI_RS_PACT_SET_SELECTED_SLOT = 2, /* a=slot                          Player::setSelectedSlot */
     LEVI_RS_PACT_GIVE_ITEM = 3, /* sarg=item SNBT                  ItemStack::fromTag + Player::addAndRefresh */
@@ -667,25 +672,29 @@ enum LeviRsPlayerAction
     LEVI_RS_PACT_CLEAR_TITLE = 5, /* via /title clear */
     LEVI_RS_PACT_SET_TITLE = 6, /* sarg=text, a=slot(0 title,1 subtitle,2 actionbar) via /title */
     /* ── v5 additive ── */
-    LEVI_RS_PACT_ADD_EXPERIENCE = 7,         /* a=xp                  Player::addExperience */
-    LEVI_RS_PACT_ADD_LEVELS = 8,             /* a=levels              Player::addLevels */
-    LEVI_RS_PACT_START_COOLDOWN = 9,         /* sarg=item name, a=ticks Player::startItemCooldown */
-    LEVI_RS_PACT_START_RIDING = 10,          /* a=vehicle ActorUniqueID (lower 64b) Player::startRiding */
-    LEVI_RS_PACT_STOP_RIDING = 11,           /*                       Player::stopRiding */
-    LEVI_RS_PACT_ATTACK = 12,                /* a=target ActorUniqueID (lower 64b) Player::attack */
-    LEVI_RS_PACT_DROP = 13,                  /* sarg=item SNBT, a=random(0/1) Player::drop */
-    LEVI_RS_PACT_INTERACT = 14,              /* a=target ActorUniqueID        Player::interact */
-    LEVI_RS_PACT_START_USING_ITEM = 15,      /* sarg=item SNBT, a=duration    Player::startUsingItem */
-    LEVI_RS_PACT_STOP_USING_ITEM = 16,       /*                       Player::stopUsingItem */
-    LEVI_RS_PACT_SET_CHUNK_RADIUS = 17,      /* a=radius              Player::setChunkRadius */
-    LEVI_RS_PACT_SET_ENCHANTMENT_SEED = 18,  /* a=seed                Player::setEnchantmentSeed */
+    LEVI_RS_PACT_ADD_EXPERIENCE = 7, /* a=xp                  Player::addExperience */
+    LEVI_RS_PACT_ADD_LEVELS = 8, /* a=levels              Player::addLevels */
+    LEVI_RS_PACT_START_COOLDOWN = 9, /* sarg=item name, a=ticks Player::startItemCooldown */
+    LEVI_RS_PACT_START_RIDING = 10, /* a=vehicle ActorUniqueID (lower 64b) Player::startRiding */
+    LEVI_RS_PACT_STOP_RIDING = 11, /*                       Player::stopRiding */
+    LEVI_RS_PACT_ATTACK = 12, /* a=target ActorUniqueID (lower 64b) Player::attack */
+    LEVI_RS_PACT_DROP = 13, /* sarg=item SNBT, a=random(0/1) Player::drop */
+    LEVI_RS_PACT_INTERACT = 14, /* a=target ActorUniqueID        Player::interact */
+    LEVI_RS_PACT_START_USING_ITEM = 15, /* sarg=item SNBT, a=duration    Player::startUsingItem */
+    LEVI_RS_PACT_STOP_USING_ITEM = 16, /*                       Player::stopUsingItem */
+    LEVI_RS_PACT_SET_CHUNK_RADIUS = 17, /* a=radius              Player::setChunkRadius */
+    LEVI_RS_PACT_SET_ENCHANTMENT_SEED = 18, /* a=seed                Player::setEnchantmentSeed */
     LEVI_RS_PACT_REGISTER_TRACKED_BOSS = 19, /* a=boss ActorUniqueID  Player::registerTrackedBoss */
-    LEVI_RS_PACT_UNREGISTER_TRACKED_BOSS = 20,/* a=boss ActorUniqueID Player::unRegisterTrackedBoss */
-    LEVI_RS_PACT_PLAY_EMOTE = 21,            /* sarg=piece id         Player::playEmote */
-    LEVI_RS_PACT_RESEND_ALL_CHUNKS = 22,     /*                       Player::resendAllChunks */
-    LEVI_RS_PACT_OPEN_INVENTORY = 23,        /*                       Player::openInventory */
-    LEVI_RS_PACT_SIDEBAR_SET = 24,          /* sarg="obj\ntitle\nline…"  per-player sidebar */
-    LEVI_RS_PACT_SIDEBAR_CLEAR = 25,        /* sarg=objective        RemoveObjectivePacket */
+    LEVI_RS_PACT_UNREGISTER_TRACKED_BOSS = 20, /* a=boss ActorUniqueID Player::unRegisterTrackedBoss */
+    LEVI_RS_PACT_PLAY_EMOTE = 21, /* sarg=piece id         Player::playEmote */
+    LEVI_RS_PACT_RESEND_ALL_CHUNKS = 22, /*                       Player::resendAllChunks */
+    LEVI_RS_PACT_OPEN_INVENTORY = 23, /*                       Player::openInventory */
+    LEVI_RS_PACT_SIDEBAR_SET = 24, /* sarg="obj\ntitle\nline…"  per-player sidebar */
+    LEVI_RS_PACT_SIDEBAR_CLEAR = 25, /* sarg=objective        RemoveObjectivePacket */
+    LEVI_RS_PACT_SET_PERMISSION_LEVEL = 26,
+    /* a=PlayerPermissionLevel（0 Visitor / 1 Member / 2 Operator / 3 Custom）
+       LayeredAbilities::setPlayerPermissions + UpdateAbilitiesPacket。
+       读的那一侧是 LEVI_RS_PPROP_PERMISSION_LEVEL。 */
 };
 
 /** actor_get_num / actor_set_num keys. (S)=settable via actor_set_num. */
@@ -711,35 +720,35 @@ enum LeviRsActorNumProp
     LEVI_RS_APROP_IS_TAME = 17, /* (G) Actor::isTame */
     LEVI_RS_APROP_SPEED = 18, /* (G) Actor::getSpeedInMetersPerSecond */
     /* ── v5 additive: actor gap fill ── */
-    LEVI_RS_APROP_VIEW_X = 19,              /* (G) Actor::getViewVector().x */
-    LEVI_RS_APROP_VIEW_Y = 20,              /* (G) Actor::getViewVector().y */
-    LEVI_RS_APROP_VIEW_Z = 21,              /* (G) Actor::getViewVector().z */
-    LEVI_RS_APROP_VEL_X = 22,               /* (G) Actor::getVelocity().x */
-    LEVI_RS_APROP_VEL_Y = 23,               /* (G) Actor::getVelocity().y */
-    LEVI_RS_APROP_VEL_Z = 24,               /* (G) Actor::getVelocity().z */
-    LEVI_RS_APROP_HEAD_X = 25,              /* (G) Actor::getHeadPos().x */
-    LEVI_RS_APROP_HEAD_Y = 26,              /* (G) Actor::getHeadPos().y */
-    LEVI_RS_APROP_HEAD_Z = 27,              /* (G) Actor::getHeadPos().z */
-    LEVI_RS_APROP_FEET_X = 28,              /* (G) Actor::getFeetPos().x */
-    LEVI_RS_APROP_FEET_Y = 29,              /* (G) Actor::getFeetPos().y */
-    LEVI_RS_APROP_FEET_Z = 30,              /* (G) Actor::getFeetPos().z */
-    LEVI_RS_APROP_FALL_DISTANCE = 31,       /* (G) Actor::getFallDistance */
-    LEVI_RS_APROP_IS_PERSISTENT = 32,       /* (G) Actor::isPersistent */
-    LEVI_RS_APROP_IS_LEASHED = 33,          /* (G) Actor::isLeashed */
-    LEVI_RS_APROP_IS_INVULNERABLE = 34,     /* (G) Actor::isInvulnerable */
-    LEVI_RS_APROP_VARIANT = 35,             /* (G) Actor::getVariant */
-    LEVI_RS_APROP_MARK_VARIANT = 36,        /* (G) Actor::getMarkVariant */
-    LEVI_RS_APROP_SCALE = 37,               /* (G) Actor::getScaleFactor */
-    LEVI_RS_APROP_BRIGHTNESS = 38,          /* (G) Actor::getBrightness */
-    LEVI_RS_APROP_RADIUS = 39,              /* (G) Actor::getRadius */
-    LEVI_RS_APROP_HAS_TOTEM = 40,           /* (G) Actor::hasTotemEquipped */
-    LEVI_RS_APROP_IS_IN_RAIN = 41,          /* (G) Actor::isInRain */
-    LEVI_RS_APROP_IS_IN_SNOW = 42,          /* (G) Actor::isInSnow */
-    LEVI_RS_APROP_IS_IN_THUNDERSTORM = 43,  /* (G) Actor::isInThunderstorm */
-    LEVI_RS_APROP_IS_FROZEN = 44,           /* (G) Actor::isFrozen */
-    LEVI_RS_APROP_IS_IN_LOVE = 45,          /* (G) Actor::isInLove */
-    LEVI_RS_APROP_DEATH_TIME = 46,          /* (G) Actor::getDeathTime */
-    LEVI_RS_APROP_HAS_PASSENGER = 47,       /* (G) Actor::hasPassenger */
+    LEVI_RS_APROP_VIEW_X = 19, /* (G) Actor::getViewVector().x */
+    LEVI_RS_APROP_VIEW_Y = 20, /* (G) Actor::getViewVector().y */
+    LEVI_RS_APROP_VIEW_Z = 21, /* (G) Actor::getViewVector().z */
+    LEVI_RS_APROP_VEL_X = 22, /* (G) Actor::getVelocity().x */
+    LEVI_RS_APROP_VEL_Y = 23, /* (G) Actor::getVelocity().y */
+    LEVI_RS_APROP_VEL_Z = 24, /* (G) Actor::getVelocity().z */
+    LEVI_RS_APROP_HEAD_X = 25, /* (G) Actor::getHeadPos().x */
+    LEVI_RS_APROP_HEAD_Y = 26, /* (G) Actor::getHeadPos().y */
+    LEVI_RS_APROP_HEAD_Z = 27, /* (G) Actor::getHeadPos().z */
+    LEVI_RS_APROP_FEET_X = 28, /* (G) Actor::getFeetPos().x */
+    LEVI_RS_APROP_FEET_Y = 29, /* (G) Actor::getFeetPos().y */
+    LEVI_RS_APROP_FEET_Z = 30, /* (G) Actor::getFeetPos().z */
+    LEVI_RS_APROP_FALL_DISTANCE = 31, /* (G) Actor::getFallDistance */
+    LEVI_RS_APROP_IS_PERSISTENT = 32, /* (G) Actor::isPersistent */
+    LEVI_RS_APROP_IS_LEASHED = 33, /* (G) Actor::isLeashed */
+    LEVI_RS_APROP_IS_INVULNERABLE = 34, /* (G) Actor::isInvulnerable */
+    LEVI_RS_APROP_VARIANT = 35, /* (G) Actor::getVariant */
+    LEVI_RS_APROP_MARK_VARIANT = 36, /* (G) Actor::getMarkVariant */
+    LEVI_RS_APROP_SCALE = 37, /* (G) Actor::getScaleFactor */
+    LEVI_RS_APROP_BRIGHTNESS = 38, /* (G) Actor::getBrightness */
+    LEVI_RS_APROP_RADIUS = 39, /* (G) Actor::getRadius */
+    LEVI_RS_APROP_HAS_TOTEM = 40, /* (G) Actor::hasTotemEquipped */
+    LEVI_RS_APROP_IS_IN_RAIN = 41, /* (G) Actor::isInRain */
+    LEVI_RS_APROP_IS_IN_SNOW = 42, /* (G) Actor::isInSnow */
+    LEVI_RS_APROP_IS_IN_THUNDERSTORM = 43, /* (G) Actor::isInThunderstorm */
+    LEVI_RS_APROP_IS_FROZEN = 44, /* (G) Actor::isFrozen */
+    LEVI_RS_APROP_IS_IN_LOVE = 45, /* (G) Actor::isInLove */
+    LEVI_RS_APROP_DEATH_TIME = 46, /* (G) Actor::getDeathTime */
+    LEVI_RS_APROP_HAS_PASSENGER = 47, /* (G) Actor::hasPassenger */
 };
 
 /** actor_get_str keys. */
@@ -748,8 +757,8 @@ enum LeviRsActorStrProp
     LEVI_RS_ASTR_TYPE_NAME = 0, /* Actor::getTypeName */
     LEVI_RS_ASTR_NAME_TAG = 1, /* Actor::getNameTag */
     /* ── v5 additive ── */
-    LEVI_RS_ASTR_SCORE_TAG = 2,            /* Actor::getScoreTag */
-    LEVI_RS_ASTR_FILTERED_NAME = 3,        /* Actor::getFilteredNameTag */
+    LEVI_RS_ASTR_SCORE_TAG = 2, /* Actor::getScoreTag */
+    LEVI_RS_ASTR_FILTERED_NAME = 3, /* Actor::getFilteredNameTag */
 };
 
 /** actor_action verbs. Args (sarg, a, b, c); `out` receives a result where noted. */
@@ -771,25 +780,25 @@ enum LeviRsActorAction
     LEVI_RS_AACT_HURT = 12, /* a=damage (generic damage source)    Actor::hurt */
     LEVI_RS_AACT_ATTRIBUTE_GET = 13, /* sarg=attribute name ("minecraft:health" …) → out value */
     /* ── v5 additive ── */
-    LEVI_RS_AACT_SET_VARIANT = 14,          /* a=variant             Actor::setVariant */
-    LEVI_RS_AACT_SET_MARK_VARIANT = 15,     /* a=variant             Actor::setMarkVariant */
-    LEVI_RS_AACT_SET_PERSISTENT = 16,       /*                       Actor::setPersistent */
-    LEVI_RS_AACT_SET_LEASH_HOLDER = 17,     /* a=holder ActorUniqueID Actor::setLeashHolder */
-    LEVI_RS_AACT_SET_INVISIBLE = 18,        /* a=0/1                 Actor::setInvisible */
-    LEVI_RS_AACT_SET_SNEAKING = 19,         /* a=0/1                 Actor::setSneaking */
+    LEVI_RS_AACT_SET_VARIANT = 14, /* a=variant             Actor::setVariant */
+    LEVI_RS_AACT_SET_MARK_VARIANT = 15, /* a=variant             Actor::setMarkVariant */
+    LEVI_RS_AACT_SET_PERSISTENT = 16, /*                       Actor::setPersistent */
+    LEVI_RS_AACT_SET_LEASH_HOLDER = 17, /* a=holder ActorUniqueID Actor::setLeashHolder */
+    LEVI_RS_AACT_SET_INVISIBLE = 18, /* a=0/1                 Actor::setInvisible */
+    LEVI_RS_AACT_SET_SNEAKING = 19, /* a=0/1                 Actor::setSneaking */
     LEVI_RS_AACT_SET_NAME_TAG_VISIBLE = 20, /* a=0/1                 Actor::setNameTagVisible */
-    LEVI_RS_AACT_SET_TARGET = 21,           /* a=target ActorUniqueID Actor::setTarget */
-    LEVI_RS_AACT_SET_OWNER = 22,            /* a=owner ActorUniqueID  Actor::setOwner */
-    LEVI_RS_AACT_BURN = 23,                 /* a=damage              Actor::burn */
-    LEVI_RS_AACT_STOP_FIRE = 24,            /*                       Actor::extinguishFire */
-    LEVI_RS_AACT_SET_VELOCITY = 25,         /* a,b,c=vel             Actor::setVelocity */
-    LEVI_RS_AACT_APPLY_IMPULSE = 26,        /* a,b,c=impulse         Actor::applyImpulse */
-    LEVI_RS_AACT_SET_SCORE_TAG = 27,        /* sarg=text             Actor::setScoreTag */
-    LEVI_RS_AACT_SET_SKIN_ID = 28,          /* a=skin id             Actor::setSkinID */
-    LEVI_RS_AACT_SET_STRENGTH = 29,         /* a=strength            Actor::setStrength */
-    LEVI_RS_AACT_REMOVE_ALL_PASSENGERS = 30,/*                       Actor::removeAllPassengers */
-    LEVI_RS_AACT_EXECUTE_EVENT = 31,        /* sarg=event name       Actor::executeEvent */
-    LEVI_RS_AACT_SET_ROTATION = 32,         /* a=pitch b=yaw         Actor::setRotationWrapped */
+    LEVI_RS_AACT_SET_TARGET = 21, /* a=target ActorUniqueID Actor::setTarget */
+    LEVI_RS_AACT_SET_OWNER = 22, /* a=owner ActorUniqueID  Actor::setOwner */
+    LEVI_RS_AACT_BURN = 23, /* a=damage              Actor::burn */
+    LEVI_RS_AACT_STOP_FIRE = 24, /*                       Actor::extinguishFire */
+    LEVI_RS_AACT_SET_VELOCITY = 25, /* a,b,c=vel             Actor::setVelocity */
+    LEVI_RS_AACT_APPLY_IMPULSE = 26, /* a,b,c=impulse         Actor::applyImpulse */
+    LEVI_RS_AACT_SET_SCORE_TAG = 27, /* sarg=text             Actor::setScoreTag */
+    LEVI_RS_AACT_SET_SKIN_ID = 28, /* a=skin id             Actor::setSkinID */
+    LEVI_RS_AACT_SET_STRENGTH = 29, /* a=strength            Actor::setStrength */
+    LEVI_RS_AACT_REMOVE_ALL_PASSENGERS = 30, /*                       Actor::removeAllPassengers */
+    LEVI_RS_AACT_EXECUTE_EVENT = 31, /* sarg=event name       Actor::executeEvent */
+    LEVI_RS_AACT_SET_ROTATION = 32, /* a=pitch b=yaw         Actor::setRotationWrapped */
 };
 
 /** block_get_num keys. */
@@ -802,29 +811,29 @@ enum LeviRsBlockNumProp
     LEVI_RS_BPROP_IS_INTERACTIVE_BLOCK = 4, /* Block::isInteractiveBlock */
     LEVI_RS_BPROP_HAS_BLOCK_ENTITY = 5, /* BlockSource::getBlockEntity(pos) != null */
     /* ── v5 additive: block gap fill ── */
-    LEVI_RS_BPROP_LIGHT = 6,               /* Block::getLight */
-    LEVI_RS_BPROP_LIGHT_EMISSION = 7,      /* Block::getLightEmission */
-    LEVI_RS_BPROP_DESTROY_SPEED = 8,       /* Block::getDestroySpeed */
-    LEVI_RS_BPROP_EXPLOSION_RESISTANCE = 9,/* Block::getExplosionResistance */
-    LEVI_RS_BPROP_FRICTION = 10,           /* Block::getFriction */
-    LEVI_RS_BPROP_IS_CONTAINER = 11,       /* Block::isContainerBlock */
-    LEVI_RS_BPROP_IS_DOOR = 12,            /* Block::isDoorBlock */
-    LEVI_RS_BPROP_IS_FENCE = 13,           /* Block::isFenceBlock */
-    LEVI_RS_BPROP_IS_RAIL = 14,            /* Block::isRailBlock */
-    LEVI_RS_BPROP_IS_SLAB = 15,            /* Block::isSlabBlock */
-    LEVI_RS_BPROP_IS_STAIR = 16,           /* Block::isStairBlock */
-    LEVI_RS_BPROP_IS_WALL = 17,            /* Block::isWallBlock */
-    LEVI_RS_BPROP_IS_CROP = 18,            /* Block::isCropBlock */
-    LEVI_RS_BPROP_IS_UNBREAKABLE = 19,     /* Block::isUnbreakable */
-    LEVI_RS_BPROP_REDSTONE_SIGNAL = 20,    /* Block::getDirectSignal */
-    LEVI_RS_BPROP_COMPARATOR_SIGNAL = 21,  /* Block::getComparatorSignal */
-    LEVI_RS_BPROP_IS_SIGNAL_SOURCE = 22,   /* Block::isSignalSource */
-    LEVI_RS_BPROP_VARIANT = 23,            /* Block::getVariant */
-    LEVI_RS_BPROP_BURN_ODDS = 24,          /* Block::getBurnOdds */
-    LEVI_RS_BPROP_FLAME_ODDS = 25,         /* Block::getFlameOdds */
-    LEVI_RS_BPROP_BOUNCINESS = 26,         /* Block::getBounciness */
-    LEVI_RS_BPROP_IS_SOLID = 27,           /* Block::isSolid */
-    LEVI_RS_BPROP_REQUIRES_TOOL = 28,      /* Block::requiresCorrectToolForDrops */
+    LEVI_RS_BPROP_LIGHT = 6, /* Block::getLight */
+    LEVI_RS_BPROP_LIGHT_EMISSION = 7, /* Block::getLightEmission */
+    LEVI_RS_BPROP_DESTROY_SPEED = 8, /* Block::getDestroySpeed */
+    LEVI_RS_BPROP_EXPLOSION_RESISTANCE = 9, /* Block::getExplosionResistance */
+    LEVI_RS_BPROP_FRICTION = 10, /* Block::getFriction */
+    LEVI_RS_BPROP_IS_CONTAINER = 11, /* Block::isContainerBlock */
+    LEVI_RS_BPROP_IS_DOOR = 12, /* Block::isDoorBlock */
+    LEVI_RS_BPROP_IS_FENCE = 13, /* Block::isFenceBlock */
+    LEVI_RS_BPROP_IS_RAIL = 14, /* Block::isRailBlock */
+    LEVI_RS_BPROP_IS_SLAB = 15, /* Block::isSlabBlock */
+    LEVI_RS_BPROP_IS_STAIR = 16, /* Block::isStairBlock */
+    LEVI_RS_BPROP_IS_WALL = 17, /* Block::isWallBlock */
+    LEVI_RS_BPROP_IS_CROP = 18, /* Block::isCropBlock */
+    LEVI_RS_BPROP_IS_UNBREAKABLE = 19, /* Block::isUnbreakable */
+    LEVI_RS_BPROP_REDSTONE_SIGNAL = 20, /* Block::getDirectSignal */
+    LEVI_RS_BPROP_COMPARATOR_SIGNAL = 21, /* Block::getComparatorSignal */
+    LEVI_RS_BPROP_IS_SIGNAL_SOURCE = 22, /* Block::isSignalSource */
+    LEVI_RS_BPROP_VARIANT = 23, /* Block::getVariant */
+    LEVI_RS_BPROP_BURN_ODDS = 24, /* Block::getBurnOdds */
+    LEVI_RS_BPROP_FLAME_ODDS = 25, /* Block::getFlameOdds */
+    LEVI_RS_BPROP_BOUNCINESS = 26, /* Block::getBounciness */
+    LEVI_RS_BPROP_IS_SOLID = 27, /* Block::isSolid */
+    LEVI_RS_BPROP_REQUIRES_TOOL = 28, /* Block::requiresCorrectToolForDrops */
 };
 
 /** block_get_str keys. */
@@ -836,10 +845,10 @@ enum LeviRsBlockStrProp
     LEVI_RS_BSTR_DEBUG_STRING = 3, /* Block::toDebugString */
     LEVI_RS_BSTR_TAGS = 4, /* Block::mTags → SNBT string list ["a","b"] */
     /* ── v5 additive ── */
-    LEVI_RS_BSTR_STATE = 5,                /* SNBT {state_name:value, …} all block states */
-    LEVI_RS_BSTR_COLLISION_SHAPE = 6,      /* SNBT [{min:[x,y,z],max:[x,y,z]}, …] */
-    LEVI_RS_BSTR_OUTLINE_SHAPE = 7,        /* SNBT [{min,max}] render outline */
-    LEVI_RS_BSTR_DISPLAY_NAME = 8,         /* Block::getDisplayName */
+    LEVI_RS_BSTR_STATE = 5, /* SNBT {state_name:value, …} all block states */
+    LEVI_RS_BSTR_COLLISION_SHAPE = 6, /* SNBT [{min:[x,y,z],max:[x,y,z]}, …] */
+    LEVI_RS_BSTR_OUTLINE_SHAPE = 7, /* SNBT [{min,max}] render outline */
+    LEVI_RS_BSTR_DISPLAY_NAME = 8, /* Block::getDisplayName */
 };
 
 /** block_action verbs. */
@@ -849,7 +858,7 @@ enum LeviRsBlockAction
     /* ── v5 additive ── */
     LEVI_RS_BACT_GET_STATE = 1, /* sarg=state name → out value string  Block::getState */
     LEVI_RS_BACT_POP_RESOURCE = 2, /* sarg=item SNBT → pop resource at pos  Block::popResource */
-    LEVI_RS_BACT_AS_ITEM = 3,   /* → out item SNBT   Block::asItemInstance */
+    LEVI_RS_BACT_AS_ITEM = 3, /* → out item SNBT   Block::asItemInstance */
 };
 
 /** item_get_num keys (query a transient ItemStack rebuilt from SNBT). */
@@ -867,23 +876,23 @@ enum LeviRsItemNumProp
     LEVI_RS_IPROP_IS_DAMAGEABLE = 9, /* ItemStackBase::isDamageableItem */
     LEVI_RS_IPROP_IS_DAMAGED = 10, /* ItemStackBase::isDamaged */
     /* ── v5 additive: item gap fill ── */
-    LEVI_RS_IPROP_MAX_DAMAGE = 11,         /* ItemStackBase::getMaxDamage */
-    LEVI_RS_IPROP_IS_UNBREAKABLE = 12,     /* ItemStackBase::isUnbreakable */
-    LEVI_RS_IPROP_HAS_DURABILITY = 13,     /* ItemStackBase::hasDurability */
-    LEVI_RS_IPROP_IS_POTION = 14,          /* ItemStackBase::isPotionItem */
-    LEVI_RS_IPROP_IS_THROWABLE = 15,       /* ItemStackBase::isThrowable */
-    LEVI_RS_IPROP_IS_FIRE_RESISTANT = 16,  /* ItemStackBase::isFireResistant */
-    LEVI_RS_IPROP_ATTACK_DAMAGE = 17,      /* ItemStackBase::getAttackDamage */
-    LEVI_RS_IPROP_REPAIR_COST = 18,        /* ItemStackBase::getBaseRepairCost */
-    LEVI_RS_IPROP_ENCHANT_VALUE = 19,      /* ItemStackBase::getEnchantValue */
-    LEVI_RS_IPROP_IS_STACKABLE = 20,       /* ItemStackBase::isStackable */
-    LEVI_RS_IPROP_IS_MUSIC_DISC = 21,      /* ItemStackBase::isMusicDiscItem */
-    LEVI_RS_IPROP_IS_OFFHAND = 22,         /* ItemStackBase::isOffhandItem */
-    LEVI_RS_IPROP_USE_DURATION = 23,       /* ItemStackBase::getMaxUseDuration */
-    LEVI_RS_IPROP_IS_GLINT = 24,           /* ItemStackBase::isGlint */
-    LEVI_RS_IPROP_IS_BUNDLE = 25,          /* ItemStackBase::isBundle */
-    LEVI_RS_IPROP_HAS_USER_DATA = 26,      /* ItemStackBase::hasUserData */
-    LEVI_RS_IPROP_HAS_CUSTOM_NAME = 27,    /* ItemStackBase::hasCustomHoverName */
+    LEVI_RS_IPROP_MAX_DAMAGE = 11, /* ItemStackBase::getMaxDamage */
+    LEVI_RS_IPROP_IS_UNBREAKABLE = 12, /* ItemStackBase::isUnbreakable */
+    LEVI_RS_IPROP_HAS_DURABILITY = 13, /* ItemStackBase::hasDurability */
+    LEVI_RS_IPROP_IS_POTION = 14, /* ItemStackBase::isPotionItem */
+    LEVI_RS_IPROP_IS_THROWABLE = 15, /* ItemStackBase::isThrowable */
+    LEVI_RS_IPROP_IS_FIRE_RESISTANT = 16, /* ItemStackBase::isFireResistant */
+    LEVI_RS_IPROP_ATTACK_DAMAGE = 17, /* ItemStackBase::getAttackDamage */
+    LEVI_RS_IPROP_REPAIR_COST = 18, /* ItemStackBase::getBaseRepairCost */
+    LEVI_RS_IPROP_ENCHANT_VALUE = 19, /* ItemStackBase::getEnchantValue */
+    LEVI_RS_IPROP_IS_STACKABLE = 20, /* ItemStackBase::isStackable */
+    LEVI_RS_IPROP_IS_MUSIC_DISC = 21, /* ItemStackBase::isMusicDiscItem */
+    LEVI_RS_IPROP_IS_OFFHAND = 22, /* ItemStackBase::isOffhandItem */
+    LEVI_RS_IPROP_USE_DURATION = 23, /* ItemStackBase::getMaxUseDuration */
+    LEVI_RS_IPROP_IS_GLINT = 24, /* ItemStackBase::isGlint */
+    LEVI_RS_IPROP_IS_BUNDLE = 25, /* ItemStackBase::isBundle */
+    LEVI_RS_IPROP_HAS_USER_DATA = 26, /* ItemStackBase::hasUserData */
+    LEVI_RS_IPROP_HAS_CUSTOM_NAME = 27, /* ItemStackBase::hasCustomHoverName */
 };
 
 /** item_get_str keys. */
@@ -894,13 +903,13 @@ enum LeviRsItemStrProp
     LEVI_RS_ISTR_CUSTOM_NAME = 2, /* ItemStackBase::getCustomName */
     LEVI_RS_ISTR_RAW_NAME_ID = 3, /* ItemStackBase::getRawNameId */
     /* ── v5 additive ── */
-    LEVI_RS_ISTR_LORE = 4,                /* SNBT list ["l1","l2"]  ItemStackBase::getCustomLore */
-    LEVI_RS_ISTR_CAN_DESTROY = 5,         /* SNBT list ["minecraft:stone", …] */
-    LEVI_RS_ISTR_CAN_PLACE_ON = 6,        /* SNBT list */
-    LEVI_RS_ISTR_USER_DATA = 7,           /* full NBT user data as SNBT */
-    LEVI_RS_ISTR_HOVER_NAME = 8,          /* ItemStackBase::getHoverName */
-    LEVI_RS_ISTR_EFFECT_NAME = 9,         /* ItemStackBase::getEffectName */
-    LEVI_RS_ISTR_COLOR = 10,              /* SNBT {r,g,b}  ItemStackBase::getColor */
+    LEVI_RS_ISTR_LORE = 4, /* SNBT list ["l1","l2"]  ItemStackBase::getCustomLore */
+    LEVI_RS_ISTR_CAN_DESTROY = 5, /* SNBT list ["minecraft:stone", …] */
+    LEVI_RS_ISTR_CAN_PLACE_ON = 6, /* SNBT list */
+    LEVI_RS_ISTR_USER_DATA = 7, /* full NBT user data as SNBT */
+    LEVI_RS_ISTR_HOVER_NAME = 8, /* ItemStackBase::getHoverName */
+    LEVI_RS_ISTR_EFFECT_NAME = 9, /* ItemStackBase::getEffectName */
+    LEVI_RS_ISTR_COLOR = 10, /* SNBT {r,g,b}  ItemStackBase::getColor */
 };
 
 /** item_transform ops: rebuild → mutate → serialize back (out = new SNBT). */
@@ -911,15 +920,15 @@ enum LeviRsItemOp
     LEVI_RS_IOP_SET_COUNT = 2, /* narg=count            ItemStackBase::mCount */
     LEVI_RS_IOP_SET_LORE = 3, /* sarg=SNBT list ["l1","l2"]  ItemStackBase::setCustomLore */
     /* ── v5 additive ── */
-    LEVI_RS_IOP_SET_UNBREAKABLE = 4,    /* narg=0/1               ItemStackBase::setUnbreakable */
-    LEVI_RS_IOP_HURT_AND_BREAK = 5,     /* narg=damage            ItemStackBase::hurtAndBreak */
-    LEVI_RS_IOP_SET_REPAIR_COST = 6,    /* narg=cost              ItemStackBase::setRepairCost */
-    LEVI_RS_IOP_ADD_ENCHANT = 7,        /* sarg="name:level"      saveEnchantsToUserData */
-    LEVI_RS_IOP_REMOVE_ENCHANTS = 8,    /*                        ItemStackBase::removeEnchants */
-    LEVI_RS_IOP_CLEAR_LORE = 9,         /*                        ItemStackBase::clearCustomLore */
-    LEVI_RS_IOP_RESET_NAME = 10,        /*                        ItemStackBase::resetHoverName */
-    LEVI_RS_IOP_SET_CAN_DESTROY = 11,   /* sarg=SNBT list         ItemStackBase::setCanDestroy */
-    LEVI_RS_IOP_SET_CAN_PLACE_ON = 12,  /* sarg=SNBT list         ItemStackBase::setCanPlaceOn */
+    LEVI_RS_IOP_SET_UNBREAKABLE = 4, /* narg=0/1               ItemStackBase::setUnbreakable */
+    LEVI_RS_IOP_HURT_AND_BREAK = 5, /* narg=damage            ItemStackBase::hurtAndBreak */
+    LEVI_RS_IOP_SET_REPAIR_COST = 6, /* narg=cost              ItemStackBase::setRepairCost */
+    LEVI_RS_IOP_ADD_ENCHANT = 7, /* sarg="name:level"      saveEnchantsToUserData */
+    LEVI_RS_IOP_REMOVE_ENCHANTS = 8, /*                        ItemStackBase::removeEnchants */
+    LEVI_RS_IOP_CLEAR_LORE = 9, /*                        ItemStackBase::clearCustomLore */
+    LEVI_RS_IOP_RESET_NAME = 10, /*                        ItemStackBase::resetHoverName */
+    LEVI_RS_IOP_SET_CAN_DESTROY = 11, /* sarg=SNBT list         ItemStackBase::setCanDestroy */
+    LEVI_RS_IOP_SET_CAN_PLACE_ON = 12, /* sarg=SNBT list         ItemStackBase::setCanPlaceOn */
 };
 
 /** scoreboard_op verbs (args a=objective/slot, b=target, n=value). */
@@ -945,18 +954,18 @@ enum LeviRsScoreboardOp
  */
 enum LeviRsDimRule
 {
-    LEVI_RS_DIMRULE_SPAWN_MONSTER = 0,  /* natural hostile spawns */
-    LEVI_RS_DIMRULE_SPAWN_ANIMAL  = 1,  /* natural passive spawns */
-    LEVI_RS_DIMRULE_SPAWN_SPAWNER = 2,  /* spawns from mob spawners */
+    LEVI_RS_DIMRULE_SPAWN_MONSTER = 0, /* natural hostile spawns */
+    LEVI_RS_DIMRULE_SPAWN_ANIMAL = 1, /* natural passive spawns */
+    LEVI_RS_DIMRULE_SPAWN_SPAWNER = 2, /* spawns from mob spawners */
     LEVI_RS_DIMRULE_EXPLODE_BLOCKS = 3, /* explosions damaging terrain */
-    LEVI_RS_DIMRULE_FIRE_SPREAD   = 4,  /* fire spreading to neighbours */
-    LEVI_RS_DIMRULE_MOB_GRIEFING  = 5,  /* mobs changing blocks */
-    LEVI_RS_DIMRULE_PROJECTILE    = 6,  /* projectile spawns */
+    LEVI_RS_DIMRULE_FIRE_SPREAD = 4, /* fire spreading to neighbours */
+    LEVI_RS_DIMRULE_MOB_GRIEFING = 5, /* mobs changing blocks */
+    LEVI_RS_DIMRULE_PROJECTILE = 6, /* projectile spawns */
     /* ── 第二批（挂载点参考 LegacyScriptEngine 的同名事件） ── */
-    LEVI_RS_DIMRULE_PISTON_PUSH   = 7,  /* pistons moving blocks */
-    LEVI_RS_DIMRULE_LIQUID_FLOW   = 8,  /* water/lava spreading */
+    LEVI_RS_DIMRULE_PISTON_PUSH = 7, /* pistons moving blocks */
+    LEVI_RS_DIMRULE_LIQUID_FLOW = 8, /* water/lava spreading */
     LEVI_RS_DIMRULE_FARMLAND_DECAY = 9, /* farmland trampled back to dirt */
-    LEVI_RS_DIMRULE_RIDE          = 10, /* mounting boats/minecarts/animals */
+    LEVI_RS_DIMRULE_RIDE = 10, /* mounting boats/minecarts/animals */
     /* ── Plot-boundary confinement (needs md_set_plot_grid) ── */
     /* Pistons moving blocks ACROSS a plot boundary. Distinct from
      * LEVI_RS_DIMRULE_PISTON_PUSH, which disables pistons for the whole
@@ -1498,14 +1507,16 @@ typedef struct LeviRsApi
     bool (*actor_get_status_flag)(LeviRsActorId id, int32_t flag_index);
     bool (*actor_set_status_flag)(LeviRsActorId id, int32_t flag_index, bool value);
     /** SNBT {type:"entity"|"block"|"none", pos:[x,y,z], entity_id?, block_name?} */
-    bool (*actor_trace_ray)(LeviRsActorId id, float max_dist, bool include_actors, bool include_blocks, void* ctx, LeviRsStrSink sink);
+    bool (*actor_trace_ray)(LeviRsActorId id, float max_dist, bool include_actors, bool include_blocks, void* ctx,
+                            LeviRsStrSink sink);
     bool (*actor_distance_to)(LeviRsActorId id, LeviRsActorId other, double* out);
     /** SNBT {min:[x,y,z], max:[x,y,z]} */
     bool (*actor_get_aabb)(LeviRsActorId id, void* ctx, LeviRsStrSink sink);
     bool (*actor_clone)(LeviRsActorId id, int32_t dim, double x, double y, double z, LeviRsActorId* out);
 
     /* ── Block: state get/set, collision shape (dedicated fns) ── */
-    bool (*block_get_state)(int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr state_name, void* ctx, LeviRsStrSink sink);
+    bool (*block_get_state)(int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr state_name, void* ctx,
+                            LeviRsStrSink sink);
     bool (*block_set_state)(int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr state_name, LeviRsStr value);
     bool (*block_get_collision_shape)(int32_t dim, int32_t x, int32_t y, int32_t z, void* ctx, LeviRsStrSink sink);
 

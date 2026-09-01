@@ -70,15 +70,15 @@ namespace levi_rs::bridge
         {
             auto const& pos = p.getPosition();
             return "{\"eventId\":\"PlayerChangeGameModeEvent\""
-                   ",\"x\":" + snbtNum(static_cast<int>(pos.x))
-                 + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
-                 + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
-                 + ",\"dim\":" + snbtNum(static_cast<int>(p.getDimensionId()))
-                 + ",\"from\":" + snbtNum(from)
-                 + ",\"to\":" + snbtNum(to)
-                 + ",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
-                 + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
-                 + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
+                ",\"x\":" + snbtNum(static_cast<int>(pos.x))
+                + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
+                + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
+                + ",\"dim\":" + snbtNum(static_cast<int>(p.getDimensionId()))
+                + ",\"from\":" + snbtNum(from)
+                + ",\"to\":" + snbtNum(to)
+                + ",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
+                + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
+                + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
         }
 
         LL_TYPE_INSTANCE_HOOK(
@@ -133,7 +133,7 @@ namespace levi_rs::bridge
             {
                 int const r = PlayerChangeGameModeHook::hook();
                 auto& log = bridgeLogger();
-                log.info(
+                log.debug(
                     "[GameModeEvent] 安装 detour：PlayerChangeGameModeHook={} (code={})",
                     r == 0 ? "成功" : "失败", r);
                 if (r != 0)
@@ -145,7 +145,8 @@ namespace levi_rs::bridge
                         "强制只在进入世界的那一刻生效**，玩家进去之后自己 /gamemode 就能绕过，"
                         "而且不会有任何拦截日志。请用服务器实际运行的版本重新编译本 loader。");
                 }
-            }};
+            }
+        };
         HookEventDef& gameModeDef() { return gDef; }
 
         HookEventRegistrar gReg{gDef};

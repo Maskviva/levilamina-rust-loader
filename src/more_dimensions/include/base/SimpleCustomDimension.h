@@ -12,7 +12,7 @@ namespace more_dimensions
 
     class SimpleCustomDimension : public Dimension
     {
-        uint          seed;
+        uint seed;
         GeneratorType generatorType;
 
     public:

@@ -9,11 +9,29 @@ pub(crate) fn s(text: &str) -> sys::LeviRsStr {
     }
 }
 
+/// W14：C++ 侧交过来的字节**最终源自客户端**（玩家名、聊天、命令输出），不能无条件信任成 UTF-8。
+/// 原来是 `from_utf8_unchecked`：一个非法序列就是 UB。现在校验；非法时截到最后一个合法字节
+/// （借用不变、不分配），记一条一次性告警，debug 构建下直接断言。
 pub(crate) unsafe fn r<'a>(raw: sys::LeviRsStr) -> &'a str {
     if raw.ptr.is_null() {
         return "";
     }
-    std::str::from_utf8_unchecked(std::slice::from_raw_parts(raw.ptr, raw.len))
+    let bytes = std::slice::from_raw_parts(raw.ptr, raw.len);
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s,
+        Err(e) => {
+            debug_assert!(false, "loader 交来的字节不是 UTF-8：{e}");
+            static WARNED: std::sync::atomic::AtomicBool =
+                std::sync::atomic::AtomicBool::new(false);
+            if !WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                crate::Logger::get().warn(&format!(
+                    "loader 交来的字符串不是合法 UTF-8（第 {} 字节起），已截断；这条只报一次。",
+                    e.valid_up_to()
+                ));
+            }
+            std::str::from_utf8_unchecked(&bytes[..e.valid_up_to()])
+        }
+    }
 }
 
 pub(crate) unsafe extern "C" fn push_string(ctx: *mut c_void, item: sys::LeviRsStr) {

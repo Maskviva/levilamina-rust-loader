@@ -87,22 +87,22 @@ namespace levi_rs::bridge
 
             auto const& pos = actor.getPosition();
             std::string snbt = "{\"eventId\":\"PlayerInteractEntityEvent\""
-                               ",\"x\":" + snbtNum(static_cast<int>(pos.x))
-                             + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
-                             + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
-                             + ",\"dim\":" + snbtNum(static_cast<int>(actor.getDimensionId()))
-                             + ",\"targetIsPlayer\":" + (actor.isPlayer() ? "1" : "0")
-                             + ",\"target\":\"" + snbtEscape(targetName)
-                             + "\",\"item\":\"" + snbtEscape(itemName)
-                             + "\",\"_player\":{\"name\":\"" + snbtEscape(this->getRealName())
-                             + "\",\"xuid\":\"" + snbtEscape(this->getXuid())
-                             + "\",\"uuid\":\"" + snbtEscape(this->getUuid().asString()) + "\"}}";
+                ",\"x\":" + snbtNum(static_cast<int>(pos.x))
+                + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
+                + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
+                + ",\"dim\":" + snbtNum(static_cast<int>(actor.getDimensionId()))
+                + ",\"targetIsPlayer\":" + (actor.isPlayer() ? "1" : "0")
+                + ",\"target\":\"" + snbtEscape(targetName)
+                + "\",\"item\":\"" + snbtEscape(itemName)
+                + "\",\"_player\":{\"name\":\"" + snbtEscape(this->getRealName())
+                + "\",\"xuid\":\"" + snbtEscape(this->getXuid())
+                + "\",\"uuid\":\"" + snbtEscape(this->getUuid().asString()) + "\"}}";
 
             if (dispatchHookEventCancellable(def, snbt))
             {
                 ::InteractionResult refused{};
                 refused.mSuccess = false;
-                refused.mSwing   = true; // see "Cancelling" above
+                refused.mSwing = true; // see "Cancelling" above
                 return refused;
             }
             return origin(actor, location);

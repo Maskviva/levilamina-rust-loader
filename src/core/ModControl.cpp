@@ -808,9 +808,11 @@ namespace levi_rs::mod_control
                 }
             }
         );
-        log().info("/llr 已注册（list / load / unload / reload）");
+        log().debug("/llr 已注册");
     }
 #else
-    void registerCommand() {}
+    void registerCommand()
+    {
+    }
 #endif // !LEVI_RS_TARGET_CLIENT
 } // namespace levi_rs::mod_control

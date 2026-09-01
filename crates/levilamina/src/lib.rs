@@ -5,8 +5,6 @@ pub use misc::{system, types};
 mod rt;
 pub(crate) use rt::runtime;
 pub(crate) use rt::{error, ffi, logger, registration};
-/// Internal: reachable so the exported `require_slot!` / `has_slot!` macros
-/// can name it from downstream crates. Not part of the stable API.
 #[doc(hidden)]
 pub mod __rt {
     pub use crate::rt::runtime::has_slot;
@@ -72,7 +70,8 @@ pub use nbt::NbtValue;
 
 pub use packet::{ConnectionState, PacketCtx, PacketHook, Packets};
 pub use player::{
-    Ability, AbilityValue, GameMode, MessageType, Player, PlayerInfo, TitleKind, TitleTimes,
+    Ability, AbilityValue, GameMode, MessageType, Player, PlayerInfo, PlayerPermission, TitleKind,
+    TitleTimes,
 };
 pub use registration::{__init_runtime, __lifecycle, __load, LeviMod, ModSlot};
 pub use runtime::ModContext;
@@ -107,8 +106,8 @@ pub mod prelude {
     pub use crate::{
         register_mod, Ability, Actor, Block, BlockInfo, Cell, Entity, EntityInfo, EventPriority,
         EventRef, GameMode, ItemStack, KvDb, LeviMod, Listener, LogLevel, Logger, MessageType,
-        ModContext, NbtValue, Player, PlayerInfo, PlayerPos, Result, Scan, ScanLayer, TitleKind,
-        TitleTimes,
+        ModContext, NbtValue, Player, PlayerInfo, PlayerPermission, PlayerPos, Result, Scan,
+        ScanLayer, TitleKind, TitleTimes,
     };
 
     #[cfg(feature = "server")]

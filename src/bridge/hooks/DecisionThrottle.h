@@ -57,9 +57,9 @@ namespace levi_rs::bridge
 
     struct ThrottledDecision
     {
-        int       x = 0, y = 0, z = 0;
-        int       dim = 0;
-        bool      cancelled = false;
+        int x = 0, y = 0, z = 0;
+        int dim = 0;
+        bool cancelled = false;
         long long atMs = 0;
     };
 
@@ -80,13 +80,13 @@ namespace levi_rs::bridge
      */
     inline bool throttleLookup(
         std::unordered_map<std::string, ThrottledDecision>& cache,
-        std::string const&                                  key,
-        int                                                 x,
-        int                                                 y,
-        int                                                 z,
-        int                                                 dim,
-        long long                                           now,
-        bool&                                               out)
+        std::string const& key,
+        int x,
+        int y,
+        int z,
+        int dim,
+        long long now,
+        bool& out)
     {
         auto it = cache.find(key);
         if (it == cache.end()) return false;
@@ -99,13 +99,13 @@ namespace levi_rs::bridge
 
     inline void throttleStore(
         std::unordered_map<std::string, ThrottledDecision>& cache,
-        std::string const&                                  key,
-        int                                                 x,
-        int                                                 y,
-        int                                                 z,
-        int                                                 dim,
-        long long                                           now,
-        bool                                                cancelled)
+        std::string const& key,
+        int x,
+        int y,
+        int z,
+        int dim,
+        long long now,
+        bool cancelled)
     {
         // Bounded growth: entries are only added on a miss, and the whole map is
         // dropped once it outgrows any plausible player count. Simpler than

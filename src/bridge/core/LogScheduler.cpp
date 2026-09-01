@@ -33,35 +33,42 @@ namespace levi_rs::bridge
 {
     void api_log(LeviRsModHandle mod, int32_t level, LeviRsStr msg)
     {
-        if (!mod) return;
-        auto& logger = asMod(mod)->getLogger();
-        switch (static_cast<ll::io::LogLevel>(level))
-        {
-        case ll::io::LogLevel::Fatal:
-            logger.fatal("{}", msg);
-            break;
-        case ll::io::LogLevel::Error:
-            logger.error("{}", msg);
-            break;
-        case ll::io::LogLevel::Warn:
-            logger.warn("{}", msg);
-            break;
-        case ll::io::LogLevel::Debug:
-            logger.debug("{}", msg);
-            break;
-        case ll::io::LogLevel::Trace:
-            logger.trace("{}", msg);
-            break;
-        case ll::io::LogLevel::Off:
-            break;
-        case ll::io::LogLevel::Info:
-        default:
-            logger.info("{}", msg);
-            break;
-        }
+        LEVI_RS_API_GUARD_BEGIN
+            if (!mod) return;
+            auto& logger = asMod(mod)->getLogger();
+            switch (static_cast<ll::io::LogLevel>(level))
+            {
+            case ll::io::LogLevel::Fatal:
+                logger.fatal("{}", msg);
+                break;
+            case ll::io::LogLevel::Error:
+                logger.error("{}", msg);
+                break;
+            case ll::io::LogLevel::Warn:
+                logger.warn("{}", msg);
+                break;
+            case ll::io::LogLevel::Debug:
+                logger.debug("{}", msg);
+                break;
+            case ll::io::LogLevel::Trace:
+                logger.trace("{}", msg);
+                break;
+            case ll::io::LogLevel::Off:
+                break;
+            case ll::io::LogLevel::Info:
+            default:
+                logger.info("{}", msg);
+                break;
+            }
+        LEVI_RS_API_GUARD_END_VOID
     }
 
-    int32_t api_gaming_status() { return static_cast<int32_t>(ll::getGamingStatus()); }
+    int32_t api_gaming_status()
+    {
+        LEVI_RS_API_GUARD_BEGIN
+            return static_cast<int32_t>(ll::getGamingStatus());
+        LEVI_RS_API_GUARD_END
+    }
 
     /* ───────────────────── mod-scoped task table ─────────────────────
      * Why this exists: a scheduled task is a raw function pointer into a mod's
@@ -117,7 +124,7 @@ namespace levi_rs::bridge
             }
             auto mod = weakMod.lock();
             if (!mod || mod.get() != task.mod) return; // mod gone; dylib may be unmapped
-            if (!mod->isEnabled()) return;             // muted while disabled
+            if (!mod->isEnabled()) return; // muted while disabled
             if (task.cb) task.cb(task.user);
         }
 
@@ -156,56 +163,68 @@ namespace levi_rs::bridge
 
     void api_schedule(LeviRsTaskCb cb, void* user)
     {
-        // Legacy, owner-less slot: kept for ABI compatibility with mods built
-        // before schedule_for existed. Unavoidably unsafe across unload — such
-        // a mod must not be marked reload_safe.
-        if (!cb) return;
-        LEVI_RS_THREAD_EXEC::getDefault().execute([cb, user] { cb(user); });
+        LEVI_RS_API_GUARD_BEGIN
+            // Legacy, owner-less slot: kept for ABI compatibility with mods built
+            // before schedule_for existed. Unavoidably unsafe across unload — such
+            // a mod must not be marked reload_safe.
+            if (!cb) return;
+            LEVI_RS_THREAD_EXEC::getDefault().execute([cb, user] { cb(user); });
+        LEVI_RS_API_GUARD_END_VOID
     }
 
     void api_schedule_after(LeviRsTaskCb cb, void* user, uint64_t delayMs)
     {
-        if (!cb) return;
-        // Fire-and-forget: the returned CancellableCallback is intentionally dropped.
-        (void)LEVI_RS_THREAD_EXEC::getDefault().executeAfter(
-            [cb, user] { cb(user); },
-            std::chrono::milliseconds(delayMs)
-        );
+        LEVI_RS_API_GUARD_BEGIN
+            if (!cb) return;
+            // Fire-and-forget: the returned CancellableCallback is intentionally dropped.
+            (void)LEVI_RS_THREAD_EXEC::getDefault().executeAfter(
+                [cb, user] { cb(user); },
+                std::chrono::milliseconds(delayMs)
+            );
+        LEVI_RS_API_GUARD_END_VOID
     }
 
     uint64_t api_schedule_for(LeviRsModHandle mod, LeviRsTaskCb cb, void* user)
     {
-        return submit(mod, cb, user, false, 0);
+        LEVI_RS_API_GUARD_BEGIN
+            return submit(mod, cb, user, false, 0);
+        LEVI_RS_API_GUARD_END
     }
 
     uint64_t api_schedule_after_for(LeviRsModHandle mod, LeviRsTaskCb cb, void* user, uint64_t delayMs)
     {
-        return submit(mod, cb, user, true, delayMs);
+        LEVI_RS_API_GUARD_BEGIN
+            return submit(mod, cb, user, true, delayMs);
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_schedule_cancel(LeviRsModHandle mod, uint64_t taskId)
     {
-        if (!mod || taskId == 0) return false;
-        auto* raw = asMod(mod);
-        std::lock_guard lock(gTaskMutex);
-        auto it = gPendingTasks.find(taskId);
-        // Scoped to the caller: one mod must not be able to cancel another's work.
-        if (it == gPendingTasks.end() || it->second.mod != raw) return false;
-        gPendingTasks.erase(it);
-        return true;
+        LEVI_RS_API_GUARD_BEGIN
+            if (!mod || taskId == 0) return false;
+            auto* raw = asMod(mod);
+            std::lock_guard lock(gTaskMutex);
+            auto it = gPendingTasks.find(taskId);
+            // Scoped to the caller: one mod must not be able to cancel another's work.
+            if (it == gPendingTasks.end() || it->second.mod != raw) return false;
+            gPendingTasks.erase(it);
+            return true;
+        LEVI_RS_API_GUARD_END
     }
 
     uint32_t api_schedule_pending_count(LeviRsModHandle mod)
     {
-        if (!mod) return 0;
-        auto* raw = asMod(mod);
-        std::lock_guard lock(gTaskMutex);
-        uint32_t n = 0;
-        for (auto const& [id, task] : gPendingTasks)
-        {
-            if (task.mod == raw) ++n;
-        }
-        return n;
+        LEVI_RS_API_GUARD_BEGIN
+            if (!mod) return 0;
+            auto* raw = asMod(mod);
+            std::lock_guard lock(gTaskMutex);
+            uint32_t n = 0;
+            for (auto const& [id, task] : gPendingTasks)
+            {
+                if (task.mod == raw) ++n;
+            }
+            return n;
+        LEVI_RS_API_GUARD_END
     }
 
     void schedulerOnRustModGone(RustMod* mod)
@@ -242,29 +261,37 @@ namespace levi_rs::bridge
 
     uint64_t api_get_current_tick()
     {
-        auto* level = levelReady();
-        if (!level) return 0;
-        return level->getCurrentTick().tickID;
+        LEVI_RS_API_GUARD_BEGIN
+            auto* level = levelReady();
+            if (!level) return 0;
+            return level->getCurrentTick().tickID;
+        LEVI_RS_API_GUARD_END
     }
 
     double api_get_tick_delta_time()
     {
-        auto* level = levelReady();
-        if (!level) return -1.0;
-        return level->getTickDeltaTimeManager()->mTickDeltaTime;
+        LEVI_RS_API_GUARD_BEGIN
+            auto* level = levelReady();
+            if (!level) return -1.0;
+            return level->getTickDeltaTimeManager()->mTickDeltaTime;
+        LEVI_RS_API_GUARD_END_VAL(-1.0)
     }
 
     int32_t api_get_player_count()
     {
-        auto* level = levelReady();
-        if (!level) return 0;
-        return static_cast<int32_t>(level->getActivePlayerCount());
+        LEVI_RS_API_GUARD_BEGIN
+            auto* level = levelReady();
+            if (!level) return 0;
+            return static_cast<int32_t>(level->getActivePlayerCount());
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_get_sim_paused()
     {
-        auto* level = levelReady();
-        if (!level) return true; // safe default: treat as paused if unknown
-        return level->getSimPaused();
+        LEVI_RS_API_GUARD_BEGIN
+            auto* level = levelReady();
+            if (!level) return true; // safe default: treat as paused if unknown
+            return level->getSimPaused();
+        LEVI_RS_API_GUARD_END
     }
 } // namespace levi_rs::bridge

@@ -8,3 +8,4 @@ docs/node_modules
 /docs/.vitepress/dist/
 /docs/pnpm-lock.yaml
 /devlog/
+compile_commands.json

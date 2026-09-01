@@ -287,7 +287,7 @@ namespace levi_rs::bridge
          */
         void normalizeSlider(double& mn, double& mx, double& step, double& def, std::string const& name)
         {
-            if (!(mn <= mx)) std::swap(mn, mx);           // 顺手接住 NaN
+            if (!(mn <= mx)) std::swap(mn, mx); // 顺手接住 NaN
             if (!(step > 0.0)) step = 0.0;
 
             if (step > 0.0)
@@ -583,56 +583,58 @@ namespace levi_rs::bridge
         void* user
     )
     {
-        auto* mod = asMod(modHandle);
-        if (!mod || !cb) return false;
-        Player* p = resolvePlayer(sel);
-        if (!p) return false;
+        LEVI_RS_API_GUARD_BEGIN
+            auto* mod = asMod(modHandle);
+            if (!mod || !cb) return false;
+            Player* p = resolvePlayer(sel);
+            if (!p) return false;
 
-        auto spec = CompoundTag::fromSnbt(std::string_view{formSnbt});
-        if (!spec)
-        {
-            mod->getLogger().error("form_send: bad form SNBT");
-            return false;
-        }
-
-        std::weak_ptr<RustMod> weakMod = mod->shared_from_this();
-        uint64_t ticket = registerTicket(mod, cb, user);
-
-        bool ok = false;
-        try
-        {
-            switch (kind)
+            auto spec = CompoundTag::fromSnbt(std::string_view{formSnbt});
+            if (!spec)
             {
-            case 0:
-                ok = sendSimple(*p, *spec, weakMod, ticket);
-                break;
-            case 1:
-                ok = sendCustom(*p, *spec, weakMod, ticket);
-                break;
-            case 2:
-                ok = sendModal(*p, *spec, weakMod, ticket);
-                break;
-            default:
-                ok = false;
-                break;
+                mod->getLogger().error("form_send: bad form SNBT");
+                return false;
             }
-        }
-        catch (std::exception const& e)
-        {
-            bridgeLogger().error("form_send: 构建表单时抛异常: {}", e.what());
-            ok = false;
-        }
-        catch (...)
-        {
-            bridgeLogger().error("form_send: 构建表单时抛了未知异常");
-            ok = false;
-        }
-        if (!ok)
-        {
-            std::lock_guard lock(gFormMutex);
-            gPendingForms.erase(ticket);
-        }
-        return ok;
+
+            std::weak_ptr<RustMod> weakMod = mod->shared_from_this();
+            uint64_t ticket = registerTicket(mod, cb, user);
+
+            bool ok = false;
+            try
+            {
+                switch (kind)
+                {
+                case 0:
+                    ok = sendSimple(*p, *spec, weakMod, ticket);
+                    break;
+                case 1:
+                    ok = sendCustom(*p, *spec, weakMod, ticket);
+                    break;
+                case 2:
+                    ok = sendModal(*p, *spec, weakMod, ticket);
+                    break;
+                default:
+                    ok = false;
+                    break;
+                }
+            }
+            catch (std::exception const& e)
+            {
+                bridgeLogger().error("form_send: 构建表单时抛异常: {}", e.what());
+                ok = false;
+            }
+            catch (...)
+            {
+                bridgeLogger().error("form_send: 构建表单时抛了未知异常");
+                ok = false;
+            }
+            if (!ok)
+            {
+                std::lock_guard lock(gFormMutex);
+                gPendingForms.erase(ticket);
+            }
+            return ok;
+        LEVI_RS_API_GUARD_END
     }
 
     void formsOnRustModGone(RustMod* mod)

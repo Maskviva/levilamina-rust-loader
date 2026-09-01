@@ -45,7 +45,7 @@ impl KeyBinding {
 
         let handle = unsafe {
             (rt().api.client_register_key)(
-                rt().handle,
+                rt().handle(),
                 s(name),
                 key_codes.as_ptr(),
                 key_codes.len() as i32,

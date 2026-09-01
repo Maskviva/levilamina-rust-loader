@@ -10,6 +10,7 @@ pub const PLAYER_JUMP: &str = "PlayerJumpEvent";
 pub const PLAYER_SWING: &str = "PlayerSwingEvent";
 pub const PLAYER_ATTACK: &str = "PlayerAttackEvent";
 pub const PLAYER_PICK_UP_ITEM: &str = "PlayerPickUpItemEvent";
+pub const PLAYER_TAKE_ENTITY: &str = "PlayerTakeEntityEvent";
 
 pub const PLAYER_DROP_ITEM: &str = "PlayerDropItemEvent";
 pub const PLAYER_USE_ITEM: &str = "PlayerUseItemEvent";

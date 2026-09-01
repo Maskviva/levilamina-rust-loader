@@ -1,4 +1,4 @@
-use super::*;
+use levilamina::lane::*;
 
 #[cfg(test)]
 mod tests {
@@ -13,6 +13,7 @@ mod tests {
     impl LaneContract for A {
         const NAME: &'static str = "test:a:v1";
         const VERSION: u32 = 1;
+        const CRATE_VERSION: &'static str = "0.0.0";
         type Table = TableA;
     }
 
@@ -20,6 +21,7 @@ mod tests {
     impl LaneContract for B {
         const NAME: &'static str = "test:b:v1";
         const VERSION: u32 = 1;
+        const CRATE_VERSION: &'static str = "0.0.0";
         type Table = TableA;
     }
 
@@ -27,12 +29,8 @@ mod tests {
     impl LaneContract for A2 {
         const NAME: &'static str = "test:a:v1";
         const VERSION: u32 = 2;
+        const CRATE_VERSION: &'static str = "0.0.0";
         type Table = TableA;
-    }
-
-    #[test]
-    fn fingerprint_is_stable_within_one_build() {
-        assert_eq!(fingerprint::<A>(), fingerprint::<A>());
     }
 
     #[test]

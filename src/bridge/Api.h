@@ -71,12 +71,12 @@ namespace levi_rs
         void commandsOnRustModGone(RustMod* mod);
 
         /* ── Server.cpp ── */
-        bool api_get_time(int64_t* out);
+        bool api_get_time(int64_t * out);
         bool api_set_time(int64_t t);
         bool api_set_weather(int32_t weather);
-        bool api_get_difficulty(int32_t* out);
+        bool api_get_difficulty(int32_t * out);
         bool api_set_difficulty(int32_t d);
-        bool api_get_seed(int64_t* out);
+        bool api_get_seed(int64_t * out);
         bool api_game_rule_get(LeviRsStr name, void* ctx, LeviRsStrSink sink);
         bool api_game_rule_set(LeviRsStr name, LeviRsStr value);
         bool api_server_info_str(int32_t prop, void* ctx, LeviRsStrSink sink);
@@ -403,22 +403,23 @@ namespace levi_rs
 
         /* Level: biome, spawn, save, weather, path, sleep */
         bool api_level_get_biome(int32_t dim, int32_t x, int32_t y, int32_t z, void* ctx, LeviRsStrSink sink);
-        bool api_level_get_default_spawn(int32_t* x, int32_t* y, int32_t* z);
+        bool api_level_get_default_spawn(int32_t * x, int32_t * y, int32_t * z);
         bool api_level_set_default_spawn(int32_t x, int32_t y, int32_t z);
         bool api_level_save();
-    int32_t api_level_delete_chunk_keys(int32_t dim, int32_t chunk_x, int32_t chunk_z);
-    int32_t api_level_chunks_loaded(int32_t dim, int32_t min_x, int32_t min_z, int32_t max_x, int32_t max_z);
-    uint64_t api_player_conn_id(LeviRsPlayerSel who);
-    int32_t api_level_chunk_keys(int32_t dim, int32_t chunk_x, int32_t chunk_z, void* ctx, LeviRsStrSink sink);
-    bool api_level_delete_key(LeviRsStr key);
+        int32_t api_level_delete_chunk_keys(int32_t dim, int32_t chunk_x, int32_t chunk_z);
+        int32_t api_level_chunks_loaded(int32_t dim, int32_t min_x, int32_t min_z, int32_t max_x, int32_t max_z);
+        uint64_t api_player_conn_id(LeviRsPlayerSel who);
+        int32_t api_level_chunk_keys(int32_t dim, int32_t chunk_x, int32_t chunk_z, void* ctx, LeviRsStrSink sink);
+        bool api_level_delete_key(LeviRsStr key);
 
-    /* ── 追加槽（190）── */
-    int32_t api_level_set_biome(int32_t dim,
-                                int32_t minX, int32_t minZ,
-                                int32_t maxX, int32_t maxZ,
-                                LeviRsStr biome);
+        /* ── 追加槽（190）── */
+        int32_t api_level_set_biome(int32_t dim,
+                                    int32_t minX, int32_t minZ,
+                                    int32_t maxX, int32_t maxZ,
+                                    LeviRsStr biome);
         bool api_level_get_sleep_status(void* ctx, LeviRsStrSink sink);
-        bool api_level_update_weather(float rain_level, int32_t rain_time, float lightning_level, int32_t lightning_time);
+        bool api_level_update_weather(float rain_level, int32_t rain_time, float lightning_level,
+                                      int32_t lightning_time);
         bool api_level_find_path(LeviRsActorId id, int32_t x, int32_t y, int32_t z, void* ctx, LeviRsStrSink sink);
 
         /* ── Edit.cpp — 批量世界编辑（原生写入，不走命令）── */
@@ -468,7 +469,7 @@ namespace levi_rs
         bool api_client_unregister_key(LeviRsKeyHandle handle);
         bool api_client_get_key_codes(LeviRsKeyHandle handle, void* ctx, LeviRsStrSink sink);
         /** 解除并释放这个 mod 名下的按键绑定。从 onRustModGone 调。 */
-        void clientOnRustModGone(RustMod* mod);
+        void clientOnRustModGone(RustMod * mod);
 #endif
     } // namespace bridge
 } // namespace levi_rs

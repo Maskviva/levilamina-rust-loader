@@ -24,7 +24,7 @@ namespace more_dimensions
      */
     class PlotDimension final : public Dimension
     {
-        uint       mSeed{0};
+        uint mSeed{0};
         PlotLayout mLayout{};
 
     public:
@@ -45,6 +45,6 @@ namespace more_dimensions
         std::unique_ptr<ChunkSource>
         _wrapStorageForVersionCompatibility(std::unique_ptr<ChunkSource> cs, ::StorageVersion ver) override;
         mce::Color getBrightnessDependentFogColor(mce::Color const& color, float brightness) const override;
-        short      getCloudHeight() const override;
+        short getCloudHeight() const override;
     };
 } // namespace more_dimensions

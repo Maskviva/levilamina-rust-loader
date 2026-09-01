@@ -140,16 +140,16 @@ namespace levi_rs::bridge
 
             auto const& pos = actor.getPosition();
             return std::string{"{\"eventId\":\"PlayerAttackTargetEvent\""}
-                 + ",\"x\":" + snbtNum(static_cast<int>(pos.x))
-                 + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
-                 + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
-                 + ",\"dim\":" + snbtNum(static_cast<int>(actor.getDimensionId()))
-                 + ",\"targetIsPlayer\":" + (isPlayerTarget ? "1" : "0")
-                 + ",\"target\":\"" + snbtEscape(targetName)
-                 + "\",\"cause\":" + snbtNum(cause)
-                 + ",\"_player\":{\"name\":\"" + snbtEscape(self.getRealName())
-                 + "\",\"xuid\":\"" + snbtEscape(self.getXuid())
-                 + "\",\"uuid\":\"" + snbtEscape(self.getUuid().asString()) + "\"}}";
+                + ",\"x\":" + snbtNum(static_cast<int>(pos.x))
+                + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
+                + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
+                + ",\"dim\":" + snbtNum(static_cast<int>(actor.getDimensionId()))
+                + ",\"targetIsPlayer\":" + (isPlayerTarget ? "1" : "0")
+                + ",\"target\":\"" + snbtEscape(targetName)
+                + "\",\"cause\":" + snbtNum(cause)
+                + ",\"_player\":{\"name\":\"" + snbtEscape(self.getRealName())
+                + "\",\"xuid\":\"" + snbtEscape(self.getXuid())
+                + "\",\"uuid\":\"" + snbtEscape(self.getUuid().asString()) + "\"}}";
         }
 
         /**
@@ -220,7 +220,7 @@ namespace levi_rs::bridge
                 int r2 = PlayerAttackHook2::hook();
                 int r3 = PlayerAttackHook3::hook();
                 auto& log = bridgeLogger();
-                log.info(
+                log.debug(
                     "[AttackEvent] 安装 detour：attack/2={} (code={})，attack/3={} (code={})",
                     r2 == 0 ? "成功" : "失败", r2,
                     r3 == 0 ? "成功" : "失败", r3
@@ -232,7 +232,8 @@ namespace levi_rs::bridge
                         "在地皮上分不开，pvp 旗标拦不住人。最常见原因是本 loader 链接的 "
                         "BDS/LeviLamina 版本和服务器实际跑的不一致。");
                 }
-            }};
+            }
+        };
         HookEventDef& attackDef() { return gDef; }
 
         HookEventRegistrar gReg{gDef};

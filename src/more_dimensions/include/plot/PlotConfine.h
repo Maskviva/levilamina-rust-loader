@@ -52,9 +52,9 @@ namespace more_dimensions
     enum MergeBit : uint32_t
     {
         kMergeNorth = 1u << 0,
-        kMergeEast  = 1u << 1,
+        kMergeEast = 1u << 1,
         kMergeSouth = 1u << 2,
-        kMergeWest  = 1u << 3,
+        kMergeWest = 1u << 3,
     };
 
     /**

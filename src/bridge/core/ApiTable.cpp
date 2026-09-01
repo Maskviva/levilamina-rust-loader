@@ -18,12 +18,12 @@
 namespace more_dimensions::bridge
 {
     int32_t api_md_add_simple_dimension(LeviRsStr name, uint32_t seed, int32_t generatorTypeInt);
-    void    api_md_set_dimension_rule(int32_t dimension, int32_t rule, bool allow);
-    bool    api_md_get_dimension_rule(int32_t dimension, int32_t rule, bool* outAllow);
-    void    api_md_clear_dimension_rules(int32_t dimension);
+    void api_md_set_dimension_rule(int32_t dimension, int32_t rule, bool allow);
+    bool api_md_get_dimension_rule(int32_t dimension, int32_t rule, bool* outAllow);
+    void api_md_clear_dimension_rules(int32_t dimension);
     int32_t api_md_get_dimension_id(LeviRsStr name);
     int32_t api_md_add_plot_dimension(LeviRsStr name, uint32_t seed, LeviRsStr layoutSnbt);
-    bool    api_md_is_available();
+    bool api_md_is_available();
 } // namespace more_dimensions::bridge
 #endif
 
@@ -311,7 +311,7 @@ namespace levi_rs
             bridge::commandsOnRustModGone(mod);
             bridge::formsOnRustModGone(mod);
             bridge::kvdbOnRustModGone(mod);
-            bridge::hookEventDropMod(mod);       // detach bridge-hook event subscribers
+            bridge::hookEventDropMod(mod); // detach bridge-hook event subscribers
             bridge::packetHooksOnRustModGone(mod); // detach raw packet interceptors
             // 没有 owner 的遗留槽位，靠模块地址反查恢复归属 —— 见 Money.cpp。
             // 客户端构建里是空实现。

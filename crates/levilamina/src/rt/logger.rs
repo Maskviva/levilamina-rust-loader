@@ -20,7 +20,7 @@ impl Logger {
     }
     pub fn log(&self, level: LogLevel, msg: &str) {
         let rt = rt();
-        unsafe { (rt.api.log)(rt.handle, level as i32, s(msg)) }
+        unsafe { (rt.api.log)(rt.handle(), level as i32, s(msg)) }
     }
     pub fn info(&self, msg: &str) {
         self.log(LogLevel::Info, msg);

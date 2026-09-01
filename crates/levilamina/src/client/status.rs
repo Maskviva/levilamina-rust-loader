@@ -40,7 +40,7 @@ impl Client {
         F: FnOnce() + Send + 'static,
     {
         let boxed: *mut TaskOnce = Box::into_raw(Box::new(Some(Box::new(f))));
-        let id = unsafe { (rt().api.schedule_for)(rt().handle, task_trampoline, boxed.cast()) };
+        let id = unsafe { (rt().api.schedule_for)(rt().handle(), task_trampoline, boxed.cast()) };
         if id == 0 {
             unsafe { drop(Box::from_raw(boxed)) };
         }
@@ -54,7 +54,7 @@ impl Client {
         let boxed: *mut TaskOnce = Box::into_raw(Box::new(Some(Box::new(f))));
         let id = unsafe {
             (rt().api.schedule_after_for)(
-                rt().handle,
+                rt().handle(),
                 task_trampoline,
                 boxed.cast(),
                 delay.as_millis() as u64,
@@ -70,11 +70,11 @@ impl Client {
         if id.0 == 0 {
             return false;
         }
-        unsafe { (rt().api.schedule_cancel)(rt().handle, id.0) }
+        unsafe { (rt().api.schedule_cancel)(rt().handle(), id.0) }
     }
 
     pub fn pending_tasks(&self) -> u32 {
-        unsafe { (rt().api.schedule_pending_count)(rt().handle) }
+        unsafe { (rt().api.schedule_pending_count)(rt().handle()) }
     }
 
     pub fn current_tick(&self) -> u64 {

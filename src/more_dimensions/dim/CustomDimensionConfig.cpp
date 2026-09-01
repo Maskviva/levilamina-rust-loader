@@ -48,31 +48,31 @@ namespace more_dimensions::CustomDimensionConfig
             try
             {
                 if (ll::config::loadConfig(
-                        getConfig(),
-                        dimensionConfigPath,
-                        [](Config& config, nlohmann::ordered_json& data)
+                    getConfig(),
+                    dimensionConfigPath,
+                    [](Config& config, nlohmann::ordered_json& data)
+                    {
+                        if (data["version"] < config.version)
                         {
-                            if (data["version"] < config.version)
+                            for (auto& item : data["dimensionList"])
                             {
-                                for (auto& item : data["dimensionList"])
+                                auto decompressed = utils::decompress(ll::base64_utils::decode(item["base64Nbt"]));
+                                auto nbtTag = CompoundTag::fromBinaryNbt(decompressed);
+                                if (!nbtTag)
                                 {
-                                    auto decompressed = utils::decompress(ll::base64_utils::decode(item["base64Nbt"]));
-                                    auto nbtTag = CompoundTag::fromBinaryNbt(decompressed);
-                                    if (!nbtTag)
-                                    {
-                                        continue;
-                                    }
-                                    item["sNbt"] = nbtTag->toSnbt(SnbtFormat::Minimize);
-                                    item.erase("base64Nbt");
+                                    continue;
                                 }
+                                item["sNbt"] = nbtTag->toSnbt(SnbtFormat::Minimize);
+                                item.erase("base64Nbt");
                             }
-                            data.erase("version");
-                            auto patch = ll::reflection::serialize<nlohmann::ordered_json>(config);
-                            patch.value().merge_patch(data);
-                            data = *std::move(patch);
-                            return true;
                         }
-                    ))
+                        data.erase("version");
+                        auto patch = ll::reflection::serialize<nlohmann::ordered_json>(config);
+                        patch.value().merge_patch(data);
+                        data = *std::move(patch);
+                        return true;
+                    }
+                ))
                 {
                     return true;
                 }
@@ -96,7 +96,7 @@ namespace more_dimensions::CustomDimensionConfig
     {
         try
         {
-            printf("saveConfigFile::: %ls",dimensionConfigPath.c_str());
+            printf("saveConfigFile::: %ls", dimensionConfigPath.c_str());
             return ll::config::saveConfig(getConfig(), dimensionConfigPath);
         }
         catch (...)

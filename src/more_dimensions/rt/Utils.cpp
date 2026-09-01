@@ -6,7 +6,6 @@
 #include "ll/api/io/LoggerRegistry.h"
 
 #include "mc/world/level/dimension/Dimension.h"
-#include "mc/world/level/dimension/DimensionHeightRange.h"
 
 namespace more_dimensions::utils
 {
@@ -44,10 +43,6 @@ namespace more_dimensions
 
         if (actualMin == expectedMin && actualMax == expectedMax)
         {
-            heightLogger().info(
-                "{} 高度范围 {}..{}（{} 个子区块），与发给客户端的定义一致",
-                who, actualMin, actualMax, (actualMax - actualMin) / 16
-            );
             return;
         }
 

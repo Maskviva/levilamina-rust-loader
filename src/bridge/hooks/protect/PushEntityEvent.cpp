@@ -117,13 +117,13 @@ namespace levi_rs::bridge
             if (key.empty()) key = p.getRealName(); // offline-mode servers
 
             auto const& tpos = target->getPosition();
-            int const   x    = static_cast<int>(tpos.x);
-            int const   y    = static_cast<int>(tpos.y);
-            int const   z    = static_cast<int>(tpos.z);
-            int const   dim  = static_cast<int>(target->getDimensionId());
+            int const x = static_cast<int>(tpos.x);
+            int const y = static_cast<int>(tpos.y);
+            int const z = static_cast<int>(tpos.z);
+            int const dim = static_cast<int>(target->getDimensionId());
 
             long long const now = throttleNowMs();
-            bool            cached = false;
+            bool cached = false;
             if (throttleLookup(pushCache(), key, x, y, z, dim, now, cached))
             {
                 return cached ? true : origin(owner, other);
@@ -133,14 +133,14 @@ namespace levi_rs::bridge
             targetName = target->getTypeName();
 
             std::string snbt = "{\"eventId\":\"PlayerPushEntityEvent\""
-                               ",\"x\":" + snbtNum(x)
-                             + ",\"y\":" + snbtNum(y)
-                             + ",\"z\":" + snbtNum(z)
-                             + ",\"dim\":" + snbtNum(dim)
-                             + ",\"target\":\"" + snbtEscape(targetName)
-                             + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
-                             + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
-                             + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
+                ",\"x\":" + snbtNum(x)
+                + ",\"y\":" + snbtNum(y)
+                + ",\"z\":" + snbtNum(z)
+                + ",\"dim\":" + snbtNum(dim)
+                + ",\"target\":\"" + snbtEscape(targetName)
+                + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
+                + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
+                + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
 
             bool const cancelled = dispatchHookEventCancellable(def, snbt);
             throttleStore(pushCache(), key, x, y, z, dim, now, cancelled);

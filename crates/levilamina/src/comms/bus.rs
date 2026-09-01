@@ -32,7 +32,7 @@ impl Drop for Subscription {
         }
         let rt = rt();
         unsafe {
-            if (rt.api.bus_unsubscribe)(rt.handle, self.id) {
+            if (rt.api.bus_unsubscribe)(rt.handle(), self.id) {
                 drop(Box::from_raw(self.cb));
             }
         }
@@ -59,7 +59,7 @@ unsafe extern "C" fn bus_trampoline(
 pub fn subscribe(topic: &str, f: impl FnMut(&str, &str) -> bool + 'static) -> Result<Subscription> {
     let boxed: *mut BusCallback = Box::into_raw(Box::new(Box::new(f) as BusCallback));
     let rt = rt();
-    let id = unsafe { (rt.api.bus_subscribe)(rt.handle, s(topic), bus_trampoline, boxed.cast()) };
+    let id = unsafe { (rt.api.bus_subscribe)(rt.handle(), s(topic), bus_trampoline, boxed.cast()) };
     if id == 0 {
         unsafe { drop(Box::from_raw(boxed)) };
         return Err(Error(format!("bus: subscribe to '{topic}' refused")));
@@ -69,14 +69,14 @@ pub fn subscribe(topic: &str, f: impl FnMut(&str, &str) -> bool + 'static) -> Re
 
 pub fn publish(topic: &str, payload: &str) -> u32 {
     let rt = rt();
-    unsafe { (rt.api.bus_publish)(rt.handle, s(topic), s(payload)) }
+    unsafe { (rt.api.bus_publish)(rt.handle(), s(topic), s(payload)) }
 }
 
 pub fn publish_vetoable(topic: &str, payload: &str) -> Vetoable {
     let mut delivered: u32 = 0;
     let rt = rt();
     let refused =
-        unsafe { (rt.api.bus_publish_vetoable)(rt.handle, s(topic), s(payload), &mut delivered) };
+        unsafe { (rt.api.bus_publish_vetoable)(rt.handle(), s(topic), s(payload), &mut delivered) };
     Vetoable { refused, delivered }
 }
 

@@ -1,6 +1,6 @@
 use super::*;
 use crate::entity::{Actor, Entity};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::{rt, sys};
 
 impl Player {
@@ -95,6 +95,12 @@ impl Player {
 
     pub fn is_operator(&self) -> Result<bool> {
         self.get_num(sys::PPROP_IS_OPERATOR).map(|v| v != 0.0)
+    }
+
+    pub fn permission_level(&self) -> Result<PlayerPermission> {
+        let raw = self.get_num(sys::PPROP_PERMISSION_LEVEL)? as i32;
+        PlayerPermission::from_i32(raw)
+            .ok_or_else(|| Error(format!("unknown PlayerPermissionLevel {raw}")))
     }
 
     pub fn can_use_operator_blocks(&self) -> Result<bool> {

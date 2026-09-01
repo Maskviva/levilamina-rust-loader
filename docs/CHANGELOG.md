@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+### Fixed
+
+- **`set_ability` no longer knocks the player down to `PlayerPermissionLevel::Custom`.**
+
+  `LayeredAbilities::setAbility` is the engine's "switch to custom permissions"
+  path — the same one the per-player permission checkboxes drive — so writing a
+  single ability slot moved the player onto `AbilitiesLayer::CustomCache` and
+  reported `Custom` from then on. The `UpdateAbilitiesPacket` that follows
+  carries `mPlayerPermissions` right beside the ability layers
+  (`SerializedAbilitiesData`), so the client was told it is no longer an
+  operator and started behaving like a visitor: **no block outline on ordinary
+  blocks** (interactables such as repeaters and containers kept theirs), no
+  attack, no local placement prediction. Nothing changed server-side, so
+  commands and server-driven actions kept working — which is what made it so
+  hard to recognise. It also persists: `PermissionsHandler::addSaveData` writes
+  the level into the player's save data, so relogging did not undo it.
+
+  `bridge/actors/Players.cpp` now snapshots the level before the write and puts
+  it back if the write moved it. Both dispatch paths (bool via
+  `Player::setAbility`, float via `LayeredAbilities::setAbility`) are covered.
+  A caller that genuinely wants `Custom` asks for it explicitly through the new
+  action below.
+
+### Added (additive enum constant — ABI stays v5; no new function-pointer slots)
+
+- **`LEVI_RS_PACT_SET_PERMISSION_LEVEL = 26`** — `a =
+  PlayerPermissionLevel` (0 Visitor / 1 Member / 2 Operator / 3 Custom), via
+  `LayeredAbilities::setPlayerPermissions` plus an `UpdateAbilitiesPacket`.
+
+  The read side (`LEVI_RS_PPROP_PERMISSION_LEVEL = 30`) has existed since v5 but
+  was never surfaced in the Rust crate. Both are now exposed as
+  `Player::permission_level()` / `Player::set_permission_level()` with a
+  `PlayerPermission` enum. Note this is a **different field** from
+  `is_operator()`, which reads `CommandPermissionLevel`: a player can be an op
+  and still be a `Visitor`.
+
 ### Added
 
 - **`PlayerUseItemOnEvent`** (`bridge/hooks/UseItemOnEvent.cpp`) — a

@@ -72,3 +72,4 @@ pub const PACT_RESEND_ALL_CHUNKS: i32 = 22;
 pub const PACT_OPEN_INVENTORY: i32 = 23;
 pub const PACT_SIDEBAR_SET: i32 = 24;
 pub const PACT_SIDEBAR_CLEAR: i32 = 25;
+pub const PACT_SET_PERMISSION_LEVEL: i32 = 26;

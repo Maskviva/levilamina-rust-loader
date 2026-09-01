@@ -25,6 +25,7 @@
 
 #include "mc/deps/core/math/Vec3.h"
 #include "mc/deps/nbt/CompoundTag.h"
+#include "mc/deps/json/Value.h"
 #include "mc/platform/UUID.h"
 #include "mc/server/ServerLevel.h"
 #include "mc/server/commands/CommandOrigin.h"
@@ -36,8 +37,18 @@
 #include "mc/server/commands/CommandRawText.h"
 #include "mc/server/commands/CommandSelector.h"
 #include "mc/server/commands/CommandSelectorResults.h"
+#include "mc/server/commands/CommandFilePath.h"
+#include "mc/server/commands/CommandItem.h"
+#include "mc/server/commands/CommandMessage.h"
+#include "mc/server/commands/GenerateMessageResult.h"
+#include "mc/server/commands/RelativeFloat.h"
 #include "mc/server/commands/ServerCommandOrigin.h"
+#include "mc/world/effect/MobEffect.h"
+#include "mc/world/item/Item.h"
+#include "mc/world/item/registry/ItemRegistryManager.h"
+#include "mc/world/item/registry/ItemRegistryRef.h"
 #include "mc/world/actor/Actor.h"
+#include "mc/world/actor/ActorDefinitionIdentifier.h"
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/Level.h"
@@ -48,34 +59,36 @@ namespace levi_rs::bridge
 {
     bool api_execute_command(LeviRsStr cmd, void* ctx, LeviRsCmdOutputSink sink)
     {
-        auto* level = levelReady();
-        if (!level) return false;
+        LEVI_RS_API_GUARD_BEGIN
+            auto* level = levelReady();
+            if (!level) return false;
 
-        ServerCommandOrigin origin{
-            "Server",
-            static_cast<ServerLevel&>(*level),
-            CommandPermissionLevel::Owner,
-            0 // overworld; command selectors/positions can address other dimensions
-        };
-        auto output = ll::command::CommandRegistrar::getServerInstance().executeCommand(cmd, origin);
-        if (sink)
-        {
-            // NOTE: verify against your LL version — CommandOutput exposes
-            // mSuccessCount; combined text is easiest via the localized dump.
-            std::string text;
-            for (auto const& msg : output.mMessages)
+            ServerCommandOrigin origin{
+                "Server",
+                static_cast<ServerLevel&>(*level),
+                CommandPermissionLevel::Owner,
+                0 // overworld; command selectors/positions can address other dimensions
+            };
+            auto output = ll::command::CommandRegistrar::getServerInstance().executeCommand(cmd, origin);
+            if (sink)
             {
-                if (!text.empty()) text += '\n';
-                text += msg.mMessageId;
-                for (auto const& param : msg.mParams)
+                // NOTE: verify against your LL version — CommandOutput exposes
+                // mSuccessCount; combined text is easiest via the localized dump.
+                std::string text;
+                for (auto const& msg : output.mMessages)
                 {
-                    text += ' ';
-                    text += param;
+                    if (!text.empty()) text += '\n';
+                    text += msg.mMessageId;
+                    for (auto const& param : msg.mParams)
+                    {
+                        text += ' ';
+                        text += param;
+                    }
                 }
+                sink(ctx, output.mSuccessCount > 0, text);
             }
-            sink(ctx, output.mSuccessCount > 0, text);
-        }
-        return true;
+            return true;
+        LEVI_RS_API_GUARD_END
     }
 
     namespace
@@ -108,10 +121,19 @@ namespace levi_rs::bridge
             return binding;
         }
 
+        std::string originIdentity(CommandOrigin const& origin)
+        {
+            if (auto* entity = origin.getEntity(); entity && entity->isPlayer())
+            {
+                return static_cast<Player*>(entity)->getRealName();
+            }
+            return origin.getName();
+        }
+
         /** SNBT identity+position of a command origin: {name,type,dim,x,y,z}. */
         std::string originSnbt(CommandOrigin const& origin)
         {
-            std::string out = "{name:\"" + snbtEscape(origin.getName()) + "\"";
+            std::string out = "{name:\"" + snbtEscape(originIdentity(origin)) + "\"";
             out += ",type:" + snbtNum(static_cast<int>(origin.getOriginType()));
             if (auto* entity = origin.getEntity())
             {
@@ -134,65 +156,67 @@ namespace levi_rs::bridge
         void* user
     )
     {
-        auto* mod = asMod(modHandle);
-        if (!mod || !cb) return false;
-        std::string cmdName{name};
+        LEVI_RS_API_GUARD_BEGIN
+            auto* mod = asMod(modHandle);
+            if (!mod || !cb) return false;
+            std::string cmdName{name};
 
-        bool fresh = false;
-        auto binding = claimBinding(cmdName, mod, cb, user, fresh);
-        if (!binding) return false;
-        if (!fresh) return true; // command itself already registered with Bedrock
+            bool fresh = false;
+            auto binding = claimBinding(cmdName, mod, cb, user, fresh);
+            if (!binding) return false;
+            if (!fresh) return true; // command itself already registered with Bedrock
 
-        try
-        {
-            using namespace ll::command;
-            // The runtime overload is deliberately owned by the loader
-            // (NativeMod::current()), not the rust mod — Bedrock commands cannot
-            // be unregistered, so the executor must outlive any rust mod. Muting
-            // via the binding table keeps behaviour predictable across unloads.
-            auto& handle = CommandRegistrar::getServerInstance().getOrCreateCommand(
-                cmdName,
-                std::string{description},
-                static_cast<CommandPermissionLevel>(std::clamp<int32_t>(permission, 0, 4))
-            );
-            handle.runtimeOverload().optional("args", ParamKind::RawText).execute(
-                [binding, cmdName](CommandOrigin const& origin, CommandOutput& output, RuntimeCommand const& rt)
-                {
-                    CommandBinding local;
+            try
+            {
+                using namespace ll::command;
+                // The runtime overload is deliberately owned by the loader
+                // (NativeMod::current()), not the rust mod — Bedrock commands cannot
+                // be unregistered, so the executor must outlive any rust mod. Muting
+                // via the binding table keeps behaviour predictable across unloads.
+                auto& handle = CommandRegistrar::getServerInstance().getOrCreateCommand(
+                    cmdName,
+                    std::string{description},
+                    static_cast<CommandPermissionLevel>(std::clamp<int32_t>(permission, 0, 4))
+                );
+                handle.runtimeOverload().optional("args", ParamKind::RawText).execute(
+                    [binding, cmdName](CommandOrigin const& origin, CommandOutput& output, RuntimeCommand const& rt)
                     {
-                        std::lock_guard lock(gCmdMutex);
-                        local = *binding;
+                        CommandBinding local;
+                        {
+                            std::lock_guard lock(gCmdMutex);
+                            local = *binding;
+                        }
+                        if (!local.mod || local.mod->commandsMuted || !local.cb)
+                        {
+                            output.error("command '" + cmdName + "' is not available (mod disabled)");
+                            return;
+                        }
+                        std::string args;
+                        if (auto const& p = rt["args"]; p.hold(ParamKind::RawText))
+                        {
+                            args = p.get<ParamKind::RawText>().mText;
+                        }
+                        std::string originName = originIdentity(origin);
+                        local.cb(
+                            local.user,
+                            args,
+                            originName,
+                            &output,
+                            [](void* c, LeviRsStr s) { static_cast<CommandOutput*>(c)->success(std::string{s}); },
+                            [](void* c, LeviRsStr s) { static_cast<CommandOutput*>(c)->error(std::string{s}); }
+                        );
                     }
-                    if (!local.mod || local.mod->commandsMuted || !local.cb)
-                    {
-                        output.error("command '" + cmdName + "' is not available (mod disabled)");
-                        return;
-                    }
-                    std::string args;
-                    if (auto const& p = rt["args"]; p.hold(ParamKind::RawText))
-                    {
-                        args = p.get<ParamKind::RawText>().mText;
-                    }
-                    std::string originName = origin.getName();
-                    local.cb(
-                        local.user,
-                        args,
-                        originName,
-                        &output,
-                        [](void* c, LeviRsStr s) { static_cast<CommandOutput*>(c)->success(std::string{s}); },
-                        [](void* c, LeviRsStr s) { static_cast<CommandOutput*>(c)->error(std::string{s}); }
-                    );
-                }
-            );
-            return true;
-        }
-        catch (...)
-        {
-            ll::error_utils::printCurrentException(mod->getLogger());
-            std::lock_guard lock(gCmdMutex);
-            gCommands.erase(cmdName);
-            return false;
-        }
+                );
+                return true;
+            }
+            catch (...)
+            {
+                ll::error_utils::printCurrentException(mod->getLogger());
+                std::lock_guard lock(gCmdMutex);
+                gCommands.erase(cmdName);
+                return false;
+            }
+        LEVI_RS_API_GUARD_END
     }
 
     // ───────────────────── parameterized commands (ABI v5 §H) ─────────────────────
@@ -333,10 +357,61 @@ namespace levi_rs::bridge
                         "d}");
                 }
                 break;
+            case K::Message:
+                if (p.hold(K::Message))
+                {
+                    auto res = p.get<K::Message>().generateMessage(origin, 1024);
+                    if (res.mIsValid) key("\"" + snbtEscape(res.mMessage.get()) + "\"");
+                }
+                break;
+            case K::RelativeFloat:
+                if (p.hold(K::RelativeFloat))
+                {
+                    auto const& rf = p.get<K::RelativeFloat>();
+                    key("{offset:" + snbtNum(rf.mOffset) + "f,relative:" +
+                        (rf.mRelative ? "1b" : "0b") + "}");
+                }
+                break;
+            case K::FilePath:
+                if (p.hold(K::FilePath))
+                    key("\"" + snbtEscape(p.get<K::FilePath>().mText.get()) + "\"");
+                break;
+            case K::JsonValue:
+                if (p.hold(K::JsonValue))
+                    key("\"" + snbtEscape(p.get<K::JsonValue>().toStyledString()) + "\"");
+                break;
+            case K::Effect:
+                if (auto const* eff = p.hold(K::Effect) ? p.get<K::Effect>() : nullptr)
+                    key("{id:" + snbtNum(static_cast<int>(eff->mId)) +
+                        ",name:\"" + snbtEscape(eff->mResourceName.get()) + "\"}");
+                break;
+            case K::ActorType:
+                if (auto const* ad = p.hold(K::ActorType) ? p.get<K::ActorType>() : nullptr)
+                    key("\"" + snbtEscape(ad->mFullName.get()) + "\"");
+                break;
+            case K::Item:
+                if (p.hold(K::Item))
+                {
+                    auto const& ci = p.get<K::Item>();
+                    std::string name;
+                    if (auto it = ItemRegistryManager::getItemRegistry()
+                        .getItem(static_cast<short>(ci.mId)))
+                        name = it->getFullItemName();
+                    key("{id:" + snbtNum(static_cast<int>(ci.mId)) +
+                        ",aux:" + snbtNum(static_cast<int>(ci.mVersion)) +
+                        ",name:\"" + snbtEscape(name) + "\"}");
+                }
+                break;
+            case K::Command:
+                if (p.hold(K::Command) && p.get<K::Command>()) key("1b");
+                break;
             default:
                 // Exotic holders (json/message/item/block_name/effect/actor_type/…)
                 // are declared and parsed by Bedrock but not serialized in v5;
                 // extend here (append-only semantics: adding fields is safe).
+                bridgeLogger().warn(
+                    "command param '{}': kind {} parsed by Bedrock but not serialized",
+                    decl.name, static_cast<int>(decl.kind));
                 break;
             }
         }
@@ -352,136 +427,138 @@ namespace levi_rs::bridge
         void* user
     )
     {
-        auto* mod = asMod(modHandle);
-        if (!mod || !cb) return false;
-        std::string cmdName{name};
+        LEVI_RS_API_GUARD_BEGIN
+            auto* mod = asMod(modHandle);
+            if (!mod || !cb) return false;
+            std::string cmdName{name};
 
-        // Decode {overloads:[[{name,kind,enum?,optional?}, …], …]} up front so a
-        // malformed declaration fails before anything is registered with Bedrock.
-        auto tag = CompoundTag::fromSnbt(std::string_view{overloadsSnbt});
-        if (!tag || !tag->contains("overloads") || !tag->at("overloads").is_array())
-        {
-            mod->getLogger().error("register_command_ex('{}'): bad overloads SNBT", cmdName);
-            return false;
-        }
-        std::vector<std::vector<ParamDecl>> overloads;
-        for (auto const& ovlPtr : tag->at("overloads").get<ListTag>())
-        {
-            if (!ovlPtr || ovlPtr->getId() != Tag::Type::List) continue;
-            std::vector<ParamDecl> decls;
-            for (auto const& paramPtr : static_cast<ListTag const&>(*ovlPtr))
+            // Decode {overloads:[[{name,kind,enum?,optional?}, …], …]} up front so a
+            // malformed declaration fails before anything is registered with Bedrock.
+            auto tag = CompoundTag::fromSnbt(std::string_view{overloadsSnbt});
+            if (!tag || !tag->contains("overloads") || !tag->at("overloads").is_array())
             {
-                if (!paramPtr || paramPtr->getId() != Tag::Type::Compound) continue;
-                auto const& po = static_cast<CompoundTag const&>(*paramPtr);
-                if (!po.contains("name") || !po.contains("kind")) continue;
-                ParamDecl d;
-                d.name = std::string_view{po.at("name")};
-                auto kind = kindFromString(std::string_view{po.at("kind")});
-                if (!kind)
-                {
-                    mod->getLogger().error(
-                        "register_command_ex('{}'): unknown param kind '{}'",
-                        cmdName,
-                        std::string_view{po.at("kind")}
-                    );
-                    return false;
-                }
-                d.kind = *kind;
-                if (po.contains("enum")) d.enumName = std::string_view{po.at("enum")};
-                if (po.contains("optional")) d.optional = static_cast<int64_t>(po.at("optional")) != 0;
-                decls.push_back(std::move(d));
+                mod->getLogger().error("register_command_ex('{}'): bad overloads SNBT", cmdName);
+                return false;
             }
-            overloads.push_back(std::move(decls));
-        }
-        if (overloads.empty())
-        {
-            mod->getLogger().error("register_command_ex('{}'): no overloads declared", cmdName);
-            return false;
-        }
-
-        bool fresh = false;
-        auto binding = claimBinding(cmdName, mod, cb, user, fresh);
-        if (!binding) return false;
-        if (!fresh) return true; // Bedrock side already exists (rebind after reload)
-
-        try
-        {
-            using namespace ll::command;
-            auto& handle = CommandRegistrar::getServerInstance().getOrCreateCommand(
-                cmdName,
-                std::string{description},
-                static_cast<CommandPermissionLevel>(std::clamp<int32_t>(permission, 0, 4))
-            );
-            for (size_t idx = 0; idx < overloads.size(); ++idx)
+            std::vector<std::vector<ParamDecl>> overloads;
+            for (auto const& ovlPtr : tag->at("overloads").get<ListTag>())
             {
-                auto const& decls = overloads[idx];
-                auto ovl = handle.runtimeOverload();
-                for (auto const& d : decls)
+                if (!ovlPtr || ovlPtr->getId() != Tag::Type::List) continue;
+                std::vector<ParamDecl> decls;
+                for (auto const& paramPtr : static_cast<ListTag const&>(*ovlPtr))
                 {
-                    bool isEnum = d.kind == ParamKind::Enum || d.kind == ParamKind::SoftEnum;
-                    // required()/optional() return RuntimeOverload& (a reference
-                    // to the same `ovl` object, meant for optional chaining) and
-                    // are marked [[nodiscard]]. RuntimeOverload has no operator=
-                    // (only a move ctor + dtor are declared), so we can't
-                    // reassign `ovl` here — explicitly discard via
-                    // static_cast<void> instead to silence C4834/-Wunused-result
-                    // without altering behavior.
-                    if (isEnum)
+                    if (!paramPtr || paramPtr->getId() != Tag::Type::Compound) continue;
+                    auto const& po = static_cast<CompoundTag const&>(*paramPtr);
+                    if (!po.contains("name") || !po.contains("kind")) continue;
+                    ParamDecl d;
+                    d.name = std::string_view{po.at("name")};
+                    auto kind = kindFromString(std::string_view{po.at("kind")});
+                    if (!kind)
                     {
-                        if (d.optional) static_cast<void>(ovl.optional(d.name, d.kind, d.enumName));
-                        else static_cast<void>(ovl.required(d.name, d.kind, d.enumName));
-                    }
-                    else
-                    {
-                        if (d.optional) static_cast<void>(ovl.optional(d.name, d.kind));
-                        else static_cast<void>(ovl.required(d.name, d.kind));
-                    }
-                }
-                ovl.execute(
-                    [binding, cmdName, decls, idx](
-                    CommandOrigin const& origin,
-                    CommandOutput& output,
-                    RuntimeCommand const& rt
-                )
-                    {
-                        CommandBinding local;
-                        {
-                            std::lock_guard lock(gCmdMutex);
-                            local = *binding;
-                        }
-                        if (!local.mod || local.mod->commandsMuted || !local.cb)
-                        {
-                            output.error("command '" + cmdName + "' is not available (mod disabled)");
-                            return;
-                        }
-                        std::string args = "{overload:" + snbtNum(idx) + ",args:{";
-                        for (auto const& d : decls)
-                        {
-                            appendParsedParam(args, d, rt, origin);
-                        }
-                        if (args.back() == ',') args.pop_back();
-                        args += "}}";
-                        std::string origin_ = originSnbt(origin);
-                        local.cb(
-                            local.user,
-                            args,
-                            origin_,
-                            &output,
-                            [](void* c, LeviRsStr s) { static_cast<CommandOutput*>(c)->success(std::string{s}); },
-                            [](void* c, LeviRsStr s) { static_cast<CommandOutput*>(c)->error(std::string{s}); }
+                        mod->getLogger().error(
+                            "register_command_ex('{}'): unknown param kind '{}'",
+                            cmdName,
+                            std::string_view{po.at("kind")}
                         );
+                        return false;
                     }
-                );
+                    d.kind = *kind;
+                    if (po.contains("enum")) d.enumName = std::string_view{po.at("enum")};
+                    if (po.contains("optional")) d.optional = static_cast<int64_t>(po.at("optional")) != 0;
+                    decls.push_back(std::move(d));
+                }
+                overloads.push_back(std::move(decls));
             }
-            return true;
-        }
-        catch (...)
-        {
-            ll::error_utils::printCurrentException(mod->getLogger());
-            std::lock_guard lock(gCmdMutex);
-            gCommands.erase(cmdName);
-            return false;
-        }
+            if (overloads.empty())
+            {
+                mod->getLogger().error("register_command_ex('{}'): no overloads declared", cmdName);
+                return false;
+            }
+
+            bool fresh = false;
+            auto binding = claimBinding(cmdName, mod, cb, user, fresh);
+            if (!binding) return false;
+            if (!fresh) return true; // Bedrock side already exists (rebind after reload)
+
+            try
+            {
+                using namespace ll::command;
+                auto& handle = CommandRegistrar::getServerInstance().getOrCreateCommand(
+                    cmdName,
+                    std::string{description},
+                    static_cast<CommandPermissionLevel>(std::clamp<int32_t>(permission, 0, 4))
+                );
+                for (size_t idx = 0; idx < overloads.size(); ++idx)
+                {
+                    auto const& decls = overloads[idx];
+                    auto ovl = handle.runtimeOverload();
+                    for (auto const& d : decls)
+                    {
+                        bool isEnum = d.kind == ParamKind::Enum || d.kind == ParamKind::SoftEnum;
+                        // required()/optional() return RuntimeOverload& (a reference
+                        // to the same `ovl` object, meant for optional chaining) and
+                        // are marked [[nodiscard]]. RuntimeOverload has no operator=
+                        // (only a move ctor + dtor are declared), so we can't
+                        // reassign `ovl` here — explicitly discard via
+                        // static_cast<void> instead to silence C4834/-Wunused-result
+                        // without altering behavior.
+                        if (isEnum)
+                        {
+                            if (d.optional) static_cast<void>(ovl.optional(d.name, d.kind, d.enumName));
+                            else static_cast<void>(ovl.required(d.name, d.kind, d.enumName));
+                        }
+                        else
+                        {
+                            if (d.optional) static_cast<void>(ovl.optional(d.name, d.kind));
+                            else static_cast<void>(ovl.required(d.name, d.kind));
+                        }
+                    }
+                    ovl.execute(
+                        [binding, cmdName, decls, idx](
+                        CommandOrigin const& origin,
+                        CommandOutput& output,
+                        RuntimeCommand const& rt
+                    )
+                        {
+                            CommandBinding local;
+                            {
+                                std::lock_guard lock(gCmdMutex);
+                                local = *binding;
+                            }
+                            if (!local.mod || local.mod->commandsMuted || !local.cb)
+                            {
+                                output.error("command '" + cmdName + "' is not available (mod disabled)");
+                                return;
+                            }
+                            std::string args = "{overload:" + snbtNum(idx) + ",args:{";
+                            for (auto const& d : decls)
+                            {
+                                appendParsedParam(args, d, rt, origin);
+                            }
+                            if (args.back() == ',') args.pop_back();
+                            args += "}}";
+                            std::string origin_ = originSnbt(origin);
+                            local.cb(
+                                local.user,
+                                args,
+                                origin_,
+                                &output,
+                                [](void* c, LeviRsStr s) { static_cast<CommandOutput*>(c)->success(std::string{s}); },
+                                [](void* c, LeviRsStr s) { static_cast<CommandOutput*>(c)->error(std::string{s}); }
+                            );
+                        }
+                    );
+                }
+                return true;
+            }
+            catch (...)
+            {
+                ll::error_utils::printCurrentException(mod->getLogger());
+                std::lock_guard lock(gCmdMutex);
+                gCommands.erase(cmdName);
+                return false;
+            }
+        LEVI_RS_API_GUARD_END
     }
 
     namespace
@@ -503,77 +580,89 @@ namespace levi_rs::bridge
 
     bool api_register_command_enum(LeviRsStr name, LeviRsStr valuesSnbt)
     {
-        // {values:[["name",1L], …]} — pairs of (display, index).
-        auto tag = CompoundTag::fromSnbt(std::string_view{valuesSnbt});
-        if (!tag || !tag->contains("values") || !tag->at("values").is_array()) return false;
-        std::vector<std::pair<std::string, uint64_t>> values;
-        for (auto const& p : tag->at("values").get<ListTag>())
-        {
-            if (!p || p->getId() != Tag::Type::List) continue;
-            auto const& pair = static_cast<ListTag const&>(*p);
-            if (pair.size() < 1) continue;
-            auto const& namePtr = pair[0];
-            if (!namePtr || namePtr->getId() != Tag::Type::String) continue;
-            uint64_t idx = values.size();
-            if (pair.size() >= 2 && pair[1] && pair[1]->getId() == Tag::Type::Int64)
+        LEVI_RS_API_GUARD_BEGIN
+            // {values:[["name",1L], …]} — pairs of (display, index).
+            auto tag = CompoundTag::fromSnbt(std::string_view{valuesSnbt});
+            if (!tag || !tag->contains("values") || !tag->at("values").is_array()) return false;
+            std::vector<std::pair<std::string, uint64_t>> values;
+            for (auto const& p : tag->at("values").get<ListTag>())
             {
-                idx = static_cast<uint64_t>(static_cast<Int64Tag const&>(*pair[1]).data);
+                if (!p || p->getId() != Tag::Type::List) continue;
+                auto const& pair = static_cast<ListTag const&>(*p);
+                if (pair.size() < 1) continue;
+                auto const& namePtr = pair[0];
+                if (!namePtr || namePtr->getId() != Tag::Type::String) continue;
+                uint64_t idx = values.size();
+                if (pair.size() >= 2 && pair[1] && pair[1]->getId() == Tag::Type::Int64)
+                {
+                    idx = static_cast<uint64_t>(static_cast<Int64Tag const&>(*pair[1]).data);
+                }
+                values.emplace_back(std::string{
+                                        static_cast<std::string const&>(static_cast<StringTag const&>(*namePtr))
+                                    },
+                                    idx);
             }
-            values.emplace_back(std::string{static_cast<std::string const&>(static_cast<StringTag const&>(*namePtr))},
-                                idx);
-        }
-        if (values.empty()) return false;
-        try
-        {
-            return ll::command::CommandRegistrar::getServerInstance().tryRegisterRuntimeEnum(
-                std::string{name},
-                std::move(values)
-            );
-        }
-        catch (...)
-        {
-            return false;
-        }
+            if (values.empty()) return false;
+            try
+            {
+                return ll::command::CommandRegistrar::getServerInstance().tryRegisterRuntimeEnum(
+                    std::string{name},
+                    std::move(values)
+                );
+            }
+            catch (...)
+            {
+                // W11: the caller only sees `false`; the reason goes to the log.
+                ll::error_utils::printCurrentException(bridgeLogger());
+                return false;
+            }
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_register_command_soft_enum(LeviRsStr name, LeviRsStr valuesSnbt)
     {
-        auto values = decodeStringValues(valuesSnbt);
-        if (!values) return false;
-        try
-        {
-            return ll::command::CommandRegistrar::getServerInstance().tryRegisterSoftEnum(
-                std::string{name}, std::move(*values));
-        }
-        catch (...)
-        {
-            return false;
-        }
+        LEVI_RS_API_GUARD_BEGIN
+            auto values = decodeStringValues(valuesSnbt);
+            if (!values) return false;
+            try
+            {
+                return ll::command::CommandRegistrar::getServerInstance().tryRegisterSoftEnum(
+                    std::string{name}, std::move(*values));
+            }
+            catch (...)
+            {
+                // W11: the caller only sees `false`; the reason goes to the log.
+                ll::error_utils::printCurrentException(bridgeLogger());
+                return false;
+            }
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_update_command_soft_enum(LeviRsStr name, int32_t op, LeviRsStr valuesSnbt)
     {
-        auto values = decodeStringValues(valuesSnbt);
-        if (!values) return false;
-        try
-        {
-            auto& reg = ll::command::CommandRegistrar::getServerInstance();
-            switch (op)
+        LEVI_RS_API_GUARD_BEGIN
+            auto values = decodeStringValues(valuesSnbt);
+            if (!values) return false;
+            try
             {
-            case 0:
-                return reg.setSoftEnumValues(std::string{name}, std::move(*values));
-            case 1:
-                return reg.addSoftEnumValues(std::string{name}, std::move(*values));
-            case 2:
-                return reg.removeSoftEnumValues(std::string{name}, std::move(*values));
-            default:
+                auto& reg = ll::command::CommandRegistrar::getServerInstance();
+                switch (op)
+                {
+                case 0:
+                    return reg.setSoftEnumValues(std::string{name}, std::move(*values));
+                case 1:
+                    return reg.addSoftEnumValues(std::string{name}, std::move(*values));
+                case 2:
+                    return reg.removeSoftEnumValues(std::string{name}, std::move(*values));
+                default:
+                    return false;
+                }
+            }
+            catch (...)
+            {
                 return false;
             }
-        }
-        catch (...)
-        {
-            return false;
-        }
+        LEVI_RS_API_GUARD_END
     }
 
     void commandsOnRustModGone(RustMod* mod)

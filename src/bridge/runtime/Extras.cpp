@@ -47,48 +47,50 @@ namespace levi_rs::bridge
                                 int32_t maxX, int32_t maxZ,
                                 LeviRsStr biome)
     {
-        BlockSource* bs = blockSourceOf(dim);
-        if (!bs) return 0;
+        LEVI_RS_API_GUARD_BEGIN
+            BlockSource* bs = blockSourceOf(dim);
+            if (!bs) return 0;
 
-        const std::string name = std::string(biome);
-        if (name.empty()) return 0;
+            const std::string name = std::string(biome);
+            if (name.empty()) return 0;
 
-        auto* registry = levelReady() ? &levelReady()->getBiomeRegistry() : nullptr;
-        if (!registry) return 0;
-        Biome const* target = registry->lookupByName(name);
-        // 名字不认识就**一列都不设**，而不是设成默认群系。悄悄换成平原比
-        // 报"没设上"糟得多：服主看到地形变了，但不是他要的那个。
-        if (!target) return 0;
+            auto* registry = levelReady() ? &levelReady()->getBiomeRegistry() : nullptr;
+            if (!registry) return 0;
+            Biome const* target = registry->lookupByName(name);
+            // 名字不认识就**一列都不设**，而不是设成默认群系。悄悄换成平原比
+            // 报"没设上"糟得多：服主看到地形变了，但不是他要的那个。
+            if (!target) return 0;
 
-        if (minX > maxX) std::swap(minX, maxX);
-        if (minZ > maxZ) std::swap(minZ, maxZ);
+            if (minX > maxX) std::swap(minX, maxX);
+            if (minZ > maxZ) std::swap(minZ, maxZ);
 
-        int32_t done = 0;
-        for (int32_t x = minX; x <= maxX; ++x)
-        {
-            for (int32_t z = minZ; z <= maxZ; ++z)
+            int32_t done = 0;
+            for (int32_t x = minX; x <= maxX; ++x)
             {
-                // 逐列拿区块。**没加载的跳过，不强加载** —— 强加载一片大区域
-                // 会让主线程停住几秒，而调用方通常在玩家附近操作，
-                // 那些区块本来就是加载的。
-                LevelChunk* chunk = bs->getChunkAt(BlockPos(x, 0, z));
-                if (!chunk) continue;
-                // 用 `setBiome2d`，不是 `setBiome3d`：契约（见 LeviRsAbi.h /
-                // api.rs / blocks.rs）写的是「按整列设」。`setBiome2d` 内部走
-                // `_setBiome(..., fillYDimension=true)`，把整列 y 都填成同一个
-                // 群系；`setBiome3d` 只写 `pos.y` 那一个采样，拿它做「整列」
-                // 会只改到列底那一格。
-                //
-                // 位置用 `ChunkBlockPos::from2D(x, z)`：列坐标本就不需要 y，它
-                // 造的是一个 y=0 的 `ChunkBlockPos`。顺带它避开了直接写
-                // `ChunkBlockPos(x, 0, z)` 编不过的坑 —— 中间那个是
-                // `ChunkLocalHeight`，不能从 `int` 隐式构造（就是这次的报错）。
-                chunk->setBiome2d(*target,
-                                  ChunkBlockPos::from2D(static_cast<uint8_t>(x & 15),
-                                                        static_cast<uint8_t>(z & 15)));
-                ++done;
+                for (int32_t z = minZ; z <= maxZ; ++z)
+                {
+                    // 逐列拿区块。**没加载的跳过，不强加载** —— 强加载一片大区域
+                    // 会让主线程停住几秒，而调用方通常在玩家附近操作，
+                    // 那些区块本来就是加载的。
+                    LevelChunk* chunk = bs->getChunkAt(BlockPos(x, 0, z));
+                    if (!chunk) continue;
+                    // 用 `setBiome2d`，不是 `setBiome3d`：契约（见 LeviRsAbi.h /
+                    // api.rs / blocks.rs）写的是「按整列设」。`setBiome2d` 内部走
+                    // `_setBiome(..., fillYDimension=true)`，把整列 y 都填成同一个
+                    // 群系；`setBiome3d` 只写 `pos.y` 那一个采样，拿它做「整列」
+                    // 会只改到列底那一格。
+                    //
+                    // 位置用 `ChunkBlockPos::from2D(x, z)`：列坐标本就不需要 y，它
+                    // 造的是一个 y=0 的 `ChunkBlockPos`。顺带它避开了直接写
+                    // `ChunkBlockPos(x, 0, z)` 编不过的坑 —— 中间那个是
+                    // `ChunkLocalHeight`，不能从 `int` 隐式构造（就是这次的报错）。
+                    chunk->setBiome2d(*target,
+                                      ChunkBlockPos::from2D(static_cast<uint8_t>(x & 15),
+                                                            static_cast<uint8_t>(z & 15)));
+                    ++done;
+                }
             }
-        }
-        return done;
+            return done;
+        LEVI_RS_API_GUARD_END
     }
 } // namespace levi_rs::bridge

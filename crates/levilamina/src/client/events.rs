@@ -27,7 +27,7 @@ impl Client {
         let cb: *mut EventCallback = Box::into_raw(Box::new(Box::new(callback)));
         let raw = unsafe {
             (rt().api.subscribe_event)(
-                rt().handle,
+                rt().handle(),
                 s(event_id),
                 priority as i32,
                 event_trampoline,

@@ -77,7 +77,8 @@ namespace more_dimensions
         void* endcityAddress()
         {
             static void* p =
-                "??$addStructureFeature@VEndCityFeature@@AEAVDimension@@AEAI@StructureFeatureRegistry@@QEAAAEAVEndCityFeature@@AEAVDimension@@AEAI@Z"_sym.resolve(true);
+                "??$addStructureFeature@VEndCityFeature@@AEAVDimension@@AEAI@StructureFeatureRegistry@@QEAAAEAVEndCityFeature@@AEAVDimension@@AEAI@Z"_sym
+                .resolve(true);
             return p;
         }
 
@@ -89,7 +90,7 @@ namespace more_dimensions
             if (!addr)
             {
                 logger().warn("符号 OverworldDimensionAnon::addStructureFeatures 未找到，"
-                              "自定义主世界维度将不生成结构");
+                    "自定义主世界维度将不生成结构");
                 return;
             }
             ll::memory::addressCall<void*, StructureFeatureRegistry&, uint, bool, BaseGameVersion const&>(
@@ -106,7 +107,7 @@ namespace more_dimensions
             if (!addr)
             {
                 logger().warn("符号 NetherDimensionAnon::addStructureFeatures 未找到，"
-                              "自定义下界维度将不生成结构");
+                    "自定义下界维度将不生成结构");
                 return;
             }
             ll::memory::addressCall<void*, StructureFeatureRegistry&, uint, BaseGameVersion const&, Experiments const&>(
@@ -120,7 +121,7 @@ namespace more_dimensions
             if (!addr)
             {
                 logger().warn("符号 StructureFeatureRegistry::addStructureFeature<EndCityFeature> 未找到，"
-                              "自定义末地维度将不生成末地城");
+                    "自定义末地维度将不生成末地城");
                 return;
             }
             ll::memory::addressCall<EndCityFeature&, StructureFeatureRegistry*, Dimension&, uint&>(
@@ -130,21 +131,21 @@ namespace more_dimensions
     } // namespace
 
     SimpleCustomDimension::SimpleCustomDimension(std::string const& name, DimensionFactoryInfo const& info)
-    : // 第 5 个参数是 mTypeId，见 PlotDimension.cpp 里的说明。
-      //
-      // 高度范围取共享常量：这一份必须和 CustomDimensionManager 交给
-      // DimensionDefinition（也就是 DimensionDataPacket 里发给客户端的那份）
-      // 的值完全一致，否则客户端进维度就会因为子区块索引越界而闪退。
-      Dimension(
-          DimensionArguments(std::move(info.arguments), info.dimId, {kWorldMinY, kWorldMaxY}, name, name)
-      )
+        : // 第 5 个参数是 mTypeId，见 PlotDimension.cpp 里的说明。
+        //
+        // 高度范围取共享常量：这一份必须和 CustomDimensionManager 交给
+        // DimensionDefinition（也就是 DimensionDataPacket 里发给客户端的那份）
+        // 的值完全一致，否则客户端进维度就会因为子区块索引越界而闪退。
+        Dimension(
+            DimensionArguments(std::move(info.arguments), info.dimId, {kWorldMinY, kWorldMaxY}, name, name)
+        )
     {
         mDefaultBrightness->sky = Brightness::MAX();
         // 这里读的是**已经存进 dimensions.json 的那个名字**，不是本次调用传进来
         // 的参数 —— generateNewData 只在维度第一次创建时跑一次。所以一个维度
         // 建错了生成器，之后重启多少次都还是错的，改代码不会追溯修正它。
         auto const storedName = static_cast<std::string_view>(info.data["generatorType"]);
-        auto       generatorTypeOpt = magic_enum::enum_cast<GeneratorType>(storedName);
+        auto generatorTypeOpt = magic_enum::enum_cast<GeneratorType>(storedName);
         if (!generatorTypeOpt)
         {
             logger().error(
@@ -215,7 +216,7 @@ namespace more_dimensions
     {
         auto& level = mLevel;
         auto& levelData = level.getLevelData();
-        auto  biome = level.getBiomeRegistry().lookupByName(levelData.mBiomeOverride);
+        auto biome = level.getBiomeRegistry().lookupByName(levelData.mBiomeOverride);
         std::unique_ptr<WorldGenerator> worldGenerator;
         switch (generatorType)
         {
@@ -326,7 +327,7 @@ namespace more_dimensions
     {
         float temp = (brightness * 0.94f) + 0.06f;
         float temp2 = (brightness * 0.91f) + 0.09f;
-        auto  result = color;
+        auto result = color;
         result.r = color.r * temp;
         result.g = color.g * temp;
         result.b = color.b * temp2;

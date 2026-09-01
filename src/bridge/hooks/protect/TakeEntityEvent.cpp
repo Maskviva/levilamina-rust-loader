@@ -107,16 +107,16 @@ namespace levi_rs::bridge
         {
             auto const pos = p.getPosition();
             return std::string{"{\"eventId\":\"PlayerTakeEntityEvent\",\"x\":"}
-                 + snbtNum(static_cast<int>(pos.x)) + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
-                 + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
-                 + ",\"dim\":" + snbtNum(static_cast<int>(p.getDimensionId()))
-                 + ",\"entity\":\"" + snbtEscape(safeActorType(taken))
-                 + "\",\"entityId\":" + snbtNum(static_cast<int64_t>(taken.getOrCreateUniqueID().rawID))
-                 + "L,\"isItemActor\":" + (isItem ? "true" : "false")
-                 + ",\"item\":\"" + snbtEscape(carriedItemName(taken, isItem))
-                 + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
-                 + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
-                 + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
+                + snbtNum(static_cast<int>(pos.x)) + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
+                + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
+                + ",\"dim\":" + snbtNum(static_cast<int>(p.getDimensionId()))
+                + ",\"entity\":\"" + snbtEscape(safeActorType(taken))
+                + "\",\"entityId\":" + snbtNum(static_cast<int64_t>(taken.getOrCreateUniqueID().rawID))
+                + "L,\"isItemActor\":" + (isItem ? "true" : "false")
+                + ",\"item\":\"" + snbtEscape(carriedItemName(taken, isItem))
+                + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
+                + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
+                + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
         }
 
         void logFirstTouch(Actor const& a)
@@ -129,7 +129,7 @@ namespace levi_rs::bridge
             std::string const key = safeActorType(a);
             if (seen.insert(key).second)
             {
-                bridgeLogger().info("[TakeEntityEvent] 首次触碰 '{}'", key);
+                bridgeLogger().debug("[TakeEntityEvent] 首次触碰 '{}'", key);
             }
         }
 
@@ -187,7 +187,7 @@ namespace levi_rs::bridge
                 int ra = ArrowPickupHook::hook();
                 int rt = TridentPickupHook::hook();
                 auto& log = bridgeLogger();
-                log.info(
+                log.debug(
                     "[TakeEntityEvent] 安装 detour：Arrow::$playerTouch={} (code={})，"
                     "ThrownTrident::$playerTouch={} (code={})",
                     ra == 0 ? "成功" : "失败", ra,
@@ -201,7 +201,8 @@ namespace levi_rs::bridge
                         "最常见原因是本 loader 链接的 BDS/LeviLamina 版本与服务器"
                         "实际运行的版本不一致，导致 $playerTouch 的符号地址解析错误。");
                 }
-            }};
+            }
+        };
 
         HookEventDef& takeDef() { return gDef; }
 

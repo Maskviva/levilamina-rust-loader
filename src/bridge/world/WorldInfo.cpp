@@ -63,79 +63,83 @@ namespace levi_rs::bridge
 
     void api_villages(int32_t dimension, void* ctx, LeviRsStrSink snbtSink)
     {
-        auto* level = levelReady();
-        if (!level || !snbtSink) return;
-        auto dim = level->getDimension(DimensionType{dimension}).lock();
-        if (!dim) return;
+        LEVI_RS_API_GUARD_BEGIN
+            auto* level = levelReady();
+            if (!level || !snbtSink) return;
+            auto dim = level->getDimension(DimensionType{dimension}).lock();
+            if (!dim) return;
 
-        // getVillageManager() returns unique_ptr const& (object storage — the
-        // TypedStorage IS the value; no .get() gymnastics on the member).
-        auto const& mgr = dim->getVillageManager();
-        if (!mgr) return;
+            // getVillageManager() returns unique_ptr const& (object storage — the
+            // TypedStorage IS the value; no .get() gymnastics on the member).
+            auto const& mgr = dim->getVillageManager();
+            if (!mgr) return;
 
-        // mVillages: unordered_map<UUID, shared_ptr<Village>> (object storage,
-        // so .get() yields the map). Reading a private member of a live object
-        // we hold by ref — no lifetime hazard on the server thread.
-        for (auto const& [id, villagePtr] : mgr->mVillages.get())
-        {
-            if (!villagePtr) continue;
-            Village& v = *villagePtr;
-            AABB const& b = v.getBounds();
-            Vec3 c = v.getCenter();
+            // mVillages: unordered_map<UUID, shared_ptr<Village>> (object storage,
+            // so .get() yields the map). Reading a private member of a live object
+            // we hold by ref — no lifetime hazard on the server thread.
+            for (auto const& [id, villagePtr] : mgr->mVillages.get())
+            {
+                if (!villagePtr) continue;
+                Village& v = *villagePtr;
+                AABB const& b = v.getBounds();
+                Vec3 c = v.getCenter();
 
-            std::string snbt = "{\"uuid\":\"" + snbtEscape(v.getUniqueID().asString())
-                             + "\",\"center\":[" + snbtNum(c.x) + "," + snbtNum(c.y)
-                             + "," + snbtNum(c.z) + "]"
-                             + ",\"bounds\":{\"min\":[" + snbtNum(b.min.x) + ","
-                             + snbtNum(b.min.y) + "," + snbtNum(b.min.z)
-                             + "],\"max\":[" + snbtNum(b.max.x) + ","
-                             + snbtNum(b.max.y) + "," + snbtNum(b.max.z) + "]}"
-                             + ",\"poi_count\":" + snbtNum(v.getPOICount()) + "}";
-            snbtSink(ctx, snbt);
-        }
+                std::string snbt = "{\"uuid\":\"" + snbtEscape(v.getUniqueID().asString())
+                    + "\",\"center\":[" + snbtNum(c.x) + "," + snbtNum(c.y)
+                    + "," + snbtNum(c.z) + "]"
+                    + ",\"bounds\":{\"min\":[" + snbtNum(b.min.x) + ","
+                    + snbtNum(b.min.y) + "," + snbtNum(b.min.z)
+                    + "],\"max\":[" + snbtNum(b.max.x) + ","
+                    + snbtNum(b.max.y) + "," + snbtNum(b.max.z) + "]}"
+                    + ",\"poi_count\":" + snbtNum(v.getPOICount()) + "}";
+                snbtSink(ctx, snbt);
+            }
+        LEVI_RS_API_GUARD_END_VOID
     }
 
     void api_structures_near(
         int32_t dimension, int32_t x, int32_t y, int32_t z, int32_t radius, void* ctx, LeviRsStrSink snbtSink)
     {
-        auto* level = levelReady();
-        if (!level || !snbtSink) return;
-        if (radius < 0) return;
-        auto dim = level->getDimension(DimensionType{dimension}).lock();
-        if (!dim) return;
+        LEVI_RS_API_GUARD_BEGIN
+            auto* level = levelReady();
+            if (!level || !snbtSink) return;
+            if (radius < 0) return;
+            auto dim = level->getDimension(DimensionType{dimension}).lock();
+            if (!dim) return;
 
-        BlockSource& region = dim->getBlockSourceFromMainChunkSource();
+            BlockSource& region = dim->getBlockSourceFromMainChunkSource();
 
-        // HSAs are stored per LevelChunk. Walk the chunk square covering the
-        // radius (16-block chunks); only loaded chunks yield data — that's the
-        // honest limit (we can't read unloaded chunks without generating them,
-        // which a read-only query must not do).
-        int cxMin = (x - radius) >> 4, cxMax = (x + radius) >> 4;
-        int czMin = (z - radius) >> 4, czMax = (z + radius) >> 4;
-        (void)y; // HSAs are full-height per chunk; y not used for selection
+            // HSAs are stored per LevelChunk. Walk the chunk square covering the
+            // radius (16-block chunks); only loaded chunks yield data — that's the
+            // honest limit (we can't read unloaded chunks without generating them,
+            // which a read-only query must not do).
+            int cxMin = (x - radius) >> 4, cxMax = (x + radius) >> 4;
+            int czMin = (z - radius) >> 4, czMax = (z + radius) >> 4;
+            (void)y; // HSAs are full-height per chunk; y not used for selection
 
-        for (int cx = cxMin; cx <= cxMax; ++cx)
-        {
-            for (int cz = czMin; cz <= czMax; ++cz)
+            for (int cx = cxMin; cx <= cxMax; ++cx)
             {
-                LevelChunk* chunk = region.getChunk(ChunkPos{cx, cz});
-                if (!chunk) continue; // unloaded — skip, don't force-load
-
-                for (auto const& area : chunk->mSpawningAreas.get())
+                for (int cz = czMin; cz <= czMax; ++cz)
                 {
-                    // SpawningArea.aabb is TypedStorage over BoundingBox
-                    // (object type — needs .get()); .type is a scalar enum
-                    // (reference/scalar specialisation — the member IS the
-                    // value). BoundingBox min/max are BlockPos (integers).
-                    BoundingBox const& bb = area.aabb.get();
-                    std::string snbt = "{\"type\":\"" + hsaTypeName(area.type)
-                                     + "\",\"bounds\":{\"min\":[" + snbtNum(bb.min.x) + ","
-                                     + snbtNum(bb.min.y) + "," + snbtNum(bb.min.z)
-                                     + "],\"max\":[" + snbtNum(bb.max.x) + ","
-                                     + snbtNum(bb.max.y) + "," + snbtNum(bb.max.z) + "]}}";
-                    snbtSink(ctx, snbt);
+                    LevelChunk* chunk = region.getChunk(ChunkPos{cx, cz});
+                    if (!chunk) continue; // unloaded — skip, don't force-load
+
+                    for (auto const& area : chunk->mSpawningAreas.get())
+                    {
+                        // SpawningArea.aabb is TypedStorage over BoundingBox
+                        // (object type — needs .get()); .type is a scalar enum
+                        // (reference/scalar specialisation — the member IS the
+                        // value). BoundingBox min/max are BlockPos (integers).
+                        BoundingBox const& bb = area.aabb.get();
+                        std::string snbt = "{\"type\":\"" + hsaTypeName(area.type)
+                            + "\",\"bounds\":{\"min\":[" + snbtNum(bb.min.x) + ","
+                            + snbtNum(bb.min.y) + "," + snbtNum(bb.min.z)
+                            + "],\"max\":[" + snbtNum(bb.max.x) + ","
+                            + snbtNum(bb.max.y) + "," + snbtNum(bb.max.z) + "]}}";
+                        snbtSink(ctx, snbt);
+                    }
                 }
             }
-        }
+        LEVI_RS_API_GUARD_END_VOID
     }
 } // namespace levi_rs::bridge

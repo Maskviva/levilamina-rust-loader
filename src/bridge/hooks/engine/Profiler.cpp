@@ -20,6 +20,7 @@
  * numbers still true.
  */
 #include "bridge/Api.h"
+#include "bridge/Common.h"
 
 #include <chrono>
 #include <cstdint>
@@ -47,6 +48,7 @@ namespace levi_rs::bridge
                 ns += static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(d).count());
                 ++calls;
             }
+
             void reset() { ns = 0, calls = 0; }
         };
 
@@ -61,12 +63,13 @@ namespace levi_rs::bridge
             Bucket levelTick, dimTick, redstone, chunkBlocks, blockEntities;
             std::string report;
         };
+
         ProfState gProf;
 
         std::string bucketSnbt(char const* name, Bucket const& b)
         {
             return std::string{"\""} + name + "\":{\"us\":" + std::to_string(b.ns / 1000)
-                 + ",\"calls\":" + std::to_string(b.calls) + "}";
+                + ",\"calls\":" + std::to_string(b.calls) + "}";
         }
 
         void finishWindow()
@@ -74,11 +77,11 @@ namespace levi_rs::bridge
             auto& st = gProf;
             st.sampling = false;
             st.report = "{\"ticks\":" + std::to_string(st.window)
-                      + ",\"buckets\":{" + bucketSnbt("level_tick", st.levelTick)
-                      + "," + bucketSnbt("dimension_tick", st.dimTick)
-                      + "," + bucketSnbt("redstone", st.redstone)
-                      + "," + bucketSnbt("chunk_blocks", st.chunkBlocks)
-                      + "," + bucketSnbt("block_entities", st.blockEntities) + "}}";
+                + ",\"buckets\":{" + bucketSnbt("level_tick", st.levelTick)
+                + "," + bucketSnbt("dimension_tick", st.dimTick)
+                + "," + bucketSnbt("redstone", st.redstone)
+                + "," + bucketSnbt("chunk_blocks", st.chunkBlocks)
+                + "," + bucketSnbt("block_entities", st.blockEntities) + "}}";
             st.reportReady = true;
         }
 
@@ -189,30 +192,34 @@ namespace levi_rs::bridge
 
     bool api_profile_begin(uint32_t ticks)
     {
-        auto& st = gProf;
-        if (ticks == 0 || ticks > 12000) return false; // cap: 10 minutes at 20 TPS
-        if (st.sampling) return false;                 // one window at a time
-        ensureProfilerHooked();
-        st.levelTick.reset();
-        st.dimTick.reset();
-        st.redstone.reset();
-        st.chunkBlocks.reset();
-        st.blockEntities.reset();
-        st.reportReady = false;
-        st.report.clear();
-        st.window = ticks;
-        st.remaining = ticks;
-        st.sampling = true;
-        return true;
+        LEVI_RS_API_GUARD_BEGIN
+            auto& st = gProf;
+            if (ticks == 0 || ticks > 12000) return false; // cap: 10 minutes at 20 TPS
+            if (st.sampling) return false; // one window at a time
+            ensureProfilerHooked();
+            st.levelTick.reset();
+            st.dimTick.reset();
+            st.redstone.reset();
+            st.chunkBlocks.reset();
+            st.blockEntities.reset();
+            st.reportReady = false;
+            st.report.clear();
+            st.window = ticks;
+            st.remaining = ticks;
+            st.sampling = true;
+            return true;
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_profile_take(void* ctx, LeviRsStrSink sink)
     {
-        auto& st = gProf;
-        if (!st.reportReady || !sink) return false;
-        sink(ctx, st.report);
-        st.reportReady = false;
-        st.report.clear();
-        return true;
+        LEVI_RS_API_GUARD_BEGIN
+            auto& st = gProf;
+            if (!st.reportReady || !sink) return false;
+            sink(ctx, st.report);
+            st.reportReady = false;
+            st.report.clear();
+            return true;
+        LEVI_RS_API_GUARD_END
     }
 } // namespace levi_rs::bridge

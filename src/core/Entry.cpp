@@ -61,6 +61,7 @@ namespace levi_rs
                 return false;
             }
             logger.info("levilamina-rust-loader ready (ABI v{})", LEVI_RS_ABI_VERSION);
+            logger.warn("levilamina-rust-loader 已停止维护，请前往 https://github.com/Maskviva/Pier 下载 Pier ");
 
             return true;
         }
@@ -89,6 +90,7 @@ namespace levi_rs
         bool disable() { return true; }
 
 #ifndef LEVI_RS_TARGET_CLIENT
+
     private:
         void registerDebugCommand()
         {

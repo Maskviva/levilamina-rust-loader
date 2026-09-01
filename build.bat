@@ -13,14 +13,14 @@ set CONAN_HOME=
 set HTTPS_PROXY=http://127.0.0.1:7890
 set HTTP_PROXY=http://127.0.0.1:7890
 
-@REM echo D:\Compiler\xmake\xmake.exe repo -u
-@REM D:\Compiler\xmake\xmake.exe repo -u
+@REM echo xmake.exe repo -u
+@REM xmake.exe repo -u
 
-echo D:\Compiler\xmake\xmake.exe f -c -m release -y -v
-D:\Compiler\xmake\xmake.exe f -c -m release -y -v
+echo xmake.exe f -c -m release -y -v
+xmake.exe f -c -m release -y -v
 
-echo D:\Compiler\xmake\xmake.exe -r
-D:\Compiler\xmake\xmake.exe -r
+echo xmake.exe -r
+xmake.exe -r
 
 echo.
 echo Press any key to exit...

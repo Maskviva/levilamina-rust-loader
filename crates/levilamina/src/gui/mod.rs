@@ -154,7 +154,7 @@ pub(super) fn send(
     let user = Box::into_raw(boxed);
     let ok = unsafe {
         (rt().api.form_send)(
-            rt().handle,
+            rt().handle(),
             player.ffi_sel(),
             kind,
             s(&spec.to_snbt()),

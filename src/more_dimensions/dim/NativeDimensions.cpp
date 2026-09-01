@@ -47,7 +47,8 @@ namespace more_dimensions
          */
         std::pair<int, int> advertisedRange(int minY, int maxY)
         {
-            static auto const override_ = []() -> std::optional<std::pair<int, int>> {
+            static auto const override_ = []() -> std::optional<std::pair<int, int>>
+            {
                 auto const* lo = std::getenv("MORE_DIMENSIONS_DEF_MIN");
                 auto const* hi = std::getenv("MORE_DIMENSIONS_DEF_MAX");
                 if (!lo || !hi) return std::nullopt;
@@ -98,17 +99,19 @@ namespace more_dimensions
             }
         }
 
-        std::mutex&                        ledgerMutex()
+        std::mutex& ledgerMutex()
         {
             static std::mutex m;
             return m;
         }
-        std::map<std::string, int>&        ledgerByName()
+
+        std::map<std::string, int>& ledgerByName()
         {
             static std::map<std::string, int> m;
             return m;
         }
-        std::map<int, std::string>&        ledgerById()
+
+        std::map<int, std::string>& ledgerById()
         {
             static std::map<int, std::string> m;
             return m;
@@ -128,24 +131,24 @@ namespace more_dimensions
             ledgerById().erase(it->second);
         }
         ledgerByName()[name] = id;
-        ledgerById()[id]     = name;
+        ledgerById()[id] = name;
     }
 
     std::string dimensionNameOf(int id)
     {
         std::lock_guard lock{ledgerMutex()};
-        auto            it = ledgerById().find(id);
+        auto it = ledgerById().find(id);
         return it == ledgerById().end() ? std::string{} : it->second;
     }
 
     int dimensionIdOf(std::string_view name)
     {
         std::lock_guard lock{ledgerMutex()};
-        auto            it = ledgerByName().find(std::string{name});
+        auto it = ledgerByName().find(std::string{name});
         return it == ledgerByName().end() ? -1 : it->second;
     }
 
-    void forEachRegisteredDimension(std::function<void(std::string const&, int)> const& fn)
+    void forEachRegisteredDimension(std::function<void(std::string const&, int)> const&fn)
     {
         std::lock_guard lock{ledgerMutex()};
         for (auto const& [name, id] : ledgerByName()) fn(name, id);
@@ -154,7 +157,8 @@ namespace more_dimensions
     std::string describeRegisteredDimensions()
     {
         std::string out;
-        forEachRegisteredDimension([&](std::string const& name, int id) {
+        forEachRegisteredDimension([&](std::string const& name, int id)
+        {
             if (!out.empty()) out += ", ";
             out += name + "=" + std::to_string(id);
         });
@@ -231,8 +235,11 @@ namespace more_dimensions
                     mgr->_registerCustomDimensionWithFactory(
                         std::string_view{name}, DimensionType{*preexisting});
                 }
-                catch (std::exception const& e) { logger().warn("维度 '{}'（id {}）补绑引擎工厂抛异常：{}", name, *preexisting, e.what()); }
-                catch (...)                     { logger().warn("维度 '{}'（id {}）补绑引擎工厂抛未知异常", name, *preexisting); }
+                catch (std::exception const& e)
+                {
+                    logger().warn("维度 '{}'（id {}）补绑引擎工厂抛异常：{}", name, *preexisting, e.what());
+                }
+                catch (...) { logger().warn("维度 '{}'（id {}）补绑引擎工厂抛未知异常", name, *preexisting); }
 
                 // 这一段以前是没有的，注释还写着"不碰 DimensionDefinitionGroup"。
                 //
@@ -426,7 +433,7 @@ namespace more_dimensions
                 auto& defs = *mgr->getDimensionDefinitionGroup().mDimensionDefinitions;
                 if (auto it = defs.find(name); it != defs.end() && it->second.mDimensionType->value() != id)
                 {
-                    logger().warn(
+                    logger().debug(
                         "维度 '{}' 的 DimensionDefinition 里 mDimensionType 是 {}，改写为 {}",
                         name,
                         it->second.mDimensionType->value(),
@@ -440,8 +447,8 @@ namespace more_dimensions
                 logger().warn("维度 '{}' 回写 DimensionDefinition 的 id 失败（不影响注册本身）", name);
             }
 
-            logger().info("维度 '{}' 已由引擎原生注册，id {}（高度 {}..{}），active={}",
-                          name, id, minY, maxY, isActive(id));
+            logger().debug("维度 '{}' 已由引擎原生注册，id {}（高度 {}..{}），active={}",
+                           name, id, minY, maxY, isActive(id));
             rememberDimension(name, id);
             return id;
         }

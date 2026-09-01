@@ -1,6 +1,7 @@
 /** bridge/Events.cpp — event subscription (ABI v1), migrated verbatim. */
 #include "bridge/Api.h"
 #include "bridge/Common.h"
+#include "ll/api/utils/ErrorUtils.h"
 
 #include <cctype>
 #include <cstdint>
@@ -223,6 +224,9 @@ namespace levi_rs::bridge
                        }
                        catch (...)
                        {
+                           // W11: `cancelled` was not a byte tag (or the tag walk threw).
+                           // The event proceeds as not-cancelled; say so instead of hiding it.
+                           ll::error_utils::printCurrentException(bridgeLogger());
                        }
                    });
                 return wctx.cancelled;
@@ -334,7 +338,7 @@ namespace levi_rs::bridge
 
                 struct WriteCtx
                 {
-                    CompoundTag*       data;
+                    CompoundTag* data;
                     std::string const* snapshot; // 正是交给 cb 的那一份
                 } wctx{&data, &snbt};
 
@@ -404,29 +408,33 @@ namespace levi_rs::bridge
 
     bool api_unsubscribe_event(LeviRsModHandle modHandle, LeviRsListenerHandle handle)
     {
-        auto* mod = asMod(modHandle);
-        if (!mod || !handle) return false;
-        if (hookEventUnsubscribe(mod, handle)) return true; // bridge-hook events first
-        auto wanted = listenerIdOf(handle);
-        for (auto it = mod->listeners.begin(); it != mod->listeners.end(); ++it)
-        {
-            if (it->id == wanted)
+        LEVI_RS_API_GUARD_BEGIN
+            auto* mod = asMod(modHandle);
+            if (!mod || !handle) return false;
+            if (hookEventUnsubscribe(mod, handle)) return true; // bridge-hook events first
+            auto wanted = listenerIdOf(handle);
+            for (auto it = mod->listeners.begin(); it != mod->listeners.end(); ++it)
             {
-                bool ok = ll::event::EventBus::getInstance().removeListener(it->listener);
-                mod->listeners.erase(it);
-                return ok;
+                if (it->id == wanted)
+                {
+                    bool ok = ll::event::EventBus::getInstance().removeListener(it->listener);
+                    mod->listeners.erase(it);
+                    return ok;
+                }
             }
-        }
-        return false;
+            return false;
+        LEVI_RS_API_GUARD_END
     }
 
     void api_list_events(void* ctx, LeviRsStrSink sink)
     {
-        if (!sink) return;
-        for (auto&& [modName, id] : ll::event::EventBus::getInstance().events())
-        {
-            sink(ctx, id.name);
-        }
-        hookEventList(ctx, sink); // bridge-hook events (hooks/) are subscribable too
+        LEVI_RS_API_GUARD_BEGIN
+            if (!sink) return;
+            for (auto&& [modName, id] : ll::event::EventBus::getInstance().events())
+            {
+                sink(ctx, id.name);
+            }
+            hookEventList(ctx, sink); // bridge-hook events (hooks/) are subscribable too
+        LEVI_RS_API_GUARD_END_VOID
     }
 } // namespace levi_rs::bridge

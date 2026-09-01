@@ -91,6 +91,17 @@ namespace more_dimensions
             );
             return GeneratorType::Flat;
         }
+
+        void announceReady(std::string const& name, int id)
+        {
+            static std::mutex              mtx;
+            static std::unordered_set<std::string> announced;
+            {
+                std::lock_guard lock{mtx};
+                if (!announced.insert(name).second) return;
+            }
+            logger().info("维度 '{}' 就绪：id {}", name, id);
+        }
     } // namespace
 
     namespace CustomDimensionHookList
@@ -101,10 +112,10 @@ namespace more_dimensions
             VanillaDimensions,
             VanillaDimensions::convertPointBetweenDimensions,
             bool,
-            Vec3 const&                    oldPos,
-            Vec3&                          toPos,
-            DimensionType                  oldDim,
-            DimensionType                  toDim,
+            Vec3 const& oldPos,
+            Vec3& toPos,
+            DimensionType oldDim,
+            DimensionType toDim,
             DimensionConversionData const& data
         )
         {
@@ -165,7 +176,7 @@ namespace more_dimensions
             &LevelStorage::loadServerPlayerData,
             std::unique_ptr<class CompoundTag>,
             Player const& client,
-            bool          isXboxLive
+            bool isXboxLive
         )
         {
             auto result = origin(client, isXboxLive);
@@ -190,7 +201,7 @@ namespace more_dimensions
             }
 
             bool const known = (savedDim >= 0 && savedDim <= 2) || !dimensionNameOf(savedDim).empty()
-                            || VanillaDimensions::DimensionMap().mLeft.contains(DimensionType{savedDim});
+                || VanillaDimensions::DimensionMap().mLeft.contains(DimensionType{savedDim});
             if (!known)
             {
                 logger().warn("玩家存档里的维度 {} 当前不可用，重置落点", savedDim);
@@ -230,12 +241,12 @@ namespace more_dimensions
     struct CustomDimensionManager::Impl
     {
         std::atomic<int> mNewDimensionId{3};
-        std::mutex       mMapMutex;
+        std::mutex mMapMutex;
 
         struct DimensionInfo
         {
             DimensionType id;
-            CompoundTag   nbt;
+            CompoundTag nbt;
         };
 
         /** name -> {id, payload} for every entry we could fully restore. */
@@ -344,8 +355,8 @@ namespace more_dimensions
     }
 
     DimensionType CustomDimensionManager::addDimension(
-        std::string const&                  dimName,
-        std::function<DimensionFactoryT>    factory,
+        std::string const& dimName,
+        std::function<DimensionFactoryT> factory,
         std::function<CompoundTag()> const& data
     )
     {
@@ -372,7 +383,7 @@ namespace more_dimensions
         {
             // 配置里这条的 SNBT 坏了，但 id 还留着。重新生成数据、保住 id，
             // 玩家存档里的 DimensionId 就不会失效。
-            info.id  = DimensionType{salvaged->second};
+            info.id = DimensionType{salvaged->second};
             info.nbt = data();
             impl->salvagedIds.erase(salvaged);
             logger().warn("维度 '{}'：数据已丢失，重新生成，沿用 id {}", dimName, info.id.value());
@@ -405,7 +416,9 @@ namespace more_dimensions
         // engine builds the dimension from the previous run's closure.
         ll::service::getLevel()->getDimensionFactory().mFactoryMap.insert_or_assign(
             dimName,
-            [dimName, shared, factory = std::move(factory)](DerivedDimensionArguments&& arguments) -> OwnerPtr<Dimension> {
+            [dimName, shared, factory = std::move(factory)](
+            DerivedDimensionArguments&& arguments) -> OwnerPtr<Dimension>
+            {
                 DimensionType id = shared->id;
                 if (id.value() < 3)
                 {
@@ -487,13 +500,14 @@ namespace more_dimensions
         }
 
         // 回填。闭包里读的是这一份，所以它必须在任何维度被真正创建之前更新。
-        shared->id  = info.id;
+        shared->id = info.id;
         shared->nbt = info.nbt;
 
         impl->customDimensionMap.insert_or_assign(dimName, info);
         rememberDimension(dimName, info.id.value());
 
-        ll::memory::modify(VanillaDimensions::DimensionMap(), [&](auto& dimMap) {
+        ll::memory::modify(VanillaDimensions::DimensionMap(), [&](auto& dimMap)
+        {
             // insert_or_assign on a BidirectionalUnorderedMap only overwrites
             // the two entries it touches. If this name previously mapped to a
             // different id, the old id->name entry survives in mLeft and keeps
@@ -516,7 +530,8 @@ namespace more_dimensions
         impl->mNewDimensionId.store(nextFree);
         if (!usedNative)
         {
-            ll::memory::modify(VanillaDimensions::Undefined(), [&](DimensionType& uid) {
+            ll::memory::modify(VanillaDimensions::Undefined(), [&](DimensionType& uid)
+            {
                 uid = DimensionType{nextFree};
             });
         }
@@ -529,8 +544,8 @@ namespace more_dimensions
         // never be corrected. Compare and write whenever anything differs.
         {
             auto& list = CustomDimensionConfig::getConfig().dimensionList;
-            auto  snbt = info.nbt.toSnbt(SnbtFormat::Minimize);
-            auto  cur  = list.find(dimName);
+            auto snbt = info.nbt.toSnbt(SnbtFormat::Minimize);
+            auto cur = list.find(dimName);
             if (cur == list.end() || cur->second.dimId != info.id.value() || cur->second.sNbt != snbt)
             {
                 list.insert_or_assign(dimName, CustomDimensionConfig::DimensionInfo{info.id.value(), snbt});
@@ -569,8 +584,8 @@ namespace more_dimensions
             }
             else
             {
-                logger().info("维度 '{}' 就绪：id {}，引擎侧 active={}",
-                              dimName, info.id.value(), native::isActive(info.id.value()));
+                logger().debug("维度 '{}' 自检通过：id {}，引擎侧 active={}",
+                               dimName, info.id.value(), native::isActive(info.id.value()));
             }
         }
         catch (...)
@@ -601,7 +616,7 @@ namespace more_dimensions
             throw std::runtime_error("dimension id mismatch for '" + dimName + "'");
         }
 
-        logger().info("维度 '{}' 就绪：id {}", dimName, realId);
+        announceReady(dimName, realId);
         return info.id;
     }
 } // namespace more_dimensions

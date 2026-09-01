@@ -97,7 +97,7 @@ namespace levi_rs::bridge
             key = p.getXuid();
             if (key.empty()) key = p.getRealName(); // offline-mode servers
 
-            int const       dim = static_cast<int>(region.getDimensionId());
+            int const dim = static_cast<int>(region.getDimensionId());
             long long const now = throttleNowMs();
 
             bool cached = false;
@@ -107,14 +107,14 @@ namespace levi_rs::bridge
             }
 
             std::string snbt = "{\"eventId\":\"PlayerStepOnPressurePlateEvent\""
-                               ",\"x\":" + snbtNum(pos.x)
-                             + ",\"y\":" + snbtNum(pos.y)
-                             + ",\"z\":" + snbtNum(pos.z)
-                             + ",\"dim\":" + snbtNum(dim)
-                             + ",\"kind\":\"" + kind
-                             + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
-                             + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
-                             + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
+                ",\"x\":" + snbtNum(pos.x)
+                + ",\"y\":" + snbtNum(pos.y)
+                + ",\"z\":" + snbtNum(pos.z)
+                + ",\"dim\":" + snbtNum(dim)
+                + ",\"kind\":\"" + kind
+                + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
+                + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
+                + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
 
             bool const cancelled = dispatchHookEventCancellable(def, snbt);
             throttleStore(plateCache(), key, pos.x, pos.y, pos.z, dim, now, cancelled);
@@ -189,7 +189,8 @@ namespace levi_rs::bridge
                 TripWireInsideHook::hook();
                 PressurePlateShouldTriggerHook::hook();
                 TripWireShouldTriggerHook::hook();
-            }};
+            }
+        };
         HookEventDef& plateDef() { return gDef; }
 
         HookEventRegistrar gReg{gDef};

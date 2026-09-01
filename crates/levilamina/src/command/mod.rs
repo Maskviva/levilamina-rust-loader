@@ -51,6 +51,24 @@ pub struct CommandOrigin {
     pub position: Option<PositionF64>,
 }
 
+impl CommandOrigin {
+    pub const PLAYER: i32 = 0;
+    pub const DEDICATED_SERVER: i32 = 7;
+
+    /// S2：只有专用服务器控制台算控制台。命令块 / 矿车命令块 / 脚本的 `origin_type`
+    /// 都不是 7，但 `name` 在没设 CustomName 时是空串 —— 以前三个 mod 把「空名」也
+    /// 当成控制台，能放命令块的人就能给自己加管理员组。
+    pub fn is_console(&self) -> bool {
+        self.origin_type == Self::DEDICATED_SERVER
+    }
+
+    pub fn player_name(&self) -> Option<&str> {
+        (self.origin_type == Self::PLAYER)
+            .then(|| self.name.trim())
+            .filter(|n| !n.is_empty())
+    }
+}
+
 pub struct CommandInvocationEx<'a> {
     pub overload: usize,
 

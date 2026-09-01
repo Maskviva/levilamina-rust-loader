@@ -94,9 +94,9 @@ namespace levi_rs
              */
             bool firstComplaintFor(int32_t dimId)
             {
-                static std::mutex                  mtx;
+                static std::mutex mtx;
                 static std::unordered_set<int32_t> seen;
-                std::lock_guard                    lock{mtx};
+                std::lock_guard lock{mtx};
                 return seen.insert(dimId).second;
             }
         } // namespace
@@ -343,9 +343,18 @@ namespace levi_rs
 
         std::optional<ItemStack> itemFromSnbt(std::string_view snbt)
         {
-            auto tag = CompoundTag::fromSnbt(snbt);
-            if (!tag) return std::nullopt;
-            return ItemStack::fromTag(*tag);
+            // W12：fromSnbt / fromTag 对畸形输入会抛；这里的输入最终来自客户端。
+            try
+            {
+                auto tag = CompoundTag::fromSnbt(snbt);
+                if (!tag) return std::nullopt;
+                return ItemStack::fromTag(*tag);
+            }
+            catch (...)
+            {
+                ll::error_utils::printCurrentException(bridgeLogger());
+                return std::nullopt;
+            }
         }
 
         // Live player addresses. Only pointers found here get dereferenced.
@@ -427,13 +436,15 @@ namespace levi_rs
                                 {"name", CompoundTagVariant(player->getRealName())},
                                 {"xuid", CompoundTagVariant(player->getXuid())},
                                 {"uuid", CompoundTagVariant(player->getUuid().asString())},
-                                {"pos", CompoundTagVariant::object(
-                                    {
-                                        {"x", CompoundTagVariant(static_cast<int>(std::floor(ppos.x)))},
-                                        {"y", CompoundTagVariant(static_cast<int>(std::floor(ppos.y)))},
-                                        {"z", CompoundTagVariant(static_cast<int>(std::floor(ppos.z)))}
-                                    }
-                                )}
+                                {
+                                    "pos", CompoundTagVariant::object(
+                                        {
+                                            {"x", CompoundTagVariant(static_cast<int>(std::floor(ppos.x)))},
+                                            {"y", CompoundTagVariant(static_cast<int>(std::floor(ppos.y)))},
+                                            {"z", CompoundTagVariant(static_cast<int>(std::floor(ppos.z)))}
+                                        }
+                                    )
+                                }
                             }
                         );
 
@@ -583,7 +594,7 @@ namespace levi_rs
             //    维度只会出现在这里。
             {
                 auto const& dimMap = ::VanillaDimensions::DimensionMap();
-                auto const  hit    = dimMap.mLeft.find(DimensionType{dim});
+                auto const hit = dimMap.mLeft.find(DimensionType{dim});
                 if (hit != dimMap.mLeft.end()) return hit->second;
             }
 

@@ -81,133 +81,144 @@ namespace levi_rs::bridge
 
     bool api_sim_spawn(LeviRsStr name, int32_t dimension, double x, double y, double z)
     {
-        if (!levelReady()) return false;
-        auto sp = SimulatedPlayer::create(
-            std::string{name},
-            Vec3{(float)x, (float)y, (float)z},
-            DimensionType{dimension}
-        );
-        return static_cast<bool>(sp);
+        LEVI_RS_API_GUARD_BEGIN
+            if (!levelReady()) return false;
+            auto sp = SimulatedPlayer::create(
+                std::string{name},
+                Vec3{(float)x, (float)y, (float)z},
+                DimensionType{dimension}
+            );
+            return static_cast<bool>(sp);
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_sim_is(LeviRsPlayerSel sel)
     {
-        Player* p = resolvePlayer(sel);
-        return p && p->isSimulatedPlayer();
+        LEVI_RS_API_GUARD_BEGIN
+            Player* p = resolvePlayer(sel);
+            return p && p->isSimulatedPlayer();
+        LEVI_RS_API_GUARD_END
     }
 
     void api_sim_list(void* ctx, LeviRsStrSink nameSink)
     {
-        auto* level = levelReady();
-        if (!level || !nameSink) return;
-        // Reuse the existing player-enumeration primitive, filtered to bots.
-        // Names only (not full summaries): callers rebuild a SimPlayer handle
-        // from the name, then reach the full player surface through it.
-        level->forEachPlayer([&](Player& p)
-        {
-            if (p.isSimulatedPlayer()) nameSink(ctx, p.getRealName());
-            return true;
-        });
+        LEVI_RS_API_GUARD_BEGIN
+            auto* level = levelReady();
+            if (!level || !nameSink) return;
+            // Reuse the existing player-enumeration primitive, filtered to bots.
+            // Names only (not full summaries): callers rebuild a SimPlayer handle
+            // from the name, then reach the full player surface through it.
+            level->forEachPlayer([&](Player& p)
+            {
+                if (p.isSimulatedPlayer()) nameSink(ctx, p.getRealName());
+                return true;
+            });
+        LEVI_RS_API_GUARD_END_VOID
     }
 
     bool api_sim_do(LeviRsPlayerSel sel, LeviRsStr action, LeviRsStr argsSnbt)
     {
-        Player* p = resolvePlayer(sel);
-        if (!p || !p->isSimulatedPlayer()) return false; // never puppet a real player
-        auto* sim = static_cast<SimulatedPlayer*>(p);
+        LEVI_RS_API_GUARD_BEGIN
+            Player* p = resolvePlayer(sel);
+            if (!p || !p->isSimulatedPlayer()) return false; // never puppet a real player
+            auto* sim = static_cast<SimulatedPlayer*>(p);
 
-        // Parse args once; "" and "{}" both mean "no parameters".
-        CompoundTag args;
-        std::string_view raw = argsSnbt;
-        if (!raw.empty())
-        {
-            auto parsed = CompoundTag::fromSnbt(raw);
-            if (!parsed) return false; // malformed args: refuse, don't guess
-            args = std::move(*parsed);
-        }
+            // Parse args once; "" and "{}" both mean "no parameters".
+            CompoundTag args;
+            std::string_view raw = argsSnbt;
+            if (!raw.empty())
+            {
+                auto parsed = CompoundTag::fromSnbt(raw);
+                if (!parsed) return false; // malformed args: refuse, don't guess
+                args = std::move(*parsed);
+            }
 
-        std::string_view verb = action;
+            std::string_view verb = action;
 
-        if (verb == "despawn")
-        {
-            sim->simulateDisconnect();
-            return true;
-        }
-        if (verb == "stop")
-        {
-            sim->simulateStopMoving();
-            sim->simulateStopUsingItem();
-            sim->simulateStopBuild();
-            sim->simulateStopInteracting();
-            sim->simulateStopDestroyingBlock();
-            return true;
-        }
-        if (verb == "jump") return sim->simulateJump();
-        if (verb == "attack") return sim->simulateAttack();
-        if (verb == "interact") return sim->simulateInteract();
-        if (verb == "use_item") return sim->simulateUseItem();
-        if (verb == "drop") return sim->simulateDropSelectedItem();
-        if (verb == "respawn") return sim->simulateRespawn();
-        if (verb == "move_to")
-        {
-            Vec3 pos{
-                (float)argD(args, "x", 0),
-                (float)argD(args, "y", 0),
-                (float)argD(args, "z", 0)};
-            sim->simulateMoveToLocation(pos, (float)argD(args, "speed", 1.0), argB(args, "face_target", true));
-            return true;
-        }
-        if (verb == "navigate_to")
-        {
-            Vec3 pos{
-                (float)argD(args, "x", 0),
-                (float)argD(args, "y", 0),
-                (float)argD(args, "z", 0)};
-            static_cast<void>(sim->simulateNavigateToLocation(pos, (float)argD(args, "speed", 4.3)));
-            return true;
-        }
-        if (verb == "look_at")
-        {
-            // Three overloads exist ((Vec3&), (Vec3&, LookDuration), and a
-            // BlockPos one); a bare Vec3 is ambiguous between the first two.
-            // Pass LookDuration explicitly to pin the Vec3 overload — Instant
-            // matches the no-duration version's "snap to look" semantics.
-            sim->simulateLookAt(
-                Vec3{
+            if (verb == "despawn")
+            {
+                sim->simulateDisconnect();
+                return true;
+            }
+            if (verb == "stop")
+            {
+                sim->simulateStopMoving();
+                sim->simulateStopUsingItem();
+                sim->simulateStopBuild();
+                sim->simulateStopInteracting();
+                sim->simulateStopDestroyingBlock();
+                return true;
+            }
+            if (verb == "jump") return sim->simulateJump();
+            if (verb == "attack") return sim->simulateAttack();
+            if (verb == "interact") return sim->simulateInteract();
+            if (verb == "use_item") return sim->simulateUseItem();
+            if (verb == "drop") return sim->simulateDropSelectedItem();
+            if (verb == "respawn") return sim->simulateRespawn();
+            if (verb == "move_to")
+            {
+                Vec3 pos{
                     (float)argD(args, "x", 0),
                     (float)argD(args, "y", 0),
-                    (float)argD(args, "z", 0)},
-                ::sim::LookDuration::Instant);
-            return true;
-        }
-        if (verb == "destroy_block") return sim->simulateDestroyBlock(argBlockPos(args), argFace(args));
-        if (verb == "destroy_look") return sim->simulateDestroyLookAt((float)argD(args, "hand", 5.5));
-        if (verb == "stop_destroy")
-        {
-            sim->simulateStopDestroyingBlock();
-            return true;
-        }
-        if (verb == "interact_block") return sim->simulateInteract(argBlockPos(args), argFace(args));
-        if (verb == "sneak")
-        {
-            return argB(args, "on", true) ? sim->simulateSneaking() : sim->simulateStopSneaking();
-        }
-        if (verb == "fly")
-        {
-            if (argB(args, "on", true))
-                sim->simulateFly();
-            else
-                sim->simulateStopFlying();
-            return true;
-        }
-        if (verb == "chat")
-        {
-            auto msg = argS(args, "msg");
-            if (msg.empty()) return false;
-            sim->simulateChat(msg);
-            return true;
-        }
+                    (float)argD(args, "z", 0)
+                };
+                sim->simulateMoveToLocation(pos, (float)argD(args, "speed", 1.0), argB(args, "face_target", true));
+                return true;
+            }
+            if (verb == "navigate_to")
+            {
+                Vec3 pos{
+                    (float)argD(args, "x", 0),
+                    (float)argD(args, "y", 0),
+                    (float)argD(args, "z", 0)
+                };
+                static_cast<void>(sim->simulateNavigateToLocation(pos, (float)argD(args, "speed", 4.3)));
+                return true;
+            }
+            if (verb == "look_at")
+            {
+                // Three overloads exist ((Vec3&), (Vec3&, LookDuration), and a
+                // BlockPos one); a bare Vec3 is ambiguous between the first two.
+                // Pass LookDuration explicitly to pin the Vec3 overload — Instant
+                // matches the no-duration version's "snap to look" semantics.
+                sim->simulateLookAt(
+                    Vec3{
+                        (float)argD(args, "x", 0),
+                        (float)argD(args, "y", 0),
+                        (float)argD(args, "z", 0)
+                    },
+                    ::sim::LookDuration::Instant);
+                return true;
+            }
+            if (verb == "destroy_block") return sim->simulateDestroyBlock(argBlockPos(args), argFace(args));
+            if (verb == "destroy_look") return sim->simulateDestroyLookAt((float)argD(args, "hand", 5.5));
+            if (verb == "stop_destroy")
+            {
+                sim->simulateStopDestroyingBlock();
+                return true;
+            }
+            if (verb == "interact_block") return sim->simulateInteract(argBlockPos(args), argFace(args));
+            if (verb == "sneak")
+            {
+                return argB(args, "on", true) ? sim->simulateSneaking() : sim->simulateStopSneaking();
+            }
+            if (verb == "fly")
+            {
+                if (argB(args, "on", true))
+                    sim->simulateFly();
+                else
+                    sim->simulateStopFlying();
+                return true;
+            }
+            if (verb == "chat")
+            {
+                auto msg = argS(args, "msg");
+                if (msg.empty()) return false;
+                sim->simulateChat(msg);
+                return true;
+            }
 
-        return false; // unknown verb
+            return false; // unknown verb
+        LEVI_RS_API_GUARD_END
     }
 } // namespace levi_rs::bridge

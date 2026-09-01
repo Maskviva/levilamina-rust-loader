@@ -141,6 +141,17 @@ impl Player {
             .map(|_| ())
     }
 
+    pub fn set_permission_level(&self, level: PlayerPermission) -> Result<()> {
+        self.action(
+            sys::PACT_SET_PERMISSION_LEVEL,
+            "",
+            level as i32 as f64,
+            0.0,
+            0.0,
+        )
+        .map(|_| ())
+    }
+
     pub fn can_use_ability(&self, ability: Ability) -> Result<bool> {
         let out = self.action(
             sys::PACT_CAN_USE_ABILITY,

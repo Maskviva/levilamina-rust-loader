@@ -4,6 +4,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use crate::error::{Error, Result};
 use crate::ffi::r;
 use crate::logger::Logger;
+use crate::rt::handle::Handle;
 use crate::{rt, sys};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,10 +117,10 @@ type PacketHandler = Box<dyn Fn(&mut PacketCtx) -> Verdict + Send + Sync>;
 type ConnHandler = Box<dyn Fn(u64, &str, ConnectionState) + Send + Sync>;
 
 pub struct PacketHook {
-    raw: sys::LeviRsPacketHookHandle,
+    raw: Handle,
 
     drop_cb: unsafe fn(*mut c_void),
-    cb: *mut c_void,
+    cb: Handle,
 
     kind: HookKind,
 }
@@ -132,8 +133,10 @@ enum HookKind {
 
 impl PacketHook {
     pub fn forget(mut self) {
-        self.raw = std::ptr::null_mut();
-        self.cb = std::ptr::null_mut();
+        // S1：字段现在是 Handle（AtomicPtr），不是裸指针；置空要走 Handle::new。
+        // Drop 里靠 `raw.is_null()` 判断「已经放弃」，语义不变。
+        self.raw = Handle::new(std::ptr::null_mut());
+        self.cb = Handle::new(std::ptr::null_mut());
         std::mem::forget(self);
     }
 }
@@ -146,19 +149,18 @@ impl Drop for PacketHook {
         let rt = rt();
         unsafe {
             let detached = match self.kind {
-                HookKind::Packet => (rt.api.packet_hook_unregister)(rt.handle, self.raw),
-                HookKind::Connection => (rt.api.packet_conn_hook_unregister)(rt.handle, self.raw),
+                HookKind::Packet => (rt.api.packet_hook_unregister)(rt.handle(), self.raw.get()),
+                HookKind::Connection => {
+                    (rt.api.packet_conn_hook_unregister)(rt.handle(), self.raw.get())
+                }
             };
 
             if detached {
-                (self.drop_cb)(self.cb);
+                (self.drop_cb)(self.cb.get());
             }
         }
     }
 }
-
-unsafe impl Send for PacketHook {}
-unsafe impl Sync for PacketHook {}
 
 unsafe fn drop_packet_handler(p: *mut c_void) {
     drop(Box::from_raw(p.cast::<PacketHandler>()));
@@ -243,7 +245,7 @@ impl Packets {
         let boxed: *mut PacketHandler = Box::into_raw(Box::new(Box::new(handler)));
         let raw = unsafe {
             (rt().api.packet_hook_register)(
-                rt().handle,
+                rt().handle(),
                 direction.mask(),
                 packet_trampoline,
                 boxed.cast(),
@@ -254,9 +256,9 @@ impl Packets {
             return Err(Error::new("failed to register packet interceptor"));
         }
         Ok(PacketHook {
-            raw,
+            raw: Handle::new(raw),
             drop_cb: drop_packet_handler,
-            cb: boxed.cast(),
+            cb: Handle::new(boxed.cast()),
             kind: HookKind::Packet,
         })
     }
@@ -267,16 +269,16 @@ impl Packets {
     ) -> Result<PacketHook> {
         let boxed: *mut ConnHandler = Box::into_raw(Box::new(Box::new(handler)));
         let raw = unsafe {
-            (rt().api.packet_conn_hook_register)(rt().handle, conn_trampoline, boxed.cast())
+            (rt().api.packet_conn_hook_register)(rt().handle(), conn_trampoline, boxed.cast())
         };
         if raw.is_null() {
             unsafe { drop_conn_handler(boxed.cast()) };
             return Err(Error::new("failed to register connection observer"));
         }
         Ok(PacketHook {
-            raw,
+            raw: Handle::new(raw),
             drop_cb: drop_conn_handler,
-            cb: boxed.cast(),
+            cb: Handle::new(boxed.cast()),
             kind: HookKind::Connection,
         })
     }

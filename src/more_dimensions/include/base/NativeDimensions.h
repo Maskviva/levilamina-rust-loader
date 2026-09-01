@@ -105,10 +105,10 @@ namespace more_dimensions
     // 漂移的问题 —— 那正是上一版 dimensionSelector 查 CustomDimensionConfig
     // 会失败的原因。
 
-    void        rememberDimension(std::string const& name, int id);
-    std::string dimensionNameOf(int id);            // 查不到返回空串
-    int         dimensionIdOf(std::string_view name); // 查不到返回 -1
-    void        forEachRegisteredDimension(std::function<void(std::string const&, int)> const& fn);
+    void rememberDimension(std::string const& name, int id);
+    std::string dimensionNameOf(int id); // 查不到返回空串
+    int dimensionIdOf(std::string_view name); // 查不到返回 -1
+    void forEachRegisteredDimension(std::function<void(std::string const&, int)> const&fn);
 
     /** 供日志用：把台账拍平成 "name=id, name=id" 。 */
     std::string describeRegisteredDimensions();

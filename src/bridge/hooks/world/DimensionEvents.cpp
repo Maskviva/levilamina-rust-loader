@@ -48,8 +48,8 @@ namespace levi_rs::bridge
             Level,
             &Level::$requestPlayerChangeDimension,
             void,
-            ::Player&                   player,
-            ::ChangeDimensionRequest&&  changeRequest)
+            ::Player& player,
+            ::ChangeDimensionRequest&& changeRequest)
         {
             auto& def = changeDimDef();
             if (!def.live())
@@ -60,14 +60,14 @@ namespace levi_rs::bridge
             // Read the request BEFORE forwarding: origin() takes it by
             // rvalue reference and is free to gut it.
             int const from = changeRequest.mFromDimensionId->value();
-            int const to   = changeRequest.mToDimensionId->value();
+            int const to = changeRequest.mToDimensionId->value();
 
             std::string snbt = "{\"eventId\":\"PlayerChangeDimensionEvent\""
-                               ",\"from\":" + snbtNum(from)
-                             + ",\"to\":" + snbtNum(to)
-                             + ",\"_player\":{\"name\":\"" + snbtEscape(player.getRealName())
-                             + "\",\"xuid\":\"" + snbtEscape(player.getXuid())
-                             + "\",\"uuid\":\"" + snbtEscape(player.getUuid().asString()) + "\"}}";
+                ",\"from\":" + snbtNum(from)
+                + ",\"to\":" + snbtNum(to)
+                + ",\"_player\":{\"name\":\"" + snbtEscape(player.getRealName())
+                + "\",\"xuid\":\"" + snbtEscape(player.getXuid())
+                + "\",\"uuid\":\"" + snbtEscape(player.getUuid().asString()) + "\"}}";
             dispatchHookEvent(def, snbt); // BEFORE origin — see file header
 
             return origin(player, std::move(changeRequest));

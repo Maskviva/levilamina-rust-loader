@@ -33,7 +33,7 @@ impl Drop for Registration {
         }
         let rt = rt();
         unsafe {
-            if (rt.api.service_unregister)(rt.handle, self.id) {
+            if (rt.api.service_unregister)(rt.handle(), self.id) {
                 drop(Box::from_raw(self.cb));
             }
         }
@@ -107,8 +107,9 @@ pub fn register(
 ) -> Result<Registration> {
     let boxed: *mut ServiceCallback = Box::into_raw(Box::new(Box::new(f) as ServiceCallback));
     let rt = rt();
-    let id =
-        unsafe { (rt.api.service_register)(rt.handle, s(name), service_trampoline, boxed.cast()) };
+    let id = unsafe {
+        (rt.api.service_register)(rt.handle(), s(name), service_trampoline, boxed.cast())
+    };
     if id == 0 {
         unsafe { drop(Box::from_raw(boxed)) };
         return Err(Error(format!(
@@ -124,7 +125,7 @@ pub fn call(name: &str, request: &str) -> std::result::Result<String, CallError>
     let rt = rt();
     let code = unsafe {
         (rt.api.service_call)(
-            rt.handle,
+            rt.handle(),
             s(name),
             s(request),
             (&mut out as *mut Option<String>).cast(),
@@ -159,7 +160,15 @@ pub fn list_json() -> String {
     out.unwrap_or_else(|| "[]".to_string())
 }
 
+/// B8：原来用子串 `"name":"x"` 在 JSON 文本里找 —— 名字是别人名字前缀的服务会误判。serde_json 就在依赖里。
 pub fn exists(name: &str) -> bool {
-    let needle = format!("\"name\":\"{name}\"");
-    list_json().contains(&needle)
+    serde_json::from_str::<serde_json::Value>(&list_json())
+        .ok()
+        .and_then(|v| {
+            v.as_array().map(|a| {
+                a.iter()
+                    .any(|s| s.get("name").and_then(|n| n.as_str()) == Some(name))
+            })
+        })
+        .unwrap_or(false)
 }

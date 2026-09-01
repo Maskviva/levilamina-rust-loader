@@ -123,14 +123,14 @@ namespace levi_rs::bridge
         std::string buildSnbt(Player& p, std::string const& projectile, ::Vec3 const& at, int dim)
         {
             return "{\"eventId\":\"PlayerSpawnProjectileEvent\""
-                   ",\"x\":" + snbtNum(static_cast<int>(at.x))
-                 + ",\"y\":" + snbtNum(static_cast<int>(at.y))
-                 + ",\"z\":" + snbtNum(static_cast<int>(at.z))
-                 + ",\"dim\":" + snbtNum(dim)
-                 + ",\"projectile\":\"" + snbtEscape(projectile)
-                 + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
-                 + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
-                 + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
+                ",\"x\":" + snbtNum(static_cast<int>(at.x))
+                + ",\"y\":" + snbtNum(static_cast<int>(at.y))
+                + ",\"z\":" + snbtNum(static_cast<int>(at.z))
+                + ",\"dim\":" + snbtNum(dim)
+                + ",\"projectile\":\"" + snbtEscape(projectile)
+                + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
+                + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
+                + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
         }
 
         /** Ask once. Returns true when the launch must be refused. */
@@ -189,10 +189,10 @@ namespace levi_rs::bridge
             if (!shooterStack.isNull()) shooterName = shooterStack.getTypeName();
 
             if (refuseLaunch(
-                    *player,
-                    shooterName,
-                    player->getPosition(),
-                    static_cast<int>(player->getDimensionId())))
+                *player,
+                shooterName,
+                player->getPosition(),
+                static_cast<int>(player->getDimensionId())))
             {
                 return;
             }
@@ -221,10 +221,10 @@ namespace levi_rs::bridge
             projName = ::VanillaActorRendererId::trident().getString();
 
             if (refuseLaunch(
-                    *player,
-                    projName,
-                    player->getPosition(),
-                    static_cast<int>(player->getDimensionId())))
+                *player,
+                projName,
+                player->getPosition(),
+                static_cast<int>(player->getDimensionId())))
             {
                 return;
             }
@@ -252,10 +252,10 @@ namespace levi_rs::bridge
             projName = projectileInstance.getTypeName();
 
             if (refuseLaunch(
-                    player,
-                    projName,
-                    player.getPosition(),
-                    static_cast<int>(player.getDimensionId())))
+                player,
+                projName,
+                player.getPosition(),
+                static_cast<int>(player.getDimensionId())))
             {
                 return;
             }
@@ -311,7 +311,8 @@ namespace levi_rs::bridge
                 TridentReleaseHook::hook();
                 CrossbowFireworkHook::hook();
                 SpawnProjectileHook::hook();
-            }};
+            }
+        };
         HookEventDef& projectileDef() { return gDef; }
 
         HookEventRegistrar gReg{gDef};

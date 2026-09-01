@@ -82,14 +82,14 @@ namespace levi_rs::bridge
 
             auto const& pos = this->getPosition();
             std::string snbt = "{\"eventId\":\"PlayerRideEvent\""
-                               ",\"x\":" + snbtNum(static_cast<int>(pos.x))
-                             + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
-                             + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
-                             + ",\"dim\":" + snbtNum(static_cast<int>(this->getDimensionId()))
-                             + ",\"vehicle\":\"" + snbtEscape(vehicleName)
-                             + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
-                             + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
-                             + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
+                ",\"x\":" + snbtNum(static_cast<int>(pos.x))
+                + ",\"y\":" + snbtNum(static_cast<int>(pos.y))
+                + ",\"z\":" + snbtNum(static_cast<int>(pos.z))
+                + ",\"dim\":" + snbtNum(static_cast<int>(this->getDimensionId()))
+                + ",\"vehicle\":\"" + snbtEscape(vehicleName)
+                + "\",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
+                + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
+                + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
 
             if (dispatchHookEventCancellable(def, snbt))
             {

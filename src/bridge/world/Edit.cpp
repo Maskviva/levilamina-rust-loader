@@ -137,13 +137,15 @@ namespace levi_rs::bridge
     bool api_edit_set_block_nbt(
         int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr snbt, int32_t update_flags)
     {
-        auto* bs = blockSourceOf(dim);
-        if (!bs) return false;
-        auto parsed = CompoundTag::fromSnbt(std::string_view{snbt});
-        if (!parsed) return false;
-        Block const* block = blockFromTag(*parsed);
-        if (!block) return false;
-        return bs->setBlock(BlockPos{x, y, z}, *block, update_flags, nullptr, editContext());
+        LEVI_RS_API_GUARD_BEGIN
+            auto* bs = blockSourceOf(dim);
+            if (!bs) return false;
+            auto parsed = CompoundTag::fromSnbt(std::string_view{snbt});
+            if (!parsed) return false;
+            Block const* block = blockFromTag(*parsed);
+            if (!block) return false;
+            return bs->setBlock(BlockPos{x, y, z}, *block, update_flags, nullptr, editContext());
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_edit_set_block_states(
@@ -155,70 +157,74 @@ namespace levi_rs::bridge
         LeviRsStr states_snbt,
         int32_t update_flags)
     {
-        auto* bs = blockSourceOf(dim);
-        if (!bs) return false;
-        Block const* def = defaultBlockOf(std::string_view{name});
-        if (!def) return false;
+        LEVI_RS_API_GUARD_BEGIN
+            auto* bs = blockSourceOf(dim);
+            if (!bs) return false;
+            Block const* def = defaultBlockOf(std::string_view{name});
+            if (!def) return false;
 
-        std::string_view states{states_snbt};
-        if (states.empty())
-        {
-            // 没有状态要覆盖：默认状态就是答案，一次解析都不用做。
-            return bs->setBlock(BlockPos{x, y, z}, *def, update_flags, nullptr, editContext());
-        }
+            std::string_view states{states_snbt};
+            if (states.empty())
+            {
+                // 没有状态要覆盖：默认状态就是答案，一次解析都不用做。
+                return bs->setBlock(BlockPos{x, y, z}, *def, update_flags, nullptr, editContext());
+            }
 
-        // 从默认方块的序列化标签出发，**只覆盖调用方给出的那几个状态**。
-        //
-        // 这样做而不是让调用方自己拼整个 {name,states,version}：version 必须
-        // 是当前版本，而调用方没有可靠办法知道它。填错（或者不填）会让引擎
-        // 把这次写入当成远古存档跑一遍升级表 —— 表现是「我明明写的是这个状态，
-        // 放出来却是另一个」。
-        CompoundTag tag = def->getSerializationId();
-        auto extra = CompoundTag::fromSnbt(states);
-        if (!extra) return false;
-        auto& target = tag["states"];
-        if (target.hold<CompoundTag>())
-        {
-            auto& base = target.get<CompoundTag>();
-            for (auto const& kv : extra->mTags) base[kv.first] = kv.second;
-        }
-        else
-        {
-            tag["states"] = std::move(*extra);
-        }
+            // 从默认方块的序列化标签出发，**只覆盖调用方给出的那几个状态**。
+            //
+            // 这样做而不是让调用方自己拼整个 {name,states,version}：version 必须
+            // 是当前版本，而调用方没有可靠办法知道它。填错（或者不填）会让引擎
+            // 把这次写入当成远古存档跑一遍升级表 —— 表现是「我明明写的是这个状态，
+            // 放出来却是另一个」。
+            CompoundTag tag = def->getSerializationId();
+            auto extra = CompoundTag::fromSnbt(states);
+            if (!extra) return false;
+            auto& target = tag["states"];
+            if (target.hold<CompoundTag>())
+            {
+                auto& base = target.get<CompoundTag>();
+                for (auto const& kv : extra->mTags) base[kv.first] = kv.second;
+            }
+            else
+            {
+                tag["states"] = std::move(*extra);
+            }
 
-        Block const* block = blockFromTag(tag);
-        if (!block) return false;
-        return bs->setBlock(BlockPos{x, y, z}, *block, update_flags, nullptr, editContext());
+            Block const* block = blockFromTag(tag);
+            if (!block) return false;
+            return bs->setBlock(BlockPos{x, y, z}, *block, update_flags, nullptr, editContext());
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_edit_set_block_entity(int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr snbt)
     {
-        auto* level = levelReady();
-        auto* bs = blockSourceOf(dim);
-        if (!level || !bs) return false;
-        BlockPos pos{x, y, z};
-        auto* be = bs->getBlockEntity(pos);
-        // 那一格没有方块实体 —— 调用方的顺序错了（应该先放方块再填内容），
-        // 或者放的方块本来就没有方块实体。报 false，别装作成功。
-        if (!be) return false;
+        LEVI_RS_API_GUARD_BEGIN
+            auto* level = levelReady();
+            auto* bs = blockSourceOf(dim);
+            if (!level || !bs) return false;
+            BlockPos pos{x, y, z};
+            auto* be = bs->getBlockEntity(pos);
+            // 那一格没有方块实体 —— 调用方的顺序错了（应该先放方块再填内容），
+            // 或者放的方块本来就没有方块实体。报 false，别装作成功。
+            if (!be) return false;
 
-        auto parsed = CompoundTag::fromSnbt(std::string_view{snbt});
-        if (!parsed) return false;
+            auto parsed = CompoundTag::fromSnbt(std::string_view{snbt});
+            if (!parsed) return false;
 
-        // 快照里的 x/y/z 是**源位置**。不改的话，某些方块实体（活塞、命令方块）
-        // 会按那个坐标去找自己，结果是「内容对了，行为错了」。
-        (*parsed)["x"] = x;
-        (*parsed)["y"] = y;
-        (*parsed)["z"] = z;
+            // 快照里的 x/y/z 是**源位置**。不改的话，某些方块实体（活塞、命令方块）
+            // 会按那个坐标去找自己，结果是「内容对了，行为错了」。
+            (*parsed)["x"] = x;
+            (*parsed)["y"] = y;
+            (*parsed)["z"] = z;
 
-        DefaultDataLoadHelper helper{};
-        be->load(*level, *parsed, helper);
-        be->setChanged();
-        // setChanged 只标脏。少了这一步，服务端是对的、客户端还是空箱子，
-        // 直到区块重载 —— 而那时玩家早就以为复制失败了。
-        be->onChanged(*bs);
-        return true;
+            DefaultDataLoadHelper helper{};
+            be->load(*level, *parsed, helper);
+            be->setChanged();
+            // setChanged 只标脏。少了这一步，服务端是对的、客户端还是空箱子，
+            // 直到区块重载 —— 而那时玩家早就以为复制失败了。
+            be->onChanged(*bs);
+            return true;
+        LEVI_RS_API_GUARD_END
     }
 
     // ───────────────────────── 实体 ─────────────────────────
@@ -232,35 +238,37 @@ namespace levi_rs::bridge
         double z,
         LeviRsActorId* out)
     {
-        auto* level = levelReady();
-        auto* bs = blockSourceOf(dim);
-        if (!level || !bs) return false;
+        LEVI_RS_API_GUARD_BEGIN
+            auto* level = levelReady();
+            auto* bs = blockSourceOf(dim);
+            if (!level || !bs) return false;
 
-        auto parsed = CompoundTag::fromSnbt(std::string_view{snbt});
-        if (!parsed) return false;
-        CompoundTag tag = std::move(*parsed);
+            auto parsed = CompoundTag::fromSnbt(std::string_view{snbt});
+            if (!parsed) return false;
+            CompoundTag tag = std::move(*parsed);
 
-        if (use_pos)
-        {
-            ListTag pos;
-            pos.add(std::make_unique<FloatTag>(static_cast<float>(x)));
-            pos.add(std::make_unique<FloatTag>(static_cast<float>(y)));
-            pos.add(std::make_unique<FloatTag>(static_cast<float>(z)));
-            tag["Pos"] = std::move(pos);
-        }
+            if (use_pos)
+            {
+                ListTag pos;
+                pos.add(std::make_unique<FloatTag>(static_cast<float>(x)));
+                pos.add(std::make_unique<FloatTag>(static_cast<float>(y)));
+                pos.add(std::make_unique<FloatTag>(static_cast<float>(z)));
+                tag["Pos"] = std::move(pos);
+            }
 
-        // NewUniqueIdsDataLoadHelper：把 NBT 里的 UniqueID 映射成**新的** id。
-        // 这正是 /structure load 放实体时走的东西。沿用快照里的 id 会和源实体
-        // 撞号，而撞号的表现是两个实体被引擎当成同一个 —— 一个凭空消失、
-        // 另一个行为错乱，且没有任何日志。
-        NewUniqueIdsDataLoadHelper helper{*level};
-        auto owner = level->getActorFactory().loadActor(&tag, helper);
-        if (!owner) return false;
+            // NewUniqueIdsDataLoadHelper：把 NBT 里的 UniqueID 映射成**新的** id。
+            // 这正是 /structure load 放实体时走的东西。沿用快照里的 id 会和源实体
+            // 撞号，而撞号的表现是两个实体被引擎当成同一个 —— 一个凭空消失、
+            // 另一个行为错乱，且没有任何日志。
+            NewUniqueIdsDataLoadHelper helper{*level};
+            auto owner = level->getActorFactory().loadActor(&tag, helper);
+            if (!owner) return false;
 
-        Actor* actor = level->addEntity(*bs, std::move(owner));
-        if (!actor) return false;
-        if (out) *out = actor->getOrCreateUniqueID().rawID;
-        return true;
+            Actor* actor = level->addEntity(*bs, std::move(owner));
+            if (!actor) return false;
+            if (out) *out = actor->getOrCreateUniqueID().rawID;
+            return true;
+        LEVI_RS_API_GUARD_END
     }
 
     // ───────────────────────── 射线 ─────────────────────────
@@ -273,34 +281,36 @@ namespace levi_rs::bridge
         void* ctx,
         LeviRsStrSink sink)
     {
-        Actor* a = resolveActor(id);
-        if (!a || !sink) return false;
-        auto hr = a->traceRay(max_dist, include_actors, include_blocks);
+        LEVI_RS_API_GUARD_BEGIN
+            Actor* a = resolveActor(id);
+            if (!a || !sink) return false;
+            auto hr = a->traceRay(max_dist, include_actors, include_blocks);
 
-        // 老的 actor_trace_ray 只发 mPos（一个浮点命中点）。命中点正好落在
-        // 方块的**面**上，所以 floor() 有一半概率落到隔壁那一格 —— 任何
-        // 「照着准星选方块」的功能都因此做不了。mBlock 和 mFacing 一直都在
-        // HitResult 里，只是没往外发。
-        std::string out = "{type:" + snbtNum(static_cast<int>(hr.mType));
-        out += ",block:[" + snbtNum(hr.mBlock.x) + "," + snbtNum(hr.mBlock.y) + ","
-            + snbtNum(hr.mBlock.z) + "]";
-        out += ",facing:" + snbtNum(static_cast<int>(hr.mFacing));
-        out += ",pos:[" + snbtNum(hr.mPos.x) + "," + snbtNum(hr.mPos.y) + ","
-            + snbtNum(hr.mPos.z) + "]";
+            // 老的 actor_trace_ray 只发 mPos（一个浮点命中点）。命中点正好落在
+            // 方块的**面**上，所以 floor() 有一半概率落到隔壁那一格 —— 任何
+            // 「照着准星选方块」的功能都因此做不了。mBlock 和 mFacing 一直都在
+            // HitResult 里，只是没往外发。
+            std::string out = "{type:" + snbtNum(static_cast<int>(hr.mType));
+            out += ",block:[" + snbtNum(hr.mBlock.x) + "," + snbtNum(hr.mBlock.y) + ","
+                + snbtNum(hr.mBlock.z) + "]";
+            out += ",facing:" + snbtNum(static_cast<int>(hr.mFacing));
+            out += ",pos:[" + snbtNum(hr.mPos.x) + "," + snbtNum(hr.mPos.y) + ","
+                + snbtNum(hr.mPos.z) + "]";
 
-        int64_t entityId = 0;
-        if (hr.mType == HitResultType::Entity)
-        {
-            // mEntity 是 WeakEntityRef；tryUnwrap<Actor>() 是 LL 给的安全解引用
-            // （实体已经消失时返回空，而不是给一个悬垂指针）。
-            if (auto hit = hr.mEntity.tryUnwrap<Actor>())
+            int64_t entityId = 0;
+            if (hr.mType == HitResultType::Entity)
             {
-                entityId = hit->getOrCreateUniqueID().rawID;
+                // mEntity 是 WeakEntityRef；tryUnwrap<Actor>() 是 LL 给的安全解引用
+                // （实体已经消失时返回空，而不是给一个悬垂指针）。
+                if (auto hit = hr.mEntity.tryUnwrap<Actor>())
+                {
+                    entityId = hit->getOrCreateUniqueID().rawID;
+                }
             }
-        }
-        out += ",entity:" + snbtNum(entityId) + "L}";
-        sink(ctx, out);
-        return true;
+            out += ",entity:" + snbtNum(entityId) + "L}";
+            sink(ctx, out);
+            return true;
+        LEVI_RS_API_GUARD_END
     }
 
     // ───────────────────────── 液体层（含水） ─────────────────────────
@@ -312,28 +322,31 @@ namespace levi_rs::bridge
     bool api_get_extra_block(
         int32_t dim, int32_t x, int32_t y, int32_t z, void* ctx, LeviRsStrSink sink)
     {
-        if (!sink) return false;
-        auto* bs = blockSourceOf(dim);
-        if (!bs) return false;
-        auto const& block = bs->getExtraBlock(BlockPos{x, y, z});
-        // 空液体层返回的是 air，如实传出去 —— 调用方据此判断「这格没有含水」。
-        sink(ctx, block.getTypeName());
-        return true;
+        LEVI_RS_API_GUARD_BEGIN
+            if (!sink) return false;
+            auto* bs = blockSourceOf(dim);
+            if (!bs) return false;
+            auto const& block = bs->getExtraBlock(BlockPos{x, y, z});
+            // 空液体层返回的是 air，如实传出去 —— 调用方据此判断「这格没有含水」。
+            sink(ctx, block.getTypeName());
+            return true;
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_set_extra_block(
         int32_t dim, int32_t x, int32_t y, int32_t z, LeviRsStr blockSpec, int32_t updateFlags)
     {
-        auto* bs = blockSourceOf(dim);
-        if (!bs) return false;
+        LEVI_RS_API_GUARD_BEGIN
+            auto* bs = blockSourceOf(dim);
+            if (!bs) return false;
 
-        std::string_view spec{blockSpec};
-        while (!spec.empty() && (spec.front() == ' ' || spec.front() == '\t')) spec.remove_prefix(1);
-        if (spec.empty()) return false;
+            std::string_view spec{blockSpec};
+            while (!spec.empty() && (spec.front() == ' ' || spec.front() == '\t')) spec.remove_prefix(1);
+            if (spec.empty()) return false;
 
-        Block const* block = spec.front() == '{' ? blockFromSnbt(spec) : defaultBlockNamed(spec);
-        if (!block) return false;
-        return bs->setExtraBlock(BlockPos{x, y, z}, *block, updateFlags);
+            Block const* block = spec.front() == '{' ? blockFromSnbt(spec) : defaultBlockNamed(spec);
+            if (!block) return false;
+            return bs->setExtraBlock(BlockPos{x, y, z}, *block, updateFlags);
+        LEVI_RS_API_GUARD_END
     }
-
 } // namespace levi_rs::bridge

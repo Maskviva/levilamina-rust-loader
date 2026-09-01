@@ -79,7 +79,7 @@ namespace more_dimensions
         constexpr uint64_t key(int dimension, int rule)
         {
             return (static_cast<uint64_t>(static_cast<uint32_t>(dimension)) << 32)
-                 | static_cast<uint32_t>(rule);
+                | static_cast<uint32_t>(rule);
         }
 
         /** 该维度是否有**任何**规则。没有就整个 hook 走快速路径。 */
@@ -168,13 +168,13 @@ namespace more_dimensions
             Spawner,
             &Spawner::$spawnMob,
             ::Mob*,
-            ::BlockSource&                     region,
+            ::BlockSource& region,
             ::ActorDefinitionIdentifier const& id,
-            ::Actor*                           spawner,
-            ::Vec3 const&                      pos,
-            bool                               naturalSpawn,
-            bool                               surface,
-            bool                               fromSpawner
+            ::Actor* spawner,
+            ::Vec3 const& pos,
+            bool naturalSpawn,
+            bool surface,
+            bool fromSpawner
         )
         {
             int const dim = dimOf(region);
@@ -196,8 +196,9 @@ namespace more_dimensions
                 if (!mob) return nullptr;
 
                 bool const hostile = mob->hasCategory(::ActorCategory::Monster);
-                bool const ok = hostile ? allowed(dim, DimRule::SpawnMonster)
-                                        : allowed(dim, DimRule::SpawnAnimal);
+                bool const ok = hostile
+                                    ? allowed(dim, DimRule::SpawnMonster)
+                                    : allowed(dim, DimRule::SpawnAnimal);
                 if (!ok)
                 {
                     // 已经生成出来了才知道类别，只能立刻移除。
@@ -230,11 +231,11 @@ namespace more_dimensions
             Spawner,
             &Spawner::$spawnProjectile,
             ::Actor*,
-            ::BlockSource&                     region,
+            ::BlockSource& region,
             ::ActorDefinitionIdentifier const& id,
-            ::Actor*                           spawner,
-            ::Vec3 const&                      position,
-            ::Vec3 const&                      direction
+            ::Actor* spawner,
+            ::Vec3 const& position,
+            ::Vec3 const& direction
         )
         {
             int const dim = dimOf(region);
@@ -272,13 +273,13 @@ namespace more_dimensions
             &Level::$explode,
             bool,
             ::BlockSource& region,
-            ::Actor*       source,
-            ::Vec3 const&  pos,
-            float          explosionRadius,
-            bool           fire,
-            bool           breaksBlocks,
-            float          maxResistance,
-            bool           allowUnderwater
+            ::Actor* source,
+            ::Vec3 const& pos,
+            float explosionRadius,
+            bool fire,
+            bool breaksBlocks,
+            float maxResistance,
+            bool allowUnderwater
         )
         {
             int const dim = dimOf(region);
@@ -300,7 +301,7 @@ namespace more_dimensions
                 try
                 {
                     isMob = source->hasCategory(::ActorCategory::Mob)
-                         && !source->hasCategory(::ActorCategory::Player);
+                        && !source->hasCategory(::ActorCategory::Player);
                 }
                 catch (...)
                 {
@@ -333,11 +334,11 @@ namespace more_dimensions
             FireBlock,
             &FireBlock::checkBurn,
             void,
-            ::BlockSource&    region,
+            ::BlockSource& region,
             ::BlockPos const& pos,
-            int               chance,
-            ::IRandom&        random,
-            int               age,
+            int chance,
+            ::IRandom& random,
+            int age,
             ::BlockPos const& firePos
         )
         {
@@ -364,11 +365,11 @@ namespace more_dimensions
             LiquidBlock,
             &LiquidBlock::_trySpreadTo,
             void,
-            ::BlockSource&    region,
+            ::BlockSource& region,
             ::BlockPos const& pos,
-            int               neighbor,
+            int neighbor,
             ::BlockPos const& flowFromPos,
-            uchar             flowFromDirection
+            uchar flowFromDirection
         )
         {
             int const dim = dimOf(region);
@@ -391,10 +392,10 @@ namespace more_dimensions
             FarmBlock,
             &FarmBlock::$transformOnFall,
             void,
-            ::BlockSource&    region,
+            ::BlockSource& region,
             ::BlockPos const& pos,
-            ::Actor*          actor,
-            float             fallDistance
+            ::Actor* actor,
+            float fallDistance
         )
         {
             int const dim = dimOf(region);
@@ -539,9 +540,7 @@ namespace more_dimensions
         if (gInstalled) return;
         DimRuleHookReg::hook();
         gInstalled = true;
-        logger().info(
-            "按维度生效的行为规则已启用（生成 / 弹射物 / 爆炸 / 火焰 / 液体 / 耕地 / 活塞 / "
-            "载具 / 活塞跨地皮）");
+        logger().debug("按维度生效的行为规则已启用（9 类）");
     }
 
     void unregisterDimensionRuleHooks()

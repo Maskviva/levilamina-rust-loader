@@ -83,7 +83,7 @@ namespace more_dimensions::bridge
                 return -1;
             }
             auto genType = static_cast<GeneratorType>(generatorTypeInt);
-            logger().info(
+            logger().debug(
                 "add_simple_dimension('{}')：seed={} generatorType={}({})",
                 std::string{name},
                 seed,
@@ -265,8 +265,8 @@ namespace levi_rs::bridge
         for (auto const& [name, info] : cfg.dimensionList)
         {
             std::string line = "{\"name\":\"" + levi_rs::bridge::snbtEscape(name)
-                             + "\",\"dim\":" + std::to_string(info.dimId)
-                             + ",\"snbt\":\"" + levi_rs::bridge::snbtEscape(info.sNbt) + "\"}";
+                + "\",\"dim\":" + std::to_string(info.dimId)
+                + ",\"snbt\":\"" + levi_rs::bridge::snbtEscape(info.sNbt) + "\"}";
             sink(ctx, line);
         }
     }

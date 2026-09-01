@@ -69,14 +69,15 @@ namespace more_dimensions
         constexpr uint64_t pk(int32_t x, int32_t z)
         {
             return (static_cast<uint64_t>(static_cast<uint32_t>(x)) << 32)
-                 | static_cast<uint64_t>(static_cast<uint32_t>(z));
+                | static_cast<uint64_t>(static_cast<uint32_t>(z));
         }
 
         constexpr PlotXZ unpk(uint64_t k)
         {
             return PlotXZ{
                 static_cast<int32_t>(static_cast<uint32_t>(k >> 32)),
-                static_cast<int32_t>(static_cast<uint32_t>(k & 0xFFFFFFFFull))};
+                static_cast<int32_t>(static_cast<uint32_t>(k & 0xFFFFFFFFull))
+            };
         }
 
         /** 一个维度的网格 + 合并表 + 组根备忘。 */
@@ -291,7 +292,7 @@ namespace more_dimensions
             PlotXZ const ne = neighbourOf(base, 1);
             PlotXZ const sw = neighbourOf(base, 2);
             if (!(connected(g, base, 1) && connected(g, base, 2) && connected(g, ne, 2)
-                  && connected(g, sw, 1)))
+                && connected(g, sw, 1)))
             {
                 return false;
             }

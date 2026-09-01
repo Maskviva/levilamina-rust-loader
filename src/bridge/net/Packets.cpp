@@ -24,6 +24,8 @@
 #include "bridge/Api.h"
 #include "bridge/Common.h"
 
+#include <set>
+
 #include <memory>
 #include <string>
 #include <string_view>
@@ -55,101 +57,118 @@ namespace levi_rs::bridge
 
     bool api_send_packet(LeviRsPlayerSel sel, int32_t packetId, uint8_t const* body, size_t bodyLen)
     {
-        if (!body && bodyLen != 0) return false;
+        LEVI_RS_API_GUARD_BEGIN
+            if (!body && bodyLen != 0) return false;
 
-        auto pkt = MinecraftPackets::createPacket(static_cast<MinecraftPacketIds>(packetId));
-        if (!pkt) return false;
+            auto pkt = MinecraftPackets::createPacket(static_cast<MinecraftPacketIds>(packetId));
+            if (!pkt) return false;
 
-        // Deserialise the caller-supplied body into the packet object. The
-        // stream borrows the bytes (copyBuffer=false) — valid for this frame.
-        std::string_view raw{reinterpret_cast<char const*>(body), bodyLen};
-        ReadOnlyBinaryStream stream{raw, /*copyBuffer=*/false};
-        if (!pkt->read(stream)) return false;
-        // The body must be *exactly* one packet: trailing garbage means the
-        // caller serialised the wrong shape for this game version — refuse
-        // early instead of sending a half-parsed packet to a client.
-        if (!stream.ensureReadCompleted()) return false;
+            // Deserialise the caller-supplied body into the packet object. The
+            // stream borrows the bytes (copyBuffer=false) — valid for this frame.
+            std::string_view raw{reinterpret_cast<char const*>(body), bodyLen};
+            ReadOnlyBinaryStream stream{raw, /*copyBuffer=*/false};
+            if (!pkt->read(stream)) return false;
+            // The body must be *exactly* one packet: trailing garbage means the
+            // caller serialised the wrong shape for this game version — refuse
+            // early instead of sending a half-parsed packet to a client.
+            if (!stream.ensureReadCompleted()) return false;
 
-        return sendToPlayer(sel, *pkt);
+            return sendToPlayer(sel, *pkt);
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_player_send_title(
         LeviRsPlayerSel sel, int32_t type, LeviRsStr text, int32_t fadeInTicks, int32_t stayTicks,
         int32_t fadeOutTicks)
     {
-        using TitleType = SetTitlePacketPayload::TitleType;
+        LEVI_RS_API_GUARD_BEGIN
+            using TitleType = SetTitlePacketPayload::TitleType;
 
-        // 6..8 are the TextObject variants; their payload constructor needs a
-        // ResolvedTextObject, which has no meaning across this FFI boundary.
-        // Refuse rather than silently degrade to the plain-string variant —
-        // the caller asked for a different thing than it would have got.
-        if (type < 0 || type > 5) return false;
-        auto const kind = static_cast<TitleType>(type);
+            // 6..8 are the TextObject variants; their payload constructor needs a
+            // ResolvedTextObject, which has no meaning across this FFI boundary.
+            // Refuse rather than silently degrade to the plain-string variant —
+            // the caller asked for a different thing than it would have got.
+            if (type < 0 || type > 5) return false;
+            auto const kind = static_cast<TitleType>(type);
 
-        // Either all three durations are specified or none are. A mix has no
-        // defensible reading: "fade in over 5 ticks and stay for whatever the
-        // client happened to have" is a bug at the call site, not a request.
-        int const specified =
-            (fadeInTicks >= 0 ? 1 : 0) + (stayTicks >= 0 ? 1 : 0) + (fadeOutTicks >= 0 ? 1 : 0);
-        if (specified != 0 && specified != 3) return false;
-        bool const withTimes = (specified == 3);
+            // Either all three durations are specified or none are. A mix has no
+            // defensible reading: "fade in over 5 ticks and stay for whatever the
+            // client happened to have" is a bug at the call site, not a request.
+            int const specified =
+                (fadeInTicks >= 0 ? 1 : 0) + (stayTicks >= 0 ? 1 : 0) + (fadeOutTicks >= 0 ? 1 : 0);
+            if (specified != 0 && specified != 3) return false;
+            bool const withTimes = (specified == 3);
 
-        Player* p = resolvePlayer(sel);
-        if (!p) return false;
+            Player* p = resolvePlayer(sel);
+            if (!p) return false;
 
-        // Times, when asked for, goes first and as its own packet — that is
-        // what `/title <who> times a b c` sends, and the client applies it to
-        // titles that arrive *after* it. Putting the durations only in the
-        // content packet works on some versions and not others; sending the
-        // Times packet is the behaviour vanilla itself relies on.
-        if (withTimes)
-        {
-            SetTitlePacket times;
-            times.mType        = TitleType::Times;
-            times.mFadeInTime  = fadeInTicks;
-            times.mStayTime    = stayTicks;
-            times.mFadeOutTime = fadeOutTicks;
-            p->sendNetworkPacket(times);
-            // `type == 5` means the caller wanted only the timing change.
-            if (kind == TitleType::Times) return true;
-        }
-        else if (kind == TitleType::Times)
-        {
-            // Times with no durations is a no-op request, not a valid packet.
-            return false;
-        }
+            // Times, when asked for, goes first and as its own packet — that is
+            // what `/title <who> times a b c` sends, and the client applies it to
+            // titles that arrive *after* it. Putting the durations only in the
+            // content packet works on some versions and not others; sending the
+            // Times packet is the behaviour vanilla itself relies on.
+            if (withTimes)
+            {
+                SetTitlePacket times;
+                times.mType = TitleType::Times;
+                times.mFadeInTime = fadeInTicks;
+                times.mStayTime = stayTicks;
+                times.mFadeOutTime = fadeOutTicks;
+                p->sendNetworkPacket(times);
+                // `type == 5` means the caller wanted only the timing change.
+                if (kind == TitleType::Times) return true;
+            }
+            else if (kind == TitleType::Times)
+            {
+                // Times with no durations is a no-op request, not a valid packet.
+                return false;
+            }
 
-        // ll::PayloadPacket<T> derives from T (mc/network/Packet.h:204), so the
-        // payload fields live directly on the packet — same access pattern as
-        // SpawnParticleEffectPacket above. No wire format is involved.
-        SetTitlePacket pkt;
-        pkt.mType = kind;
-        if (kind == TitleType::Title || kind == TitleType::Subtitle
-            || kind == TitleType::Actionbar)
-        {
-            pkt.mTitleText = std::string{text};
-        }
-        if (withTimes)
-        {
-            pkt.mFadeInTime  = fadeInTicks;
-            pkt.mStayTime    = stayTicks;
-            pkt.mFadeOutTime = fadeOutTicks;
-        }
-        return sendToPlayer(sel, pkt);
+            // ll::PayloadPacket<T> derives from T (mc/network/Packet.h:204), so the
+            // payload fields live directly on the packet — same access pattern as
+            // SpawnParticleEffectPacket above. No wire format is involved.
+            SetTitlePacket pkt;
+            pkt.mType = kind;
+            if (kind == TitleType::Title || kind == TitleType::Subtitle
+                || kind == TitleType::Actionbar)
+            {
+                pkt.mTitleText = std::string{text};
+            }
+            if (withTimes)
+            {
+                pkt.mFadeInTime = fadeInTicks;
+                pkt.mStayTime = stayTicks;
+                pkt.mFadeOutTime = fadeOutTicks;
+            }
+            return sendToPlayer(sel, pkt);
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_spawn_particle_for(
         LeviRsPlayerSel sel, int32_t dimension, LeviRsStr effectName, double x, double y, double z)
     {
-        // Typed construction: the MCAPI default constructor initialises the
-        // packet (serialization mode) and the payload defaults (mActorId =
-        // invalid, mMolangVariables = nullopt); we fill the three fields that
-        // matter. No wire format involved — survives version bumps that
-        // api_send_packet callers would have to track themselves.
-        SpawnParticleEffectPacket pkt;
-        pkt.mVanillaDimensionId = static_cast<uchar>(dimension);
-        pkt.mPos                = Vec3{(float)x, (float)y, (float)z};
-        pkt.mEffectName         = std::string{effectName};
-        return sendToPlayer(sel, pkt);
+        LEVI_RS_API_GUARD_BEGIN
+            // Typed construction: the MCAPI default constructor initialises the
+            // packet (serialization mode) and the payload defaults (mActorId =
+            // invalid, mMolangVariables = nullopt); we fill the three fields that
+            // matter. No wire format involved — survives version bumps that
+            // api_send_packet callers would have to track themselves.
+            if (dimension < 0 || dimension > 255)
+            {
+                static std::set<int32_t> warned;
+                if (warned.insert(dimension).second)
+                {
+                    bridgeLogger().warn(
+                        "spawn_particle_for: 维度 {} 装不进 SpawnParticleEffectPacket 的单字节维度号，"
+                        "会被截断成 {}。自定义维度里的定向粒子可能不显示，改用 spawn_particle。",
+                        dimension, static_cast<int>(static_cast<uchar>(dimension)));
+                }
+            }
+            SpawnParticleEffectPacket pkt;
+            pkt.mVanillaDimensionId = static_cast<uchar>(dimension);
+            pkt.mPos = Vec3{(float)x, (float)y, (float)z};
+            pkt.mEffectName = std::string{effectName};
+            return sendToPlayer(sel, pkt);
+        LEVI_RS_API_GUARD_END
     }
 } // namespace levi_rs::bridge

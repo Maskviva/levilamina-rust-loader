@@ -6,6 +6,7 @@
  * handlers executing INSIDE the tick), idle cost = one predictable branch.
  */
 #include "bridge/Api.h"
+#include "bridge/Common.h"
 
 #include <cstdint>
 
@@ -25,9 +26,10 @@ namespace levi_rs::bridge
             bool hooked = false;
             bool frozen = false;
             double warp = 1.0; // ticks per real frame; fractional = slow motion
-            double acc = 0.0;  // fractional accumulator for warp
+            double acc = 0.0; // fractional accumulator for warp
             uint32_t pendingSteps = 0;
         };
+
         TickState gTick;
 
         LL_TYPE_INSTANCE_HOOK(
@@ -71,28 +73,34 @@ namespace levi_rs::bridge
 
     bool api_tick_freeze(bool on)
     {
-        if (!on && !gTick.hooked) return true; // nothing to undo
-        ensureTickHooked();
-        gTick.frozen = on;
-        if (!on) gTick.pendingSteps = 0;
-        return true;
+        LEVI_RS_API_GUARD_BEGIN
+            if (!on && !gTick.hooked) return true; // nothing to undo
+            ensureTickHooked();
+            gTick.frozen = on;
+            if (!on) gTick.pendingSteps = 0;
+            return true;
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_tick_step(uint32_t n)
     {
-        if (n == 0) return false;
-        if (!gTick.hooked || !gTick.frozen) return false; // stepping only makes sense while frozen
-        gTick.pendingSteps += n;
-        return true;
+        LEVI_RS_API_GUARD_BEGIN
+            if (n == 0) return false;
+            if (!gTick.hooked || !gTick.frozen) return false; // stepping only makes sense while frozen
+            gTick.pendingSteps += n;
+            return true;
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_tick_warp(double factor)
     {
-        if (!(factor > 0.0) || factor > 100.0) return false; // rejects NaN too
-        if (factor == 1.0 && !gTick.hooked) return true;     // nothing to undo
-        ensureTickHooked();
-        gTick.warp = factor;
-        if (factor == 1.0) gTick.acc = 0.0;
-        return true;
+        LEVI_RS_API_GUARD_BEGIN
+            if (!(factor > 0.0) || factor > 100.0) return false; // rejects NaN too
+            if (factor == 1.0 && !gTick.hooked) return true; // nothing to undo
+            ensureTickHooked();
+            gTick.warp = factor;
+            if (factor == 1.0) gTick.acc = 0.0;
+            return true;
+        LEVI_RS_API_GUARD_END
     }
 } // namespace levi_rs::bridge

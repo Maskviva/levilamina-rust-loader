@@ -207,9 +207,6 @@ pub struct LeviRsLaneRef {
     pub vtable: *const c_void,
 
     pub alive: *const u32,
-    /// 调用中计数，loader 拥有、永不释放。进入提供方表项前 +1，返回后 -1。
-    /// `alive` 挡不住「检查通过之后、调用发生之前」的窗口；重入式卸载正好
-    /// 落在那里。loader 在 unload 最前面读它，非 0 就拒绝卸载。
     pub busy: *mut u32,
 }
 

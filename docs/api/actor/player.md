@@ -153,6 +153,22 @@ let can_build = player.can_use_ability(Ability::Build)?;
 | `player.set_ability(ability, value)` | 布尔槽传 `bool`，浮点槽传 `f64` / `f32` |
 | `player.set_ability_raw(index, value)` | 直接传裸索引，用于本表没覆盖到的槽 |
 | `player.can_use_ability(ability)` | 是否拥有某项能力 |
+| `player.permission_level()` | `Result<PlayerPermission>`，玩家权限等级 |
+| `player.set_permission_level(level)` | 设置玩家权限等级 |
+
+::: warning 能力位和玩家权限等级是两件事
+`PlayerPermission`（`Visitor=0` / `Member=1` / `Operator=2` / `Custom=3`）和
+`Ability` 一起装在 `UpdateAbilitiesPacket` 里，但它是**独立的字段**，而且客户端
+先看它：等级是 `Visitor` 时，普通方块**不画描边**、打不了人、放置不做本地预测，
+可交互方块（中继器、容器）的描边还在。服务端一侧完全不受影响，所以指令照跑、
+方块照放，只是全部变成服务端驱动的。
+
+引擎的 `LayeredAbilities::setAbility` 本身就是「切成自定义权限」那条路，会把玩家
+推到 `Custom`。**loader 已经在 `set_ability` 里把等级还原回去了**，所以正常用不会
+踩到；要真的改等级请显式调 `set_permission_level`。
+
+它还会被写进玩家存档（`PermissionsHandler::addSaveData`），重连不会自己恢复。
+:::
 
 `Ability` 的全部变体（已对 BDS 1.26.20 的 `AbilitiesIndex.h` 核实，枚举跑 0..=19）：
 
@@ -282,10 +298,10 @@ let can_build = player.can_use_ability(Ability::Build)?;
 `by_name` `get` `by_xuid` `by_uuid` `list` `broadcast`
 
 **查询**
-`is_online` `as_entity` `get_actor` `real_name` `uuid` `xuid` `ip_and_port` `locale_code` `name_tag` `game_type` `dimension` `level` `experience` `hunger` `saturation` `exhaustion` `xp_needed_for_next_level` `luck` `selected_slot` `is_operator` `can_use_operator_blocks` `is_flying` `can_jump` `is_emoting` `is_in_raid` `is_hurt` `is_scoping` `can_sleep` `has_respawn_position` `client_sub_id`
+`is_online` `as_entity` `get_actor` `real_name` `uuid` `xuid` `ip_and_port` `locale_code` `name_tag` `game_type` `dimension` `level` `experience` `hunger` `saturation` `exhaustion` `xp_needed_for_next_level` `luck` `selected_slot` `is_operator` `permission_level` `can_use_operator_blocks` `is_flying` `can_jump` `is_emoting` `is_in_raid` `is_hurt` `is_scoping` `can_sleep` `has_respawn_position` `client_sub_id`
 
 **动作**
-`set_level` `set_experience` `set_hunger` `set_saturation` `set_exhaustion` `send_message` `tell` `send_packet` `disconnect` `set_gamemode` `teleport` `set_ability` `set_ability_raw` `can_use_ability` `set_selected_slot` `give_item` `set_spawn_point` `send_title` `set_title_times` `clear_title` `set_title` `set_subtitle` `set_actionbar`
+`set_level` `set_experience` `set_hunger` `set_saturation` `set_exhaustion` `send_message` `tell` `send_packet` `disconnect` `set_gamemode` `teleport` `set_ability` `set_ability_raw` `set_permission_level` `can_use_ability` `set_selected_slot` `give_item` `set_spawn_point` `send_title` `set_title_times` `clear_title` `set_title` `set_subtitle` `set_actionbar`
 
 **物品栏**
 `inventory` `ender_chest` `armor` `hands` `offhand` `set_offhand`

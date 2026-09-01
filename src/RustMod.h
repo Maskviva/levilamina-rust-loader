@@ -42,6 +42,7 @@ namespace levi_rs
             std::uint64_t id;
             std::shared_ptr<ll::event::ListenerBase> listener;
         };
+
         std::vector<ListenerSlot> listeners;
         /** Muted when disabled so already-registered commands become no-ops. */
         bool commandsMuted = false;

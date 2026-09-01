@@ -46,102 +46,107 @@ namespace levi_rs::bridge
 
     bool api_scoreboard_op(int32_t op, LeviRsStr a, LeviRsStr b, int64_t n, void* ctx, LeviRsStrSink out)
     {
-        auto* level = levelReady();
-        if (!level) return false;
-        auto& board = level->getScoreboard();
-        std::string sa{a};
-        std::string sb{b};
+        LEVI_RS_API_GUARD_BEGIN
+            auto* level = levelReady();
+            if (!level) return false;
+            auto& board = level->getScoreboard();
+            std::string sa{a};
+            std::string sb{b};
 
-        switch (op)
-        {
-        case LEVI_RS_SB_ADD_OBJECTIVE:
+            switch (op)
             {
-                auto* criteria = board.getCriteria(Scoreboard::DEFAULT_CRITERIA());
-                if (!criteria) return false;
-                auto* obj = board.addObjective(sa, sb.empty() ? sa : sb, *criteria);
-                return obj != nullptr;
-            }
-        case LEVI_RS_SB_REMOVE_OBJECTIVE:
-            {
-                auto* obj = board.getObjective(sa);
-                if (!obj) return false;
-                return board.removeObjective(obj);
-            }
-        case LEVI_RS_SB_LIST_OBJECTIVES:
-            {
-                if (!out) return false;
-                std::string list = "[";
-                for (auto const* obj : board.getObjectives())
+            case LEVI_RS_SB_ADD_OBJECTIVE:
                 {
-                    if (!obj) continue;
-                    list += "{name:\"" + snbtEscape(obj->mName.get())
-                        + "\",display:\"" + snbtEscape(obj->mDisplayName.get()) + "\"},";
+                    auto* criteria = board.getCriteria(Scoreboard::DEFAULT_CRITERIA());
+                    if (!criteria) return false;
+                    auto* obj = board.addObjective(sa, sb.empty() ? sa : sb, *criteria);
+                    return obj != nullptr;
                 }
-                if (list.back() == ',') list.pop_back();
-                list += "]";
-                out(ctx, list);
+            case LEVI_RS_SB_REMOVE_OBJECTIVE:
+                {
+                    auto* obj = board.getObjective(sa);
+                    if (!obj) return false;
+                    return board.removeObjective(obj);
+                }
+            case LEVI_RS_SB_LIST_OBJECTIVES:
+                {
+                    if (!out) return false;
+                    std::string list = "[";
+                    for (auto const* obj : board.getObjectives())
+                    {
+                        if (!obj) continue;
+                        list += "{name:\"" + snbtEscape(obj->mName.get())
+                            + "\",display:\"" + snbtEscape(obj->mDisplayName.get()) + "\"},";
+                    }
+                    if (list.back() == ',') list.pop_back();
+                    list += "]";
+                    out(ctx, list);
+                    return true;
+                }
+            case LEVI_RS_SB_GET_SCORE:
+                {
+                    auto* obj = board.getObjective(sa);
+                    if (!obj || !out) return false;
+                    auto const& id = board.getScoreboardId(sb);
+                    if (id.mRawID == ScoreboardId::INVALID().mRawID) return false;
+                    auto info = obj->getPlayerScore(id);
+                    if (!info.mValid) return false;
+                    out(ctx, snbtNum(info.mValue));
+                    return true;
+                }
+            case LEVI_RS_SB_SET_SCORE:
+                {
+                    int nv = 0;
+                    if (!modifyScore(board, sa, sb, static_cast<int>(n), PlayerScoreSetFunction::Set, &nv)) return
+                        false;
+                    if (out) out(ctx, snbtNum(nv));
+                    return true;
+                }
+            case LEVI_RS_SB_ADD_SCORE:
+                {
+                    int nv = 0;
+                    if (!modifyScore(board, sa, sb, static_cast<int>(n), PlayerScoreSetFunction::Add, &nv)) return
+                        false;
+                    if (out) out(ctx, snbtNum(nv));
+                    return true;
+                }
+            case LEVI_RS_SB_REDUCE_SCORE:
+                {
+                    int nv = 0;
+                    if (!modifyScore(board, sa, sb, static_cast<int>(n), PlayerScoreSetFunction::Subtract, &nv))
+                        return
+                            false;
+                    if (out) out(ctx, snbtNum(nv));
+                    return true;
+                }
+            case LEVI_RS_SB_RESET_SCORE:
+                {
+                    auto* obj = board.getObjective(sa);
+                    if (!obj) return false;
+                    auto const& id = board.getScoreboardId(sb);
+                    if (id.mRawID == ScoreboardId::INVALID().mRawID) return false;
+                    return board.resetPlayerScore(id, *obj);
+                }
+            case LEVI_RS_SB_SET_DISPLAY:
+                {
+                    // 原生。原来走 /scoreboard 的理由是「让排序默认值留在引擎侧」，
+                    // 但 setDisplayObjective 本来就收 ObjectiveSortOrder，显式传
+                    // Ascending 就是命令不带 sortOrder 时的默认值 —— 绕命令并没有
+                    // 换来什么，反而丢了失败原因（目标不存在？槽位名拼错？）。
+                    //
+                    // sa = 槽位名（"sidebar"/"list"/"belowname"），sb = 目标名。
+                    auto* obj = board.getObjective(sb);
+                    if (!obj) return false;
+                    return board.setDisplayObjective(sa, *obj, ObjectiveSortOrder::Ascending) != nullptr;
+                }
+            case LEVI_RS_SB_CLEAR_DISPLAY:
+                // 返回被清掉的那个目标；本来就没有显示目标时返回 nullptr，那也算
+                // 成功（幂等），所以不看返回值。
+                board.clearDisplayObjective(sa);
                 return true;
+            default:
+                return false;
             }
-        case LEVI_RS_SB_GET_SCORE:
-            {
-                auto* obj = board.getObjective(sa);
-                if (!obj || !out) return false;
-                auto const& id = board.getScoreboardId(sb);
-                if (id.mRawID == ScoreboardId::INVALID().mRawID) return false;
-                auto info = obj->getPlayerScore(id);
-                if (!info.mValid) return false;
-                out(ctx, snbtNum(info.mValue));
-                return true;
-            }
-        case LEVI_RS_SB_SET_SCORE:
-            {
-                int nv = 0;
-                if (!modifyScore(board, sa, sb, static_cast<int>(n), PlayerScoreSetFunction::Set, &nv)) return false;
-                if (out) out(ctx, snbtNum(nv));
-                return true;
-            }
-        case LEVI_RS_SB_ADD_SCORE:
-            {
-                int nv = 0;
-                if (!modifyScore(board, sa, sb, static_cast<int>(n), PlayerScoreSetFunction::Add, &nv)) return false;
-                if (out) out(ctx, snbtNum(nv));
-                return true;
-            }
-        case LEVI_RS_SB_REDUCE_SCORE:
-            {
-                int nv = 0;
-                if (!modifyScore(board, sa, sb, static_cast<int>(n), PlayerScoreSetFunction::Subtract, &nv)) return
-                    false;
-                if (out) out(ctx, snbtNum(nv));
-                return true;
-            }
-        case LEVI_RS_SB_RESET_SCORE:
-            {
-                auto* obj = board.getObjective(sa);
-                if (!obj) return false;
-                auto const& id = board.getScoreboardId(sb);
-                if (id.mRawID == ScoreboardId::INVALID().mRawID) return false;
-                return board.resetPlayerScore(id, *obj);
-            }
-        case LEVI_RS_SB_SET_DISPLAY:
-            {
-                // 原生。原来走 /scoreboard 的理由是「让排序默认值留在引擎侧」，
-                // 但 setDisplayObjective 本来就收 ObjectiveSortOrder，显式传
-                // Ascending 就是命令不带 sortOrder 时的默认值 —— 绕命令并没有
-                // 换来什么，反而丢了失败原因（目标不存在？槽位名拼错？）。
-                //
-                // sa = 槽位名（"sidebar"/"list"/"belowname"），sb = 目标名。
-                auto* obj = board.getObjective(sb);
-                if (!obj) return false;
-                return board.setDisplayObjective(sa, *obj, ObjectiveSortOrder::Ascending) != nullptr;
-            }
-        case LEVI_RS_SB_CLEAR_DISPLAY:
-            // 返回被清掉的那个目标；本来就没有显示目标时返回 nullptr，那也算
-            // 成功（幂等），所以不看返回值。
-            board.clearDisplayObjective(sa);
-            return true;
-        default:
-            return false;
-        }
+        LEVI_RS_API_GUARD_END
     }
 } // namespace levi_rs::bridge

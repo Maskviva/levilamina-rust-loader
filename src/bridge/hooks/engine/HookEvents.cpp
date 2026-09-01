@@ -40,7 +40,9 @@ namespace levi_rs::bridge
         } w; // observe-only: write-back is a no-op
         for (auto& [cb, user] : snap)
         {
-            cb(user, id, snbt, &w, [](void*, LeviRsStr) {});
+            cb(user, id, snbt, &w, [](void*, LeviRsStr)
+            {
+            });
         }
     }
 
@@ -65,7 +67,8 @@ namespace levi_rs::bridge
         for (auto& [cb, user] : snap)
         {
             std::string reply;
-            cb(user, id, snbt, &reply, [](void* ctx, LeviRsStr v) {
+            cb(user, id, snbt, &reply, [](void* ctx, LeviRsStr v)
+            {
                 if (ctx) *static_cast<std::string*>(ctx) = std::string{v};
             });
             if (reply.find("cancelled:1b") != std::string::npos

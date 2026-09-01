@@ -39,7 +39,7 @@ impl Drop for Listener {
         if !self.raw.is_null() {
             let rt = rt();
             unsafe {
-                (rt.api.unsubscribe_event)(rt.handle, self.raw);
+                (rt.api.unsubscribe_event)(rt.handle(), self.raw);
                 drop(Box::from_raw(self.cb));
             }
         }

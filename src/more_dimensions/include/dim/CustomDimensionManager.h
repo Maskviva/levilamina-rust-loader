@@ -17,8 +17,8 @@ namespace more_dimensions
     struct DimensionFactoryInfo
     {
         DerivedDimensionArguments& arguments;
-        CompoundTag const&         data;
-        DimensionType              dimId;
+        CompoundTag const& data;
+        DimensionType dimId;
     };
 
     class CustomDimensionManager
@@ -34,8 +34,8 @@ namespace more_dimensions
 
     protected:
         MORE_DIMENSIONS_API DimensionType addDimension(
-            std::string const&                  dimName,
-            std::function<DimensionFactoryT>    factory,
+            std::string const& dimName,
+            std::function<DimensionFactoryT> factory,
             std::function<CompoundTag()> const& newData
         );
 
@@ -50,7 +50,8 @@ namespace more_dimensions
         {
             return addDimension(
                 dimName,
-                [dimName](more_dimensions::DimensionFactoryInfo const& info) -> std::shared_ptr<Dimension> {
+                [dimName](more_dimensions::DimensionFactoryInfo const& info) -> std::shared_ptr<Dimension>
+                {
                     return std::make_shared<D>(dimName, info);
                 },
                 [&] { return D::generateNewData(std::forward<Args>(args)...); }

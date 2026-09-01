@@ -82,7 +82,11 @@ namespace levi_rs::bridge
 
         struct Service
         {
-            RustMod* mod = nullptr; // identity only; never dereferenced blind
+            RustMod* mod = nullptr; // identity only: compared, never dereferenced
+            // W13: liveness is re-checked through this weak_ptr, not through
+            // `mod->shared_from_this()` (which *is* a blind dereference). `service_call`
+            // may run on any thread; during unload that dereference was a UAF.
+            std::weak_ptr<RustMod> owner;
             std::string name;
             LeviRsServiceCb cb = nullptr;
             void* user = nullptr;
@@ -127,48 +131,61 @@ namespace levi_rs::bridge
     uint64_t api_service_register(
         LeviRsModHandle modHandle, LeviRsStr nameRaw, LeviRsServiceCb cb, void* user)
     {
-        auto* mod = asMod(modHandle);
-        if (!mod || !cb) return 0;
+        LEVI_RS_API_GUARD_BEGIN
+            auto* mod = asMod(modHandle);
+            if (!mod || !cb) return 0;
 
-        std::string name{std::string_view{nameRaw}};
-        if (name.empty() || name.size() > kMaxName) return 0;
+            std::string name{std::string_view{nameRaw}};
+            if (name.empty() || name.size() > kMaxName) return 0;
 
-        std::lock_guard lock(gMutex);
-        if (auto it = gByName.find(name); it != gByName.end())
-        {
-            // Refuse, and name the incumbent. "Registration failed" without
-            // saying who already holds it sends the reader looking through
-            // their own code for a double-register that is not there.
-            auto const& held = gServices[it->second];
-            char const* holder = held.mod ? held.mod->getName().c_str() : "?";
-            mod->getLogger().error(
-                "service_register('{}') refused: already provided by '{}'. Service names are "
-                "exclusive — two providers would make the answer depend on mod load order.",
-                name, holder
-            );
-            return 0;
-        }
+            std::lock_guard lock(gMutex);
+            if (auto it = gByName.find(name); it != gByName.end())
+            {
+                // Refuse, and name the incumbent. "Registration failed" without
+                // saying who already holds it sends the reader looking through
+                // their own code for a double-register that is not there.
+                auto const& held = gServices[it->second];
+                char const* holder = held.mod ? held.mod->getName().c_str() : "?";
+                mod->getLogger().error(
+                    "service_register('{}') refused: already provided by '{}'. Service names are "
+                    "exclusive — two providers would make the answer depend on mod load order.",
+                    name, holder
+                );
+                return 0;
+            }
 
-        uint64_t const id = gNextId++;
-        gServices.emplace(id, Service{mod, name, cb, user});
-        gByName.emplace(name, id);
-        return id;
+            uint64_t const id = gNextId++;
+            std::weak_ptr<RustMod> owner;
+            try
+            {
+                owner = mod->shared_from_this(); // register runs on the main thread with the mod alive
+            }
+            catch (std::bad_weak_ptr const&)
+            {
+                return 0;
+            }
+            gServices.emplace(id, Service{mod, owner, name, cb, user});
+            gByName.emplace(name, id);
+            return id;
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_service_unregister(LeviRsModHandle modHandle, uint64_t regId)
     {
-        auto* mod = asMod(modHandle);
-        if (!mod || regId == 0) return false;
+        LEVI_RS_API_GUARD_BEGIN
+            auto* mod = asMod(modHandle);
+            if (!mod || regId == 0) return false;
 
-        std::lock_guard lock(gMutex);
-        auto it = gServices.find(regId);
-        if (it == gServices.end()) return false;
-        // Scoped to the caller: one mod must not be able to unregister
-        // another's service. Same rule as bus_unsubscribe and schedule_cancel.
-        if (it->second.mod != mod) return false;
-        gByName.erase(it->second.name);
-        gServices.erase(it);
-        return true;
+            std::lock_guard lock(gMutex);
+            auto it = gServices.find(regId);
+            if (it == gServices.end()) return false;
+            // Scoped to the caller: one mod must not be able to unregister
+            // another's service. Same rule as bus_unsubscribe and schedule_cancel.
+            if (it->second.mod != mod) return false;
+            gByName.erase(it->second.name);
+            gServices.erase(it);
+            return true;
+        LEVI_RS_API_GUARD_END
     }
 
     int32_t api_service_call(
@@ -178,109 +195,106 @@ namespace levi_rs::bridge
         void* ctx,
         LeviRsStrSink reply)
     {
-        std::string name{std::string_view{nameRaw}};
-        if (name.empty() || name.size() > kMaxName) return LEVI_RS_SERVICE_REFUSED;
+        LEVI_RS_API_GUARD_BEGIN
+            std::string name{std::string_view{nameRaw}};
+            if (name.empty() || name.size() > kMaxName) return LEVI_RS_SERVICE_REFUSED;
 
-        if (gDepth >= kMaxDepth)
-        {
-            warnDepthOnce(name);
-            return LEVI_RS_SERVICE_REFUSED;
-        }
+            if (gDepth >= kMaxDepth)
+            {
+                warnDepthOnce(name);
+                return LEVI_RS_SERVICE_REFUSED;
+            }
 
-        auto* caller = modHandle ? asMod(modHandle) : nullptr;
+            auto* caller = modHandle ? asMod(modHandle) : nullptr;
 
-        // Copy the entry out under the lock; cross into the dylib with the lock
-        // released. Providers routinely re-enter (they call other services,
-        // publish on the bus, register forms), and holding the lock across a
-        // call into another mod deadlocks the server thread on the first one
-        // that does.
-        Service svc;
-        {
-            std::lock_guard lock(gMutex);
-            auto byName = gByName.find(name);
-            if (byName == gByName.end()) return LEVI_RS_SERVICE_NOT_FOUND;
-            auto it = gServices.find(byName->second);
-            if (it == gServices.end()) return LEVI_RS_SERVICE_NOT_FOUND;
-            svc = it->second;
-        }
-        if (!svc.cb || !svc.mod) return LEVI_RS_SERVICE_NOT_FOUND;
-        if (caller && svc.mod == caller) return LEVI_RS_SERVICE_REFUSED; // no self-calls
+            // Copy the entry out under the lock; cross into the dylib with the lock
+            // released. Providers routinely re-enter (they call other services,
+            // publish on the bus, register forms), and holding the lock across a
+            // call into another mod deadlocks the server thread on the first one
+            // that does.
+            Service svc;
+            {
+                std::lock_guard lock(gMutex);
+                auto byName = gByName.find(name);
+                if (byName == gByName.end()) return LEVI_RS_SERVICE_NOT_FOUND;
+                auto it = gServices.find(byName->second);
+                if (it == gServices.end()) return LEVI_RS_SERVICE_NOT_FOUND;
+                svc = it->second;
+            }
+            if (!svc.cb || !svc.mod) return LEVI_RS_SERVICE_NOT_FOUND;
+            if (caller && svc.mod == caller) return LEVI_RS_SERVICE_REFUSED; // no self-calls
 
-        // Revalidate through weak_ptr immediately before the call: the provider
-        // may have unloaded since the lookup, and the ticket table is only
-        // cleaned up on the unload path.
-        std::weak_ptr<RustMod> weakMod;
-        try
-        {
-            weakMod = svc.mod->shared_from_this();
-        }
-        catch (...)
-        {
-            return LEVI_RS_SERVICE_NOT_FOUND;
-        }
-        auto provider = weakMod.lock();
-        if (!provider || provider.get() != svc.mod) return LEVI_RS_SERVICE_NOT_FOUND;
+            // Revalidate through weak_ptr immediately before the call: the provider
+            // may have unloaded since the lookup, and the ticket table is only
+            // cleaned up on the unload path.
+            // W13: lock the weak_ptr captured at registration; no dereference of the raw pointer.
+            auto provider = svc.owner.lock();
+            if (!provider || provider.get() != svc.mod) return LEVI_RS_SERVICE_NOT_FOUND;
 
-        // # 这里**不能**查 `isEnabled()`
-        //
-        // 查过，而且和 Lane.cpp 是同一个坑：LeviLamina 的 `ModManager::enable()`
-        // 先调 `onEnable` 回调、**回调返回之后**才把状态翻成 Enabled，而且整个
-        // load 阶段所有 mod 都还没 enable。
-        //
-        // 后果是：一个 mod 在自己的 `on_load` 里调 `service::call` 去探测别的
-        // mod，**必然**得到 NOT_FOUND —— 哪怕对方的服务早就注册好了。
-        //
-        // 而「服务注册在 on_load，好让消费方在自己的 on_load 里也能探测」正是
-        // 这套服务机制的设计目标。查 enabled 把这个目标整个抵消掉了：
-        // 注册那一半能用，调用那一半永远失败。
-        //
-        // 真正要防的是「别调进一段已经 unmap 的代码」，而那件事由上面那两行
-        // （weak_ptr 复核 + 指针相等）挡着，和 enabled 无关。一个已经加载、
-        // 只是还没 enable 的 mod，它的代码段是映射着的，回调指针是有效的。
-        //
-        // 「被禁用的 mod 应该表现为不存在」这个想法本身没错，但它必须由
-        // 提供方在自己的 `on_disable` 里注销服务来表达 —— 那是它的决定。
-        // 由 loader 代劳的代价是把整个 load 阶段的互相探测全部关掉。
+            // # 这里**不能**查 `isEnabled()`
+            //
+            // 查过，而且和 Lane.cpp 是同一个坑：LeviLamina 的 `ModManager::enable()`
+            // 先调 `onEnable` 回调、**回调返回之后**才把状态翻成 Enabled，而且整个
+            // load 阶段所有 mod 都还没 enable。
+            //
+            // 后果是：一个 mod 在自己的 `on_load` 里调 `service::call` 去探测别的
+            // mod，**必然**得到 NOT_FOUND —— 哪怕对方的服务早就注册好了。
+            //
+            // 而「服务注册在 on_load，好让消费方在自己的 on_load 里也能探测」正是
+            // 这套服务机制的设计目标。查 enabled 把这个目标整个抵消掉了：
+            // 注册那一半能用，调用那一半永远失败。
+            //
+            // 真正要防的是「别调进一段已经 unmap 的代码」，而那件事由上面那两行
+            // （weak_ptr 复核 + 指针相等）挡着，和 enabled 无关。一个已经加载、
+            // 只是还没 enable 的 mod，它的代码段是映射着的，回调指针是有效的。
+            //
+            // 「被禁用的 mod 应该表现为不存在」这个想法本身没错，但它必须由
+            // 提供方在自己的 `on_disable` 里注销服务来表达 —— 那是它的决定。
+            // 由 loader 代劳的代价是把整个 load 阶段的互相探测全部关掉。
 
-        DepthGuard depth;
-        bool ok = false;
-        try
-        {
-            ok = svc.cb(svc.user, name, std::string_view{requestRaw}, ctx, reply);
-        }
-        catch (...)
-        {
-            // A provider that throws across the FFI boundary is already
-            // undefined behaviour on the Rust side; catching here at least
-            // keeps the *caller* alive and gives it a status it can act on.
-            bridgeLogger().error("service '{}' threw across the FFI boundary", name);
-            return LEVI_RS_SERVICE_ERROR;
-        }
-        return ok ? LEVI_RS_SERVICE_OK : LEVI_RS_SERVICE_ERROR;
+            DepthGuard depth;
+            bool ok = false;
+            try
+            {
+                ok = svc.cb(svc.user, name, std::string_view{requestRaw}, ctx, reply);
+            }
+            catch (...)
+            {
+                // A provider that throws across the FFI boundary is already
+                // undefined behaviour on the Rust side; catching here at least
+                // keeps the *caller* alive and gives it a status it can act on.
+                bridgeLogger().error("service '{}' threw across the FFI boundary", name);
+                return LEVI_RS_SERVICE_ERROR;
+            }
+            return ok ? LEVI_RS_SERVICE_OK : LEVI_RS_SERVICE_ERROR;
+            // 0 是 SERVICE_OK：异常绝不能报成功，报 ERROR（调用发生了、失败了）。
+        LEVI_RS_API_GUARD_END_VAL(LEVI_RS_SERVICE_ERROR)
     }
 
     void api_service_list(void* ctx, LeviRsStrSink sink)
     {
-        std::string out = "[";
-        {
-            std::lock_guard lock(gMutex);
-            bool first = true;
-            for (auto const& [name, id] : gByName)
+        LEVI_RS_API_GUARD_BEGIN
+            std::string out = "[";
             {
-                auto it = gServices.find(id);
-                if (it == gServices.end()) continue;
-                if (!first) out += ',';
-                first = false;
-                char const* owner = it->second.mod ? it->second.mod->getName().c_str() : "?";
-                out += "{\"name\":\"";
-                out += snbtEscape(name);
-                out += "\",\"mod\":\"";
-                out += snbtEscape(owner);
-                out += "\"}";
+                std::lock_guard lock(gMutex);
+                bool first = true;
+                for (auto const& [name, id] : gByName)
+                {
+                    auto it = gServices.find(id);
+                    if (it == gServices.end()) continue;
+                    if (!first) out += ',';
+                    first = false;
+                    char const* owner = it->second.mod ? it->second.mod->getName().c_str() : "?";
+                    out += "{\"name\":\"";
+                    out += snbtEscape(name);
+                    out += "\",\"mod\":\"";
+                    out += snbtEscape(owner);
+                    out += "\"}";
+                }
             }
-        }
-        out += ']';
-        if (sink) sink(ctx, out);
+            out += ']';
+            if (sink) sink(ctx, out);
+        LEVI_RS_API_GUARD_END_VOID
     }
 
     void servicesOnRustModGone(RustMod* mod)

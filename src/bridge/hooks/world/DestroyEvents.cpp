@@ -45,13 +45,13 @@ namespace levi_rs::bridge
             Player& p = this->mPlayer;
 
             std::string snbt = "{\"eventId\":\"PlayerStartDestroyBlockEvent\""
-                               ",\"x\":" + snbtNum(pos.x)
-                             + ",\"y\":" + snbtNum(pos.y)
-                             + ",\"z\":" + snbtNum(pos.z)
-                             + ",\"face\":" + snbtNum(static_cast<int>(face))
-                             + ",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
-                             + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
-                             + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
+                ",\"x\":" + snbtNum(pos.x)
+                + ",\"y\":" + snbtNum(pos.y)
+                + ",\"z\":" + snbtNum(pos.z)
+                + ",\"face\":" + snbtNum(static_cast<int>(face))
+                + ",\"_player\":{\"name\":\"" + snbtEscape(p.getRealName())
+                + "\",\"xuid\":\"" + snbtEscape(p.getXuid())
+                + "\",\"uuid\":\"" + snbtEscape(p.getUuid().asString()) + "\"}}";
             dispatchHookEvent(def, snbt); // BEFORE origin — see file header
 
             return origin(pos, face, hasDestroyedBlock);

@@ -16,6 +16,8 @@ abi_version = 5
 lane_protocol = 1
 
 [dependencies]
+# B8：service::exists() 原来在 JSON 文本里做子串匹配；解析用 serde_json（工作区锁里已有）。
+serde_json = "1"
 levilamina-sys = { version = "26.20.5", path = "../levilamina-sys", default-features = false }
 
 [features]

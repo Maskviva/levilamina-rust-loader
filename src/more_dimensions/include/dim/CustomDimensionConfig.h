@@ -8,18 +8,18 @@ namespace more_dimensions::CustomDimensionConfig
 {
     struct DimensionInfo
     {
-        int         dimId{};
+        int dimId{};
         std::string sNbt;
     };
 
     struct Config
     {
-        int                                   version = 4;
+        int version = 4;
         std::unordered_map<std::string, DimensionInfo> dimensionList{};
     };
 
     Config& getConfig();
-    void    setDimensionConfigPath();
-    bool    loadConfigFile();
-    bool    saveConfigFile();
+    void setDimensionConfigPath();
+    bool loadConfigFile();
+    bool saveConfigFile();
 } // namespace more_dimensions::CustomDimensionConfig

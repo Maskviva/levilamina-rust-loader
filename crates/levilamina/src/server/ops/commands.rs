@@ -61,7 +61,7 @@ impl Server {
 
         let ok = unsafe {
             (rt().api.register_command)(
-                rt().handle,
+                rt().handle(),
                 s(name),
                 s(description),
                 permission as i32,

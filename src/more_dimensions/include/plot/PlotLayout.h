@@ -36,27 +36,27 @@ namespace more_dimensions
      */
     struct PlotLayout
     {
-        int plotSize    = 64;
-        int roadWidth   = 7;
+        int plotSize = 64;
+        int roadWidth = 7;
         int borderWidth = 1;
-        int floorY      = 64;
+        int floorY = 64;
 
-        std::string floorBlock  = "minecraft:grass_block";
-        std::string fillBlock   = "minecraft:dirt";
-        std::string roadBlock   = "minecraft:birch_planks";
+        std::string floorBlock = "minecraft:grass_block";
+        std::string fillBlock = "minecraft:dirt";
+        std::string roadBlock = "minecraft:birch_planks";
         std::string borderBlock = "minecraft:stone_block_slab";
-        std::string biome       = "minecraft:plains";
+        std::string biome = "minecraft:plains";
 
         /**
          * 世界竖直范围。**不要在这里写字面量** —— 它必须和
          * `DimensionDefinition` 发给客户端的那一份是同一个来源，
          * 见 DimensionHeight.h。
          */
-        static constexpr int kMinY        = kWorldMinY;
-        static constexpr int kMaxY        = kWorldMaxY;
-        static constexpr int kBedrockY    = more_dimensions::kBedrockY;
+        static constexpr int kMinY = kWorldMinY;
+        static constexpr int kMaxY = kWorldMaxY;
+        static constexpr int kBedrockY = more_dimensions::kBedrockY;
         static constexpr int kTotalHeight = kMaxY - kMinY; // 832（底部 -512 起）
-        static constexpr int kChunkWidth  = 16;
+        static constexpr int kChunkWidth = 16;
 
         [[nodiscard]] int cellSize() const { return plotSize + roadWidth; }
 
@@ -85,38 +85,40 @@ namespace more_dimensions
         [[nodiscard]] CompoundTag toNbt() const
         {
             CompoundTag t;
-            t["plotSize"]    = plotSize;
-            t["roadWidth"]   = roadWidth;
+            t["plotSize"] = plotSize;
+            t["roadWidth"] = roadWidth;
             t["borderWidth"] = borderWidth;
-            t["floorY"]      = floorY;
-            t["floorBlock"]  = floorBlock;
-            t["fillBlock"]   = fillBlock;
-            t["roadBlock"]   = roadBlock;
+            t["floorY"] = floorY;
+            t["floorBlock"] = floorBlock;
+            t["fillBlock"] = fillBlock;
+            t["roadBlock"] = roadBlock;
             t["borderBlock"] = borderBlock;
-            t["biome"]       = biome;
+            t["biome"] = biome;
             return t;
         }
 
         [[nodiscard]] static PlotLayout fromNbt(CompoundTag const& t)
         {
             PlotLayout l;
-            auto num = [&](char const* key, int fallback) -> int {
+            auto num = [&](char const* key, int fallback) -> int
+            {
                 return t.contains(key) ? static_cast<int>(t.at(key)) : fallback;
             };
-            auto str = [&](char const* key, std::string const& fallback) -> std::string {
+            auto str = [&](char const* key, std::string const& fallback) -> std::string
+            {
                 if (!t.contains(key)) return fallback;
                 auto sv = static_cast<std::string_view>(t.at(key));
                 return sv.empty() ? fallback : std::string{sv};
             };
-            l.plotSize    = num("plotSize", l.plotSize);
-            l.roadWidth   = num("roadWidth", l.roadWidth);
+            l.plotSize = num("plotSize", l.plotSize);
+            l.roadWidth = num("roadWidth", l.roadWidth);
             l.borderWidth = num("borderWidth", l.borderWidth);
-            l.floorY      = num("floorY", l.floorY);
-            l.floorBlock  = str("floorBlock", l.floorBlock);
-            l.fillBlock   = str("fillBlock", l.fillBlock);
-            l.roadBlock   = str("roadBlock", l.roadBlock);
+            l.floorY = num("floorY", l.floorY);
+            l.floorBlock = str("floorBlock", l.floorBlock);
+            l.fillBlock = str("fillBlock", l.fillBlock);
+            l.roadBlock = str("roadBlock", l.roadBlock);
             l.borderBlock = str("borderBlock", l.borderBlock);
-            l.biome       = str("biome", l.biome);
+            l.biome = str("biome", l.biome);
             l.clamp();
             return l;
         }
@@ -125,7 +127,8 @@ namespace more_dimensions
         [[nodiscard]] static PlotLayout fromSnbt(std::string const& snbt)
         {
             auto tag = CompoundTag::fromSnbt(snbt);
-            if (!tag) {
+            if (!tag)
+            {
                 PlotLayout l;
                 l.clamp();
                 return l;

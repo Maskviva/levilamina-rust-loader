@@ -26,19 +26,22 @@ namespace more_dimensions
     // 标识，数据驱动维度用它对应 DimensionDefinitionGroup 里的那条定义）。
     // 之前这里只写了 4 个，mTypeId 被默认成空串 —— 聚合初始化不会报错，但
     // 引擎侧拿到的是一个没有类型的维度。自定义维度的类型标识就用维度名。
-    : Dimension(DimensionArguments(
-          std::move(info.arguments), info.dimId, {PlotLayout::kMinY, PlotLayout::kMaxY}, name, name
-      ))
+        : Dimension(DimensionArguments(
+            std::move(info.arguments), info.dimId, {PlotLayout::kMinY, PlotLayout::kMaxY}, name, name
+        ))
     {
         mDefaultBrightness->sky = Brightness::MAX();
-        mSeaLevel               = 63;
-        mHasWeather             = true;
+        mSeaLevel = 63;
+        mHasWeather = true;
 
         mSeed = info.data.contains("seed") ? static_cast<uint>(info.data.at("seed")) : 0u;
-        if (info.data.contains("layout")) {
+        if (info.data.contains("layout"))
+        {
             // layout 是一个内嵌的 CompoundTag
             mLayout = PlotLayout::fromNbt(info.data.at("layout").get<CompoundTag>());
-        } else {
+        }
+        else
+        {
             mLayout.clamp();
         }
 
@@ -49,7 +52,7 @@ namespace more_dimensions
     CompoundTag PlotDimension::generateNewData(uint seed, PlotLayout const& layout)
     {
         CompoundTag result;
-        result["seed"]   = seed;
+        result["seed"] = seed;
         result["layout"] = layout.toNbt();
         return result;
     }
@@ -82,7 +85,7 @@ namespace more_dimensions
 
     std::unique_ptr<WorldGenerator> PlotDimension::createGenerator(br::worldgen::StructureSetRegistry const&)
     {
-        auto& level     = mLevel;
+        auto& level = mLevel;
         auto& levelData = level.getLevelData();
         // 平坦生成器的 options 只用来初始化基类的原型体积，
         // 真正的图案完全由 PlotGenerator::loadChunk 决定。
@@ -135,12 +138,12 @@ namespace more_dimensions
 
     mce::Color PlotDimension::getBrightnessDependentFogColor(mce::Color const& color, float brightness) const
     {
-        float temp   = (brightness * 0.94f) + 0.06f;
-        float temp2  = (brightness * 0.91f) + 0.09f;
-        auto  result = color;
-        result.r     = color.r * temp;
-        result.g     = color.g * temp;
-        result.b     = color.b * temp2;
+        float temp = (brightness * 0.94f) + 0.06f;
+        float temp2 = (brightness * 0.91f) + 0.09f;
+        auto result = color;
+        result.r = color.r * temp;
+        result.g = color.g * temp;
+        result.b = color.b * temp2;
         return result;
     }
 } // namespace more_dimensions

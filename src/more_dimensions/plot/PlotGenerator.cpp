@@ -27,10 +27,10 @@ namespace more_dimensions
 {
     namespace
     {
-        constexpr int kChunkWidth  = PlotLayout::kChunkWidth;
+        constexpr int kChunkWidth = PlotLayout::kChunkWidth;
         constexpr int kTotalHeight = PlotLayout::kTotalHeight;
-        constexpr int kColumns     = kChunkWidth * kChunkWidth;
-        constexpr int kBufferSize  = kColumns * kTotalHeight;
+        constexpr int kColumns = kChunkWidth * kChunkWidth;
+        constexpr int kBufferSize = kColumns * kTotalHeight;
 
         // Minecraft 的区块内存布局是 XZY：索引 = (x*16 + z)*totalHeight + y
         [[nodiscard]] constexpr int bufferIndex(int x, int yIdx, int z)
@@ -72,45 +72,46 @@ namespace more_dimensions
         {
             return &BlockTypeRegistry::get().getDefaultBlockState(id, true);
         }
-
-
     } // namespace
 
     PlotGenerator::PlotGenerator(
         Dimension& dimension, uint seed, Json::Value const& options, PlotLayout const& layout
     )
-    : FlatWorldGenerator(dimension, seed, options), mLayout(layout)
+        : FlatWorldGenerator(dimension, seed, options), mLayout(layout)
     {
         mLayout.clamp();
 
         auto& level = dimension.mLevel;
-        mBiome      = level.getBiomeRegistry().lookupByName(mLayout.biome);
-        if (!mBiome) {
+        mBiome = level.getBiomeRegistry().lookupByName(mLayout.biome);
+        if (!mBiome)
+        {
             // 群系名写错不该让整个服务器起不来，退回平原。
             logger().warn("未知生物群系 '{}'，回退到 minecraft:plains", mLayout.biome);
             mBiome = level.getBiomeRegistry().lookupByName("minecraft:plains");
         }
         if (mBiome) mBiomeSource = std::make_unique<FixedBiomeSource>(*mBiome);
 
-        mAirBlock     = lookupBlock(HashedString{"minecraft:air"});
+        mAirBlock = lookupBlock(HashedString{"minecraft:air"});
         mBedrockBlock = lookupBlock(VanillaBlockTypeIds::Bedrock());
-        mFloorBlock   = lookupBlock(HashedString{mLayout.floorBlock});
-        mFillBlock    = lookupBlock(HashedString{mLayout.fillBlock});
-        mRoadBlock    = lookupBlock(HashedString{mLayout.roadBlock});
-        mBorderBlock  = lookupBlock(HashedString{mLayout.borderBlock});
+        mFloorBlock = lookupBlock(HashedString{mLayout.floorBlock});
+        mFillBlock = lookupBlock(HashedString{mLayout.fillBlock});
+        mRoadBlock = lookupBlock(HashedString{mLayout.roadBlock});
+        mBorderBlock = lookupBlock(HashedString{mLayout.borderBlock});
 
-        mFloorIndexY  = mLayout.floorY - PlotLayout::kMinY;
+        mFloorIndexY = mLayout.floorY - PlotLayout::kMinY;
         mBorderIndexY = mFloorIndexY + 1;
     }
 
     PlotGenerator::ThreadBuffer& PlotGenerator::acquireBuffer()
     {
         static thread_local ThreadBuffer buf;
-        if (buf.blocks.size() != static_cast<size_t>(kBufferSize)) {
+        if (buf.blocks.size() != static_cast<size_t>(kBufferSize))
+        {
             buf.blocks.assign(static_cast<size_t>(kBufferSize), nullptr);
             buf.owner = nullptr;
         }
-        if (buf.owner != static_cast<void const*>(this)) {
+        if (buf.owner != static_cast<void const*>(this))
+        {
             refillStatic(buf);
             buf.owner = static_cast<void const*>(this);
         }
@@ -130,10 +131,10 @@ namespace more_dimensions
         fillRange(buf.blocks, mFillBlock, bedrockIdx + 1, mFloorIndexY);
         fillRange(buf.blocks, mAirBlock, mFloorIndexY, kTotalHeight);
 
-        buf.volume                 = mPrototype;
-        buf.volume->mHeight        = static_cast<uint>(kTotalHeight);
+        buf.volume = mPrototype;
+        buf.volume->mHeight = static_cast<uint>(kTotalHeight);
         buf.volume->mBlocks->mBegin = &*buf.blocks.begin();
-        buf.volume->mBlocks->mEnd   = &*buf.blocks.end();
+        buf.volume->mBlocks->mEnd = &*buf.blocks.end();
     }
 
     void PlotGenerator::loadChunk(LevelChunk& lc, bool)
@@ -155,20 +156,23 @@ namespace more_dimensions
         fillLayer(buf.blocks, mAirBlock, mBorderIndexY);
 
         auto const& chunkPos = lc.mPosition.get();
-        int const   startX   = chunkPos.x * kChunkWidth;
-        int const   startZ   = chunkPos.z * kChunkWidth;
-        int const   cell     = mLayout.cellSize();
+        int const startX = chunkPos.x * kChunkWidth;
+        int const startZ = chunkPos.z * kChunkWidth;
+        int const cell = mLayout.cellSize();
 
-        for (int x = 0; x < kChunkWidth; ++x) {
+        for (int x = 0; x < kChunkWidth; ++x)
+        {
             int const ix = positiveMod(startX + x, cell);
             auto const ax = classify1D(ix, mLayout);
 
-            for (int z = 0; z < kChunkWidth; ++z) {
-                int const  iz   = positiveMod(startZ + z, cell);
-                auto const az   = classify1D(iz, mLayout);
+            for (int z = 0; z < kChunkWidth; ++z)
+            {
+                int const iz = positiveMod(startZ + z, cell);
+                auto const az = classify1D(iz, mLayout);
                 auto const area = combine2D(ax, az);
 
-                switch (area) {
+                switch (area)
+                {
                 case PlotArea1D::Road:
                     buf.blocks[static_cast<size_t>(bufferIndex(x, mFloorIndexY, z))] = mRoadBlock;
                     break;

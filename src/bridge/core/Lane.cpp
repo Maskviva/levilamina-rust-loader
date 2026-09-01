@@ -90,11 +90,16 @@ namespace levi_rs::bridge
             {
                 switch (c)
                 {
-                case '"':  out += "\\\""; break;
-                case '\\': out += "\\\\"; break;
-                case '\n': out += "\\n"; break;
-                case '\r': out += "\\r"; break;
-                case '\t': out += "\\t"; break;
+                case '"': out += "\\\"";
+                    break;
+                case '\\': out += "\\\\";
+                    break;
+                case '\n': out += "\\n";
+                    break;
+                case '\r': out += "\\r";
+                    break;
+                case '\t': out += "\\t";
+                    break;
                 default:
                     if (static_cast<unsigned char>(c) < 0x20)
                     {
@@ -123,7 +128,10 @@ namespace levi_rs::bridge
 
         struct Lane
         {
-            RustMod* mod = nullptr; // 只作身份用，绝不盲目解引用
+            RustMod* mod = nullptr; // 只作身份用：只比较指针值，绝不解引用
+            // W13：存活复核走这个 weak_ptr，而不是 `mod->shared_from_this()`——后者本身就是一次
+            // 盲解引用；主线程上 unload 与调用串行所以撞不上，但 acquire 允许别的线程调。
+            std::weak_ptr<RustMod> owner;
             std::string name;
             LeviRsLaneDesc desc{};
             AliveCell* alive = nullptr; // 泄漏的，见上
@@ -137,9 +145,9 @@ namespace levi_rs::bridge
         };
 
         std::mutex gMutex;
-        std::unordered_map<uint64_t, Lane> gLanes;      // publish id -> lane
+        std::unordered_map<uint64_t, Lane> gLanes; // publish id -> lane
         std::unordered_map<std::string, uint64_t> gByName; // 名字 -> publish id（独占）
-        std::unordered_map<uint64_t, Lease> gLeases;   // lease id -> lease
+        std::unordered_map<uint64_t, Lease> gLeases; // lease id -> lease
         uint64_t gNextLaneId = 1;
         uint64_t gNextLeaseId = 1;
 
@@ -166,20 +174,11 @@ namespace levi_rs::bridge
          * 想在禁用时停掉车道的 mod 应该在自己的 `on_disable` 里撤销，那是它的
          * 决定，不该由 loader 替它做 —— 尤其不该以「发布失败」这种形式。
          */
-        bool providerAlive(RustMod* raw)
+        bool providerAlive(Lane const& lane)
         {
-            if (!raw) return false;
-            std::weak_ptr<RustMod> weak;
-            try
-            {
-                weak = raw->shared_from_this();
-            }
-            catch (...)
-            {
-                return false;
-            }
-            auto mod = weak.lock();
-            return mod && mod.get() == raw;
+            if (!lane.mod) return false;
+            auto mod = lane.owner.lock();
+            return mod && mod.get() == lane.mod;
         }
 
         /**
@@ -248,235 +247,257 @@ namespace levi_rs::bridge
 
     uint64_t api_lane_publish(LeviRsModHandle modHandle, LeviRsStr nameRaw, LeviRsLaneDesc const* desc)
     {
-        if (!modHandle || !desc) return 0;
-        auto* raw = asMod(modHandle);
-        if (!raw) return 0;
+        LEVI_RS_API_GUARD_BEGIN
+            if (!modHandle || !desc) return 0;
+            auto* raw = asMod(modHandle);
+            if (!raw) return 0;
 
-        if (desc->struct_size < sizeof(LeviRsLaneDesc))
-        {
-            bridgeLogger().error(
-                "rust 车道: LeviRsLaneDesc 比 loader 认识的小（{} < {}）——"
-                "mod 是针对更旧的 ABI 编的，拒绝发布。",
-                desc->struct_size, static_cast<uint32_t>(sizeof(LeviRsLaneDesc))
+            if (desc->struct_size < sizeof(LeviRsLaneDesc))
+            {
+                bridgeLogger().error(
+                    "rust 车道: LeviRsLaneDesc 比 loader 认识的小（{} < {}）——"
+                    "mod 是针对更旧的 ABI 编的，拒绝发布。",
+                    desc->struct_size, static_cast<uint32_t>(sizeof(LeviRsLaneDesc))
+                );
+                return 0;
+            }
+            if (desc->protocol != LEVI_RS_LANE_PROTOCOL)
+            {
+                bridgeLogger().error(
+                    "rust 车道: 协议版本 {} != loader 的 {}，拒绝发布。这一条拒绝只影响这条车道，"
+                    "mod 本身照常加载，消费方会降级回 service 通道。",
+                    desc->protocol, LEVI_RS_LANE_PROTOCOL
+                );
+                return 0;
+            }
+            if (!desc->vtable) return 0;
+            if (desc->fingerprint == 0)
+            {
+                // 0 在 acquire 那一侧是「不校验」的意思。提供方报 0 等于把闸门自己
+                // 拆了，而拆闸门的后果是静默的内存错乱，不是崩溃。
+                bridgeLogger().error("rust 车道: 指纹为 0 是保留值，拒绝发布。");
+                return 0;
+            }
+
+            std::string name{std::string_view{nameRaw}};
+            if (name.empty() || name.size() > kMaxName) return 0;
+
+            // W13：发布只能由 mod 自己在主线程上做，此时它一定活着；weak_ptr 就在这里、这一次拿。
+            std::weak_ptr<RustMod> owner;
+            try
+            {
+                owner = raw->shared_from_this();
+            }
+            catch (std::bad_weak_ptr const&)
+            {
+                return 0;
+            }
+            if (!owner.lock()) return 0;
+
+            std::lock_guard lock(gMutex);
+            auto taken = gByName.find(name);
+            if (taken != gByName.end())
+            {
+                // 和 service 一样是**硬失败**。两个 mod 提供同一条车道不是「都跑」，
+                // 是一个消费方没法挑选的歧义答案；静默后来居上会让结果取决于 mod
+                // 加载顺序，而那个顺序在装了任何一个不相干的 mod 之后就会变。
+                auto held = gLanes.find(taken->second);
+                std::string owner = held != gLanes.end() && held->second.mod
+                                        ? std::string(held->second.mod->getName())
+                                        : std::string("<unknown>");
+                bridgeLogger().error(
+                    "rust 车道 '{}' 已经被 mod '{}' 占用，拒绝第二个发布者。", name, owner
+                );
+                return 0;
+            }
+
+            uint64_t id = gNextLaneId++;
+            Lane lane;
+            lane.mod = raw;
+            lane.owner = owner;
+            lane.name = name;
+            lane.desc = *desc;
+            lane.desc.struct_size = static_cast<uint32_t>(sizeof(LeviRsLaneDesc));
+            lane.alive = new AliveCell(); // 有意泄漏
+            gLanes.emplace(id, lane);
+            gByName.emplace(name, id);
+
+            bridgeLogger().debug(
+                "rust 车道 '{}' 上线（指纹 0x{:016x}）", name, desc->fingerprint
             );
-            return 0;
-        }
-        if (desc->protocol != LEVI_RS_LANE_PROTOCOL)
-        {
-            bridgeLogger().error(
-                "rust 车道: 协议版本 {} != loader 的 {}，拒绝发布。这一条拒绝只影响这条车道，"
-                "mod 本身照常加载，消费方会降级回 service 通道。",
-                desc->protocol, LEVI_RS_LANE_PROTOCOL
-            );
-            return 0;
-        }
-        if (!desc->vtable) return 0;
-        if (desc->fingerprint == 0)
-        {
-            // 0 在 acquire 那一侧是「不校验」的意思。提供方报 0 等于把闸门自己
-            // 拆了，而拆闸门的后果是静默的内存错乱，不是崩溃。
-            bridgeLogger().error("rust 车道: 指纹为 0 是保留值，拒绝发布。");
-            return 0;
-        }
-
-        std::string name{std::string_view{nameRaw}};
-        if (name.empty() || name.size() > kMaxName) return 0;
-
-        if (!providerAlive(raw)) return 0;
-
-        std::lock_guard lock(gMutex);
-        auto taken = gByName.find(name);
-        if (taken != gByName.end())
-        {
-            // 和 service 一样是**硬失败**。两个 mod 提供同一条车道不是「都跑」，
-            // 是一个消费方没法挑选的歧义答案；静默后来居上会让结果取决于 mod
-            // 加载顺序，而那个顺序在装了任何一个不相干的 mod 之后就会变。
-            auto held = gLanes.find(taken->second);
-            std::string owner = held != gLanes.end() && held->second.mod
-                ? std::string(held->second.mod->getName())
-                : std::string("<unknown>");
-            bridgeLogger().error(
-                "rust 车道 '{}' 已经被 mod '{}' 占用，拒绝第二个发布者。", name, owner
-            );
-            return 0;
-        }
-
-        uint64_t id = gNextLaneId++;
-        Lane lane;
-        lane.mod = raw;
-        lane.name = name;
-        lane.desc = *desc;
-        lane.desc.struct_size = static_cast<uint32_t>(sizeof(LeviRsLaneDesc));
-        lane.alive = new AliveCell(); // 有意泄漏
-        gLanes.emplace(id, lane);
-        gByName.emplace(name, id);
-
-        bridgeLogger().info(
-            "rust 车道 '{}' 上线（指纹 0x{:016x}）。", name, desc->fingerprint
-        );
-        return id;
+            return id;
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_lane_unpublish(LeviRsModHandle modHandle, uint64_t pubId)
     {
-        if (!modHandle || pubId == 0) return false;
-        auto* raw = asMod(modHandle);
-        {
-            std::lock_guard lock(gMutex);
-            auto it = gLanes.find(pubId);
-            // 限定在调用方自己名下：一个 mod 不能撤销另一个 mod 的车道。
-            if (it == gLanes.end() || it->second.mod != raw) return false;
-        }
-        retireLane(pubId);
-        return true;
+        LEVI_RS_API_GUARD_BEGIN
+            if (!modHandle || pubId == 0) return false;
+            auto* raw = asMod(modHandle);
+            {
+                std::lock_guard lock(gMutex);
+                auto it = gLanes.find(pubId);
+                // 限定在调用方自己名下：一个 mod 不能撤销另一个 mod 的车道。
+                if (it == gLanes.end() || it->second.mod != raw) return false;
+            }
+            retireLane(pubId);
+            return true;
+        LEVI_RS_API_GUARD_END
     }
 
     int32_t api_lane_acquire(
         LeviRsModHandle modHandle, LeviRsStr nameRaw, uint64_t wantFingerprint, LeviRsLaneRef* out)
     {
-        // 只要求到 `alive` 为止 —— 那是这条车道能用的最小形状。要求
-        // sizeof(LeviRsLaneRef) 会让每次追加字段都把老消费方一刀切掉，正是
-        // LeviRsAbi.h 顶上那条「追加式变更不该收窄可加载范围」在说的事。
-        constexpr uint32_t kMinRefSize = offsetof(LeviRsLaneRef, alive) + sizeof(uint32_t const*);
-        if (!out || out->struct_size < kMinRefSize) return LEVI_RS_LANE_REFUSED;
+        LEVI_RS_API_GUARD_BEGIN
+            // 只要求到 `alive` 为止 —— 那是这条车道能用的最小形状。要求
+            // sizeof(LeviRsLaneRef) 会让每次追加字段都把老消费方一刀切掉，正是
+            // LeviRsAbi.h 顶上那条「追加式变更不该收窄可加载范围」在说的事。
+            constexpr uint32_t kMinRefSize = offsetof(LeviRsLaneRef, alive) + sizeof(uint32_t const*);
+            if (!out || out->struct_size < kMinRefSize) return LEVI_RS_LANE_REFUSED;
 
-        // 先清干净。半填的 out 加上一个被忽略的返回码，等于把野指针交出去。
-        out->lease = 0;
-        out->fingerprint = 0;
-        out->data = nullptr;
-        out->vtable = nullptr;
-        out->alive = nullptr;
-        if (out->struct_size >= offsetof(LeviRsLaneRef, busy) + sizeof(uint32_t*)) out->busy = nullptr;
+            // 先清干净。半填的 out 加上一个被忽略的返回码，等于把野指针交出去。
+            out->lease = 0;
+            out->fingerprint = 0;
+            out->data = nullptr;
+            out->vtable = nullptr;
+            out->alive = nullptr;
+            if (out->struct_size >= offsetof(LeviRsLaneRef, busy) + sizeof(uint32_t*)) out->busy = nullptr;
 
-        if (!modHandle) return LEVI_RS_LANE_REFUSED;
-        auto* consumer = asMod(modHandle);
-        if (!consumer) return LEVI_RS_LANE_REFUSED;
+            if (!modHandle) return LEVI_RS_LANE_REFUSED;
+            auto* consumer = asMod(modHandle);
+            if (!consumer) return LEVI_RS_LANE_REFUSED;
 
-        std::string name{std::string_view{nameRaw}};
-        if (name.empty() || name.size() > kMaxName) return LEVI_RS_LANE_REFUSED;
+            std::string name{std::string_view{nameRaw}};
+            if (name.empty() || name.size() > kMaxName) return LEVI_RS_LANE_REFUSED;
 
-        LeviRsLaneRefFn retain = nullptr;
-        void* data = nullptr;
-        uint64_t leaseId = 0;
+            LeviRsLaneRefFn retain = nullptr;
+            void* data = nullptr;
+            uint64_t leaseId = 0;
 
-        {
-            std::lock_guard lock(gMutex);
-            auto byName = gByName.find(name);
-            if (byName == gByName.end()) return LEVI_RS_LANE_NOT_FOUND;
-            auto it = gLanes.find(byName->second);
-            if (it == gLanes.end()) return LEVI_RS_LANE_NOT_FOUND;
-            Lane& lane = it->second;
-
-            // 自取没有意义：同一个 mod 里直接调那个函数就行，不用绕两次 FFI
-            // 加一把锁，而且真构成循环时那是最难读的一种栈形状。
-            if (lane.mod == consumer) return LEVI_RS_LANE_REFUSED;
-            if (!providerAlive(lane.mod)) return LEVI_RS_LANE_NOT_FOUND;
-
-            // 指纹先于一切。这是整条车道存在的前提：布局没确认相同之前，一个
-            // 指针都不能递出去。填 fingerprint 是为了让消费方能打出一条**能指导
-            // 下一步**的日志 —— 「不匹配」四个字对服主没用。
-            out->fingerprint = lane.desc.fingerprint;
-
-            // 0 以前的含义是「不校验」，注释里写着「只有诊断工具该这么用」。
-            // 那个口子必须堵上，因为它给出去的不是诊断数据，是完整的
-            // vtable + data 裸指针 —— 消费方随后会把它当成自己的 C::Table
-            // 解引用、按自己的偏移调函数指针。布局没核对过就递指针，正是本
-            // 文件开头那句「布局没确认相同之前一个指针都不能递出去」要防的事，
-            // 而这是唯一能绕过它的路径。
-            //
-            // 诊断需求由 lane_list 覆盖（名字 / mod / 指纹 / 协议 / 租约数），
-            // 它一个指针都不用给。
-            //
-            // Rust 侧 fingerprint() 里那句 `if h == 0 { 1 }` 保证安全层永远
-            // 不会送 0 上来，所以这个拒绝对正常调用方不可见。
-            if (wantFingerprint == 0 || wantFingerprint != lane.desc.fingerprint)
             {
-                return LEVI_RS_LANE_FINGERPRINT;
+                std::lock_guard lock(gMutex);
+                auto byName = gByName.find(name);
+                if (byName == gByName.end()) return LEVI_RS_LANE_NOT_FOUND;
+                auto it = gLanes.find(byName->second);
+                if (it == gLanes.end()) return LEVI_RS_LANE_NOT_FOUND;
+                Lane& lane = it->second;
+
+                // 自取没有意义：同一个 mod 里直接调那个函数就行，不用绕两次 FFI
+                // 加一把锁，而且真构成循环时那是最难读的一种栈形状。
+                if (lane.mod == consumer) return LEVI_RS_LANE_REFUSED;
+                if (!providerAlive(lane)) return LEVI_RS_LANE_NOT_FOUND;
+
+                // 指纹先于一切。这是整条车道存在的前提：布局没确认相同之前，一个
+                // 指针都不能递出去。填 fingerprint 是为了让消费方能打出一条**能指导
+                // 下一步**的日志 —— 「不匹配」四个字对服主没用。
+                out->fingerprint = lane.desc.fingerprint;
+
+                // 0 以前的含义是「不校验」，注释里写着「只有诊断工具该这么用」。
+                // 那个口子必须堵上，因为它给出去的不是诊断数据，是完整的
+                // vtable + data 裸指针 —— 消费方随后会把它当成自己的 C::Table
+                // 解引用、按自己的偏移调函数指针。布局没核对过就递指针，正是本
+                // 文件开头那句「布局没确认相同之前一个指针都不能递出去」要防的事，
+                // 而这是唯一能绕过它的路径。
+                //
+                // 诊断需求由 lane_list 覆盖（名字 / mod / 指纹 / 协议 / 租约数），
+                // 它一个指针都不用给。
+                //
+                // Rust 侧 fingerprint() 里那句 `if h == 0 { 1 }` 保证安全层永远
+                // 不会送 0 上来，所以这个拒绝对正常调用方不可见。
+                if (wantFingerprint == 0 || wantFingerprint != lane.desc.fingerprint)
+                {
+                    return LEVI_RS_LANE_FINGERPRINT;
+                }
+
+                leaseId = gNextLeaseId++;
+                gLeases.emplace(leaseId, Lease{consumer, byName->second});
+                ++lane.leases;
+
+                retain = lane.desc.retain;
+                data = lane.desc.data;
+
+                out->lease = leaseId;
+                out->data = lane.desc.data;
+                out->vtable = lane.desc.vtable;
+                out->alive = lane.alive ? reinterpret_cast<uint32_t const*>(&lane.alive->flag) : nullptr;
+                // 追加字段：老消费方填的 struct_size 到不了这里，不写就是了。
+                if (out->struct_size >= offsetof(LeviRsLaneRef, busy) + sizeof(uint32_t*))
+                {
+                    out->busy = lane.alive ? reinterpret_cast<uint32_t*>(&lane.alive->busy) : nullptr;
+                }
             }
 
-            leaseId = gNextLeaseId++;
-            gLeases.emplace(leaseId, Lease{consumer, byName->second});
-            ++lane.leases;
-
-            retain = lane.desc.retain;
-            data = lane.desc.data;
-
-            out->lease = leaseId;
-            out->data = lane.desc.data;
-            out->vtable = lane.desc.vtable;
-            out->alive = lane.alive ? reinterpret_cast<uint32_t const*>(&lane.alive->flag) : nullptr;
-            // 追加字段：老消费方填的 struct_size 到不了这里，不写就是了。
-            if (out->struct_size >= offsetof(LeviRsLaneRef, busy) + sizeof(uint32_t*))
-            {
-                out->busy = lane.alive ? reinterpret_cast<uint32_t*>(&lane.alive->busy) : nullptr;
-            }
-        }
-
-        // 锁外，理由同 retireLane：retain 跳进提供方的 dylib。
-        if (retain) retain(data);
-        return LEVI_RS_LANE_OK;
+            // 锁外，理由同 retireLane：retain 跳进提供方的 dylib。
+            if (retain) retain(data);
+            return LEVI_RS_LANE_OK;
+            // 0 是 LANE_OK：异常时绝不能说「拿到了」——REFUSED 和它其余的拒绝路径一致。
+        LEVI_RS_API_GUARD_END_VAL(LEVI_RS_LANE_REFUSED)
     }
 
     bool api_lane_release(LeviRsModHandle modHandle, uint64_t leaseId)
     {
-        if (!modHandle || leaseId == 0) return false;
-        auto* consumer = asMod(modHandle);
+        LEVI_RS_API_GUARD_BEGIN
+            if (!modHandle || leaseId == 0) return false;
+            auto* consumer = asMod(modHandle);
 
-        LeviRsLaneRefFn release = nullptr;
-        void* data = nullptr;
-        {
-            std::lock_guard lock(gMutex);
-            auto it = gLeases.find(leaseId);
-            // 提供方走掉时 loader 已经替这条租约调过 release 并把它摘了。这里
-            // 返回 false 而不是再调一次 —— 再调一次就是 double free。
-            if (it == gLeases.end()) return false;
-            if (it->second.holder != consumer) return false;
-
-            auto lane = gLanes.find(it->second.laneId);
-            if (lane != gLanes.end())
+            LeviRsLaneRefFn release = nullptr;
+            void* data = nullptr;
             {
-                if (lane->second.leases > 0) --lane->second.leases;
-                release = lane->second.desc.release;
-                data = lane->second.desc.data;
+                std::lock_guard lock(gMutex);
+                auto it = gLeases.find(leaseId);
+                // 提供方走掉时 loader 已经替这条租约调过 release 并把它摘了。这里
+                // 返回 false 而不是再调一次 —— 再调一次就是 double free。
+                if (it == gLeases.end()) return false;
+                if (it->second.holder != consumer) return false;
+
+                auto lane = gLanes.find(it->second.laneId);
+                if (lane != gLanes.end())
+                {
+                    if (lane->second.leases > 0) --lane->second.leases;
+                    release = lane->second.desc.release;
+                    data = lane->second.desc.data;
+                }
+                gLeases.erase(it);
             }
-            gLeases.erase(it);
-        }
-        if (release) release(data);
-        return true;
+            if (release) release(data);
+            return true;
+        LEVI_RS_API_GUARD_END
     }
 
     void api_lane_list(void* ctx, LeviRsStrSink sink)
     {
-        std::string out = "[";
-        {
-            std::lock_guard lock(gMutex);
-            bool first = true;
-            for (auto const& [id, lane] : gLanes)
+        LEVI_RS_API_GUARD_BEGIN
+            std::string out = "[";
             {
-                if (!first) out += ',';
-                first = false;
-                char fp[32];
-                std::snprintf(fp, sizeof(fp), "0x%016llx",
-                              static_cast<unsigned long long>(lane.desc.fingerprint));
-                // 转义：车道名由提供方给，mod 名来自 manifest —— 两个都是外部
-                // 输入，直接拼进 JSON 里一个引号就能把这份输出撕开。
-                out += "{\"name\":\"";
-                out += jsonEscape(lane.name);
-                out += "\",\"mod\":\"";
-                out += jsonEscape(lane.mod ? std::string(lane.mod->getName()) : std::string("?"));
-                out += "\",\"fingerprint\":\"";
-                out += fp;
-                out += "\",\"protocol\":";
-                out += snbtNum(lane.desc.protocol);
-                out += ",\"leases\":";
-                out += snbtNum(lane.leases);
-                out += ",\"alive\":";
-                out += (lane.alive && lane.alive->flag.load(std::memory_order_acquire)) ? "true" : "false";
-                out += '}';
+                std::lock_guard lock(gMutex);
+                bool first = true;
+                for (auto const& [id, lane] : gLanes)
+                {
+                    if (!first) out += ',';
+                    first = false;
+                    char fp[32];
+                    std::snprintf(fp, sizeof(fp), "0x%016llx",
+                                  static_cast<unsigned long long>(lane.desc.fingerprint));
+                    // 转义：车道名由提供方给，mod 名来自 manifest —— 两个都是外部
+                    // 输入，直接拼进 JSON 里一个引号就能把这份输出撕开。
+                    out += "{\"name\":\"";
+                    out += jsonEscape(lane.name);
+                    out += "\",\"mod\":\"";
+                    out += jsonEscape(lane.mod ? std::string(lane.mod->getName()) : std::string("?"));
+                    out += "\",\"fingerprint\":\"";
+                    out += fp;
+                    out += "\",\"protocol\":";
+                    out += snbtNum(lane.desc.protocol);
+                    out += ",\"leases\":";
+                    out += snbtNum(lane.leases);
+                    out += ",\"alive\":";
+                    out += (lane.alive && lane.alive->flag.load(std::memory_order_acquire)) ? "true" : "false";
+                    out += '}';
+                }
             }
-        }
-        out += ']';
-        if (sink) sink(ctx, out);
+            out += ']';
+            if (sink) sink(ctx, out);
+        LEVI_RS_API_GUARD_END_VOID
     }
 
     char const* laneModBusyName(RustMod* mod)

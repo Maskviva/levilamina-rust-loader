@@ -70,6 +70,7 @@ namespace levi_rs::bridge
 
     bool api_client_get_local_player(void* ctx, LeviRsStrSink sink)
     {
+        LEVI_RS_API_GUARD_BEGIN
         if (!sink) return false;
         auto ci = ll::service::getClientInstance();
         if (!ci) return false;
@@ -77,19 +78,25 @@ namespace levi_rs::bridge
         if (!player) return false;
         sink(ctx, player->getRealName());
         return true;
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_client_is_in_level()
     {
+        LEVI_RS_API_GUARD_BEGIN
         return ll::service::getMultiPlayerLevel() != nullptr;
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_client_get_screen_name(void* ctx, LeviRsStrSink sink)
     {
-        // ClientInstance has no stable getScreenName() accessor in current LL headers.
-        (void)ctx;
+        LEVI_RS_API_GUARD_BEGIN
+            // ClientInstance has no stable getScreenName() accessor in current LL headers.
+            (void)
+        ctx;
         (void)sink;
         return false;
+        LEVI_RS_API_GUARD_END
     }
 
     LeviRsKeyHandle api_client_register_key(
@@ -103,7 +110,8 @@ namespace levi_rs::bridge
         void* user
     )
     {
-        auto* mod = asMod(modHandle);
+        LEVI_RS_API_GUARD_BEGIN
+            auto* mod = asMod(modHandle);
         if (!mod || !name || keyCount <= 0) return nullptr;
 
         auto entry = std::make_unique<ClientKeyEntry>();
@@ -128,8 +136,8 @@ namespace levi_rs::bridge
 
         handle.registerButtonDownHandler(
             [alive, downCbCapture, userCapture](
-                ::FocusImpact fi, ::IClientInstance&
-            )
+            ::FocusImpact fi, ::IClientInstance&
+        )
             {
                 if (!*alive || !downCbCapture) return;
                 downCbCapture(userCapture, /*Down=*/1, toAbiFocus(fi));
@@ -137,8 +145,8 @@ namespace levi_rs::bridge
         );
         handle.registerButtonUpHandler(
             [alive, upCbCapture, userCapture](
-                ::FocusImpact fi, ::IClientInstance&
-            )
+            ::FocusImpact fi, ::IClientInstance&
+        )
             {
                 if (!*alive || !upCbCapture) return;
                 upCbCapture(userCapture, /*Up=*/0, toAbiFocus(fi));
@@ -149,10 +157,12 @@ namespace levi_rs::bridge
         auto* raw = entry.release();
         liveEntries().push_back(raw);
         return reinterpret_cast<LeviRsKeyHandle>(raw);
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_client_unregister_key(LeviRsKeyHandle handle)
     {
+        LEVI_RS_API_GUARD_BEGIN
         if (!handle) return false;
         auto* entry = reinterpret_cast<ClientKeyEntry*>(handle);
         auto& live = liveEntries();
@@ -163,6 +173,7 @@ namespace levi_rs::bridge
         live.erase(it);
         destroyEntry(entry);
         return true;
+        LEVI_RS_API_GUARD_END
     }
 
     void clientOnRustModGone(RustMod* mod)
@@ -171,7 +182,11 @@ namespace levi_rs::bridge
         auto& live = liveEntries();
         for (auto it = live.begin(); it != live.end();)
         {
-            if ((*it)->owner != mod) { ++it; continue; }
+            if ((*it)->owner != mod)
+            {
+                ++it;
+                continue;
+            }
             destroyEntry(*it);
             it = live.erase(it);
         }
@@ -179,6 +194,7 @@ namespace levi_rs::bridge
 
     bool api_client_get_key_codes(LeviRsKeyHandle handle, void* ctx, LeviRsStrSink sink)
     {
+        LEVI_RS_API_GUARD_BEGIN
         if (!handle || !sink) return false;
         auto* entry = reinterpret_cast<ClientKeyEntry*>(handle);
         if (!entry->handle) return false;
@@ -192,5 +208,6 @@ namespace levi_rs::bridge
         out += "]";
         sink(ctx, out);
         return true;
+        LEVI_RS_API_GUARD_END
     }
 } // namespace levi_rs::bridge

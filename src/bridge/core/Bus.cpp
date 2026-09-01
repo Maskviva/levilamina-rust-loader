@@ -161,7 +161,7 @@ namespace levi_rs::bridge
             }
             auto mod = weakMod.lock();
             if (!mod || mod.get() != sub.mod) return false; // dylib may be unmapped
-            if (!mod->isEnabled()) return false;            // muted while disabled
+            if (!mod->isEnabled()) return false; // muted while disabled
 
             ran = true;
             return sub.cb(sub.user, topic, payload);
@@ -209,73 +209,83 @@ namespace levi_rs::bridge
 
     uint64_t api_bus_subscribe(LeviRsModHandle modHandle, LeviRsStr topicRaw, LeviRsBusCb cb, void* user)
     {
-        if (!cb || !modHandle) return 0;
-        auto* raw = asMod(modHandle);
-        if (!raw) return 0;
+        LEVI_RS_API_GUARD_BEGIN
+            if (!cb || !modHandle) return 0;
+            auto* raw = asMod(modHandle);
+            if (!raw) return 0;
 
-        std::string topic{std::string_view{topicRaw}};
-        if (topic.empty() || topic.size() > kMaxTopic) return 0;
+            std::string topic{std::string_view{topicRaw}};
+            if (topic.empty() || topic.size() > kMaxTopic) return 0;
 
-        // Refuse a mod that is not owned by a shared_ptr yet: without one there
-        // is no weak_ptr to revalidate against later, and an unvalidated call
-        // into a dylib is exactly what this table exists to prevent.
-        try
-        {
-            (void)raw->shared_from_this();
-        }
-        catch (...)
-        {
-            return 0;
-        }
+            // Refuse a mod that is not owned by a shared_ptr yet: without one there
+            // is no weak_ptr to revalidate against later, and an unvalidated call
+            // into a dylib is exactly what this table exists to prevent.
+            try
+            {
+                (void)raw->shared_from_this();
+            }
+            catch (...)
+            {
+                return 0;
+            }
 
-        std::lock_guard lock(gBusMutex);
-        uint64_t id = gNextSubId++;
-        gSubs[id] = Subscription{raw, topic, cb, user};
-        gByTopic[topic].push_back(id);
-        return id;
+            std::lock_guard lock(gBusMutex);
+            uint64_t id = gNextSubId++;
+            gSubs[id] = Subscription{raw, topic, cb, user};
+            gByTopic[topic].push_back(id);
+            return id;
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_bus_unsubscribe(LeviRsModHandle modHandle, uint64_t subId)
     {
-        if (!modHandle || subId == 0) return false;
-        auto* raw = asMod(modHandle);
+        LEVI_RS_API_GUARD_BEGIN
+            if (!modHandle || subId == 0) return false;
+            auto* raw = asMod(modHandle);
 
-        std::lock_guard lock(gBusMutex);
-        auto it = gSubs.find(subId);
-        // Scoped to the caller: one mod must not be able to silence another.
-        if (it == gSubs.end() || it->second.mod != raw) return false;
+            std::lock_guard lock(gBusMutex);
+            auto it = gSubs.find(subId);
+            // Scoped to the caller: one mod must not be able to silence another.
+            if (it == gSubs.end() || it->second.mod != raw) return false;
 
-        auto byTopic = gByTopic.find(it->second.topic);
-        if (byTopic != gByTopic.end())
-        {
-            auto& v = byTopic->second;
-            v.erase(std::remove(v.begin(), v.end(), subId), v.end());
-            if (v.empty()) gByTopic.erase(byTopic);
-        }
-        gSubs.erase(it);
-        return true;
+            auto byTopic = gByTopic.find(it->second.topic);
+            if (byTopic != gByTopic.end())
+            {
+                auto& v = byTopic->second;
+                v.erase(std::remove(v.begin(), v.end(), subId), v.end());
+                if (v.empty()) gByTopic.erase(byTopic);
+            }
+            gSubs.erase(it);
+            return true;
+        LEVI_RS_API_GUARD_END
     }
 
     uint32_t api_bus_publish(LeviRsModHandle modHandle, LeviRsStr topic, LeviRsStr payload)
     {
-        uint32_t delivered = 0;
-        (void)publishImpl(modHandle, topic, payload, &delivered);
-        return delivered;
+        LEVI_RS_API_GUARD_BEGIN
+            uint32_t delivered = 0;
+            (void)publishImpl(modHandle, topic, payload, &delivered);
+            return delivered;
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_bus_publish_vetoable(
         LeviRsModHandle modHandle, LeviRsStr topic, LeviRsStr payload, uint32_t* outDelivered)
     {
-        return publishImpl(modHandle, topic, payload, outDelivered);
+        LEVI_RS_API_GUARD_BEGIN
+            return publishImpl(modHandle, topic, payload, outDelivered);
+        LEVI_RS_API_GUARD_END
     }
 
     uint32_t api_bus_subscriber_count(LeviRsStr topicRaw)
     {
-        std::string topic{std::string_view{topicRaw}};
-        if (topic.empty()) return 0;
-        std::lock_guard lock(gBusMutex);
-        auto it = gByTopic.find(topic);
-        return it == gByTopic.end() ? 0u : static_cast<uint32_t>(it->second.size());
+        LEVI_RS_API_GUARD_BEGIN
+            std::string topic{std::string_view{topicRaw}};
+            if (topic.empty()) return 0;
+            std::lock_guard lock(gBusMutex);
+            auto it = gByTopic.find(topic);
+            return it == gByTopic.end() ? 0u : static_cast<uint32_t>(it->second.size());
+        LEVI_RS_API_GUARD_END
     }
 
     void busOnRustModGone(RustMod* mod)

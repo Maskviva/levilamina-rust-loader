@@ -12,6 +12,7 @@
 class Block;
 class Dimension;
 class LevelChunk;
+
 namespace Json
 {
     class Value;
@@ -32,7 +33,7 @@ namespace more_dimensions
      */
     class PlotGenerator final : public FlatWorldGenerator
     {
-        PlotLayout   mLayout;
+        PlotLayout mLayout;
         Block const* mAirBlock{nullptr};
         Block const* mBedrockBlock{nullptr};
         Block const* mFloorBlock{nullptr};
@@ -66,10 +67,10 @@ namespace more_dimensions
         {
             std::vector<Block const*> blocks;
             std::optional<BlockVolume> volume;
-            void const*               owner{nullptr};
+            void const* owner{nullptr};
         };
 
         ThreadBuffer& acquireBuffer();
-        void          refillStatic(ThreadBuffer& buf);
+        void refillStatic(ThreadBuffer& buf);
     };
 } // namespace more_dimensions

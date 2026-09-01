@@ -52,6 +52,27 @@ pub enum GameMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayerPermission {
+    Visitor = 0,
+    Member = 1,
+    Operator = 2,
+
+    Custom = 3,
+}
+
+impl PlayerPermission {
+    pub fn from_i32(v: i32) -> Option<PlayerPermission> {
+        Some(match v {
+            0 => PlayerPermission::Visitor,
+            1 => PlayerPermission::Member,
+            2 => PlayerPermission::Operator,
+            3 => PlayerPermission::Custom,
+            _ => return None,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageType {
     Raw = 0,
     Chat = 1,

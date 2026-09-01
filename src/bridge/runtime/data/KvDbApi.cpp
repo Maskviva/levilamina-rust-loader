@@ -60,94 +60,110 @@ namespace levi_rs::bridge
 
     LeviRsKvDbHandle api_kvdb_open(LeviRsModHandle modHandle, LeviRsStr path, bool createIfMissing)
     {
-        auto* mod = asMod(modHandle);
-        if (!mod) return nullptr;
-        auto full = confinedPath(mod, std::string_view{path});
-        if (full.empty())
-        {
-            mod->getLogger().error("kvdb_open: path must be relative and stay inside the mod data dir");
-            return nullptr;
-        }
-        try
-        {
-            std::error_code ec;
-            std::filesystem::create_directories(full.parent_path(), ec);
-            // 4-arg ctor: (path, createIfMiss, fixIfError, bloomFilterBit); 0 = no bloom filter.
-            auto db = std::make_unique<ll::data::KeyValueDB>(full, createIfMissing, false, 0);
-            std::lock_guard lock(gKvMutex);
-            uint64_t id = gNextKvId++;
-            gKvDbs[id] = KvEntry{mod, std::move(db)};
-            return reinterpret_cast<LeviRsKvDbHandle>(id);
-        }
-        catch (...)
-        {
-            mod->getLogger().error("kvdb_open: failed to open '{}'", std::string_view{path});
-            static auto logger = ll::io::LoggerRegistry::getInstance().getOrCreate("levi_rs::bridge");
-            ll::error_utils::printCurrentException(*logger);
-            return nullptr;
-        }
+        LEVI_RS_API_GUARD_BEGIN
+            auto* mod = asMod(modHandle);
+            if (!mod) return nullptr;
+            auto full = confinedPath(mod, std::string_view{path});
+            if (full.empty())
+            {
+                mod->getLogger().error("kvdb_open: path must be relative and stay inside the mod data dir");
+                return nullptr;
+            }
+            try
+            {
+                std::error_code ec;
+                std::filesystem::create_directories(full.parent_path(), ec);
+                // 4-arg ctor: (path, createIfMiss, fixIfError, bloomFilterBit); 0 = no bloom filter.
+                auto db = std::make_unique<ll::data::KeyValueDB>(full, createIfMissing, false, 0);
+                std::lock_guard lock(gKvMutex);
+                uint64_t id = gNextKvId++;
+                gKvDbs[id] = KvEntry{mod, std::move(db)};
+                return reinterpret_cast<LeviRsKvDbHandle>(id);
+            }
+            catch (...)
+            {
+                mod->getLogger().error("kvdb_open: failed to open '{}'", std::string_view{path});
+                static auto logger = ll::io::LoggerRegistry::getInstance().getOrCreate("levi_rs::bridge");
+                ll::error_utils::printCurrentException(*logger);
+                return nullptr;
+            }
+        LEVI_RS_API_GUARD_END
     }
 
     void api_kvdb_close(LeviRsKvDbHandle h)
     {
-        std::lock_guard lock(gKvMutex);
-        gKvDbs.erase(reinterpret_cast<uint64_t>(h));
+        LEVI_RS_API_GUARD_BEGIN
+            std::lock_guard lock(gKvMutex);
+            gKvDbs.erase(reinterpret_cast<uint64_t>(h));
+        LEVI_RS_API_GUARD_END_VOID
     }
 
     bool api_kvdb_get(LeviRsKvDbHandle h, LeviRsStr key, void* ctx, LeviRsStrSink sink)
     {
-        if (!sink) return false;
-        std::lock_guard lock(gKvMutex);
-        auto* e = entryOf(h);
-        if (!e) return false;
-        auto value = e->db->get(std::string_view{key});
-        if (!value) return false;
-        sink(ctx, *value);
-        return true;
+        LEVI_RS_API_GUARD_BEGIN
+            if (!sink) return false;
+            std::lock_guard lock(gKvMutex);
+            auto* e = entryOf(h);
+            if (!e) return false;
+            auto value = e->db->get(std::string_view{key});
+            if (!value) return false;
+            sink(ctx, *value);
+            return true;
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_kvdb_set(LeviRsKvDbHandle h, LeviRsStr key, LeviRsStr value)
     {
-        std::lock_guard lock(gKvMutex);
-        auto* e = entryOf(h);
-        if (!e) return false;
-        return e->db->set(std::string_view{key}, std::string_view{value});
+        LEVI_RS_API_GUARD_BEGIN
+            std::lock_guard lock(gKvMutex);
+            auto* e = entryOf(h);
+            if (!e) return false;
+            return e->db->set(std::string_view{key}, std::string_view{value});
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_kvdb_del(LeviRsKvDbHandle h, LeviRsStr key)
     {
-        std::lock_guard lock(gKvMutex);
-        auto* e = entryOf(h);
-        if (!e) return false;
-        return e->db->del(std::string_view{key});
+        LEVI_RS_API_GUARD_BEGIN
+            std::lock_guard lock(gKvMutex);
+            auto* e = entryOf(h);
+            if (!e) return false;
+            return e->db->del(std::string_view{key});
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_kvdb_has(LeviRsKvDbHandle h, LeviRsStr key)
     {
-        std::lock_guard lock(gKvMutex);
-        auto* e = entryOf(h);
-        if (!e) return false;
-        return e->db->has(std::string_view{key});
+        LEVI_RS_API_GUARD_BEGIN
+            std::lock_guard lock(gKvMutex);
+            auto* e = entryOf(h);
+            if (!e) return false;
+            return e->db->has(std::string_view{key});
+        LEVI_RS_API_GUARD_END
     }
 
     bool api_kvdb_is_empty(LeviRsKvDbHandle h)
     {
-        std::lock_guard lock(gKvMutex);
-        auto* e = entryOf(h);
-        if (!e) return true;
-        return e->db->empty();
+        LEVI_RS_API_GUARD_BEGIN
+            std::lock_guard lock(gKvMutex);
+            auto* e = entryOf(h);
+            if (!e) return true;
+            return e->db->empty();
+        LEVI_RS_API_GUARD_END
     }
 
     void api_kvdb_iter(LeviRsKvDbHandle h, void* ctx, LeviRsKvSink sink)
     {
-        if (!sink) return;
-        std::lock_guard lock(gKvMutex);
-        auto* e = entryOf(h);
-        if (!e) return;
-        for (auto&& [key, value] : e->db->iter())
-        {
-            sink(ctx, key, value);
-        }
+        LEVI_RS_API_GUARD_BEGIN
+            if (!sink) return;
+            std::lock_guard lock(gKvMutex);
+            auto* e = entryOf(h);
+            if (!e) return;
+            for (auto&& [key, value] : e->db->iter())
+            {
+                sink(ctx, key, value);
+            }
+        LEVI_RS_API_GUARD_END_VOID
     }
 
     void kvdbOnRustModGone(RustMod* mod)

@@ -7,11 +7,19 @@ namespace levi_rs::bridge
 {
     bool api_execute_command(LeviRsStr, void*, LeviRsCmdOutputSink) { return false; }
     bool api_register_command(LeviRsModHandle, LeviRsStr, LeviRsStr, int32_t, LeviRsCommandCb, void*) { return false; }
-    bool api_register_command_ex(LeviRsModHandle, LeviRsStr, LeviRsStr, int32_t, LeviRsStr, LeviRsCommandCb, void*) { return false; }
+
+    bool api_register_command_ex(LeviRsModHandle, LeviRsStr, LeviRsStr, int32_t, LeviRsStr, LeviRsCommandCb, void*)
+    {
+        return false;
+    }
+
     bool api_register_command_enum(LeviRsStr, LeviRsStr) { return false; }
     bool api_register_command_soft_enum(LeviRsStr, LeviRsStr) { return false; }
     bool api_update_command_soft_enum(LeviRsStr, int32_t, LeviRsStr) { return false; }
-    void commandsOnRustModGone(RustMod*) {}
+
+    void commandsOnRustModGone(RustMod*)
+    {
+    }
 
     bool api_get_time(int64_t*) { return false; }
     bool api_set_time(int64_t) { return false; }
@@ -31,10 +39,21 @@ namespace levi_rs::bridge
 
     // Same story for the plot-grid trio: MoreDimensionsBridge.cpp is compiled
     // only into server builds, but their slots are in the common tail.
-    void api_md_list_dimensions(void*, LeviRsStrSink) {}
-    void api_md_set_plot_grid(int32_t, int32_t, int32_t) {}
-    void api_md_clear_plot_grid(int32_t) {}
-    void api_md_set_plot_merges(int32_t, int32_t const*, int32_t) {}
+    void api_md_list_dimensions(void*, LeviRsStrSink)
+    {
+    }
+
+    void api_md_set_plot_grid(int32_t, int32_t, int32_t)
+    {
+    }
+
+    void api_md_clear_plot_grid(int32_t)
+    {
+    }
+
+    void api_md_set_plot_merges(int32_t, int32_t const*, int32_t)
+    {
+    }
 
     bool api_tick_freeze(bool) { return false; }
     bool api_tick_step(uint32_t) { return false; }
@@ -45,33 +64,71 @@ namespace levi_rs::bridge
 
     LeviRsListenerHandle hookEventSubscribe(RustMod*, std::string_view, LeviRsEventCb, void*) { return nullptr; }
     bool hookEventUnsubscribe(RustMod*, LeviRsListenerHandle) { return false; }
-    void hookEventDropMod(RustMod*) {}
-    void hookEventList(void*, LeviRsStrSink) {}
+
+    void hookEventDropMod(RustMod*)
+    {
+    }
+
+    void hookEventList(void*, LeviRsStrSink)
+    {
+    }
 
     bool api_sim_spawn(LeviRsStr, int32_t, double, double, double) { return false; }
     bool api_sim_do(LeviRsPlayerSel, LeviRsStr, LeviRsStr) { return false; }
     bool api_sim_is(LeviRsPlayerSel) { return false; }
-    void api_sim_list(void*, LeviRsStrSink) {}
 
-    void api_villages(int32_t, void*, LeviRsStrSink) {}
-    void api_structures_near(int32_t, int32_t, int32_t, int32_t, int32_t, void*, LeviRsStrSink) {}
+    void api_sim_list(void*, LeviRsStrSink)
+    {
+    }
+
+    void api_villages(int32_t, void*, LeviRsStrSink)
+    {
+    }
+
+    void api_structures_near(int32_t, int32_t, int32_t, int32_t, int32_t, void*, LeviRsStrSink)
+    {
+    }
 
     bool api_scoreboard_op(int32_t, LeviRsStr, LeviRsStr, int64_t, void*, LeviRsStrSink) { return false; }
 
-    bool api_form_send(LeviRsModHandle, LeviRsPlayerSel, int32_t, LeviRsStr, LeviRsFormResultCb, void*) { return false; }
-    void formsOnRustModGone(RustMod*) {}
+    bool api_form_send(LeviRsModHandle, LeviRsPlayerSel, int32_t, LeviRsStr, LeviRsFormResultCb, void*)
+    {
+        return false;
+    }
+
+    void formsOnRustModGone(RustMod*)
+    {
+    }
 
     long long api_get_money(LeviRsStr) { return 0; }
     bool api_set_money(LeviRsStr, long long) { return false; }
     bool api_add_money(LeviRsStr, long long) { return false; }
     bool api_reduce_money(LeviRsStr, long long) { return false; }
     bool api_trans_money(LeviRsStr, LeviRsStr, long long, LeviRsStr) { return false; }
-    void api_money_get_hist(LeviRsStr, int, void*, LeviRsStrSink) {}
-    void api_money_clear_hist(int) {}
-    void api_money_listen_before_event(LLMoneyCallback) {}
-    void api_money_listen_after_event(LLMoneyCallback) {}
-    void moneyOnRustModGone(RustMod*) {}
-    void api_money_ranking(unsigned short, void*, LeviRsStrSink) {}
+
+    void api_money_get_hist(LeviRsStr, int, void*, LeviRsStrSink)
+    {
+    }
+
+    void api_money_clear_hist(int)
+    {
+    }
+
+    void api_money_listen_before_event(LLMoneyCallback)
+    {
+    }
+
+    void api_money_listen_after_event(LLMoneyCallback)
+    {
+    }
+
+    void moneyOnRustModGone(RustMod*)
+    {
+    }
+
+    void api_money_ranking(unsigned short, void*, LeviRsStrSink)
+    {
+    }
 
     bool api_player_get_carried_item(LeviRsPlayerSel, void*, LeviRsStrSink) { return false; }
     bool api_player_get_item(LeviRsPlayerSel, int32_t, void*, LeviRsStrSink) { return false; }
@@ -113,6 +170,7 @@ namespace levi_rs::bridge
     /* 追加槽（190）。客户端没有服务端的世界，一律"什么都没做"。 */
     int32_t api_level_set_biome(int32_t, int32_t, int32_t, int32_t, int32_t,
                                 LeviRsStr) { return 0; }
+
     bool api_level_get_sleep_status(void*, LeviRsStrSink) { return false; }
     bool api_level_update_weather(float, int32_t, float, int32_t) { return false; }
     bool api_level_find_path(LeviRsActorId, int32_t, int32_t, int32_t, void*, LeviRsStrSink) { return false; }
@@ -129,5 +187,8 @@ namespace levi_rs::bridge
     bool api_packet_hook_unregister(LeviRsModHandle, LeviRsPacketHookHandle) { return false; }
     LeviRsPacketHookHandle api_packet_conn_hook_register(LeviRsModHandle, LeviRsConnCb, void*) { return nullptr; }
     bool api_packet_conn_hook_unregister(LeviRsModHandle, LeviRsPacketHookHandle) { return false; }
-    void packetHooksOnRustModGone(RustMod*) {}
+
+    void packetHooksOnRustModGone(RustMod*)
+    {
+    }
 } // namespace levi_rs::bridge
