@@ -2,6 +2,8 @@
 
 ![levilamina-rust-loader](https://socialify.git.ci/Maskviva/levilamina-rust-loader/image?description=1&font=Raleway&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FLiteLDev%2FLeviLamina%2Frefs%2Fheads%2Fmain%2Fdocs%2Fmain%2Fcontents%2Flogo.svg&name=1&owner=1&pattern=Circuit+Board&pulls=1&stargazers=1&theme=Auto)
 
+> 此版本已废弃 新仓库在:  https://github.com/Maskviva/Pier
+
 ![English](https://img.shields.io/badge/English-inactive?style=for-the-badge)
 [![中文](https://img.shields.io/badge/简体中文-informational?style=for-the-badge)](README.zh.md)
 
